@@ -1,0 +1,23 @@
+gpu-table.txt in this folder is made from pci.ids, the list of PCI IDs kept by the PCI ID Project.
+
+    Source:    https://pci-ids.ucw.cz/
+    Snapshot:  Version 2026.11.22 (Date 2026-11-22 03:15:01)
+    SHA-256:   f1c7173d83d868e5578408edeb3cd8cdfa33f9df543880d4f66456cfaaa12e79
+
+Only the graphics devices of NVIDIA (10de), AMD/ATI (1002) and Intel (8086) were taken, and each name was split
+into chip, name, family and architecture by tools/hardware-db/build-gpu-table.py. Nothing else was changed.
+
+The notice from pci.ids itself:
+
+    Maintained by Albert Pool, Martin Mares, and other volunteers from
+    the PCI ID Project at https://pci-ids.ucw.cz/.
+
+    This file can be distributed under either the GNU General Public License
+    (version 2 or higher) or the 3-clause BSD License.
+
+    The database is a compilation of factual data, and as such the copyright
+    only covers the aggregation and formatting. The copyright is held by
+    Martin Mares and Albert Pool.
+
+RigControl uses the list under the GNU General Public License, version 2 or higher (SPDX: GPL-2.0-or-later OR
+BSD-3-Clause), which fits RigControl's own licence (GPL-3.0).

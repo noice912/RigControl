@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>AudioController.Audio</RootNamespace>
+    <!-- Pinned like the original Directory.Build.props (RigControl's props say 'latest'). -->
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- MirrorRouter's device seam (IMirrorEndpoints) is internal; the tests drive it with fakes. -->
+    <InternalsVisibleTo Include="AudioController.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AudioController.Core\AudioController.Core.csproj" />
+  </ItemGroup>
+</Project>

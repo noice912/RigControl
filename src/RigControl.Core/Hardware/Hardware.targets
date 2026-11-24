@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Puts the graphics card table inside RigControl.Core.dll as the resource "RigControl.Core.Hardware.gpu-table.txt".
+    GpuDatabase.cs reads it on first use. RigControl.Core.csproj imports this file:
+
+        <Import Project="Hardware\Hardware.targets" />
+
+    The table is made by tools/hardware-db/build-gpu-table.py; its licence notice is PCI-IDS-NOTICE.txt in this folder.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)gpu-table.txt" LogicalName="RigControl.Core.Hardware.gpu-table.txt" />
+    <None Include="$(MSBuildThisFileDirectory)PCI-IDS-NOTICE.txt" Link="Hardware\PCI-IDS-NOTICE.txt" />
+  </ItemGroup>
+</Project>

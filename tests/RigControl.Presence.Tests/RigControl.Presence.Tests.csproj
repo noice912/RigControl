@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RigControl.Presence\RigControl.Presence.csproj" />
+    <ProjectReference Include="..\..\src\RigControl.Core\RigControl.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    The build step that encrypts the Discord application ids (DiscordIds.targets) is run here on a file of made-up
+    ids, and the result goes into this test dll. A test then opens it with the app's own code, so the two halves of
+    the recipe can never drift apart. The real ids are never put into the test dll (DiscordIdsEmbed is false).
+  -->
+  <PropertyGroup>
+    <DiscordIdsEmbed>false</DiscordIdsEmbed>
+  </PropertyGroup>
+  <Import Project="..\..\src\RigControl.Presence\DiscordIds.targets" />
+  <Target Name="SealMadeUpIds" BeforeTargets="BeforeBuild"
+          Inputs="$(MSBuildProjectDirectory)\made-up-discord-ids.json;$(MSBuildThisFileDirectory)..\..\src\RigControl.Presence\DiscordIds.targets"
+          Outputs="$(IntermediateOutputPath)made-up-ids.bin">
+    <SealDiscordIds Source="$(MSBuildProjectDirectory)\made-up-discord-ids.json" Output="$(IntermediateOutputPath)made-up-ids.bin" />
+  </Target>
+  <Target Name="EmbedMadeUpIds" BeforeTargets="BeforeBuild" DependsOnTargets="SealMadeUpIds">
+    <ItemGroup>
+      <EmbeddedResource Include="$(IntermediateOutputPath)made-up-ids.bin" LogicalName="RigControl.Presence.Tests.MadeUpIds" Type="Non-Resx" WithCulture="false" />
+      <EmbeddedResource Include="made-up-discord-ids.json" LogicalName="RigControl.Presence.Tests.MadeUpIds.json" />
+      <FileWrites Include="$(IntermediateOutputPath)made-up-ids.bin" />
+    </ItemGroup>
+  </Target>
+
+</Project>

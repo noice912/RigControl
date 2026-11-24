@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The open-source programs RigControl carries inside its exe: OpenRGB (lights), the PawnIO driver setup (sensors and
+    fans) and the Equalizer APO setup (audio equaliser). See third_party/BUNDLED.md.
+    Every file present under third_party is embedded as "bundled/<path>", and its SHA-256 is computed at build time
+    into [AssemblyMetadata("bundled-sha256:<path>", "<hex>")], so a file is only ever written or run if it matches.
+    Files that are missing (a build from a fresh clone) are simply not carried; RigControl then uses installed copies.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RigControl.Bundled</RootNamespace>
+    <BundledDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'third_party'))</BundledDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <BundledPayload Include="$(BundledDir)openrgb\files\**\*" Kind="openrgb" Rel="openrgb/%(RecursiveDir)%(Filename)%(Extension)" />
+    <BundledPayload Include="$(BundledDir)pawnio\PawnIO_setup.exe" Kind="pawnio" Rel="pawnio/PawnIO_setup.exe" Condition="Exists('$(BundledDir)pawnio\PawnIO_setup.exe')" />
+    <BundledPayload Include="$(BundledDir)equalizerapo\*.exe" Kind="equalizerapo" Rel="equalizerapo/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="EmbedBundledPayload" BeforeTargets="PrepareForBuild;GetAssemblyAttributes">
+    <ItemGroup>
+      <_BundledFixed Include="@(BundledPayload)" Rel="$([System.String]::Copy('%(BundledPayload.Rel)').Replace('\', '/'))" />
+      <EmbeddedResource Include="@(_BundledFixed)" LogicalName="bundled/%(_BundledFixed.Rel)" Visible="false" WithCulture="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Not incremental on purpose: a replaced binary with an old timestamp must never keep an old hash. -->
+  <Target Name="HashBundledPayload" BeforeTargets="GetAssemblyAttributes" DependsOnTargets="EmbedBundledPayload" Condition="'@(_BundledFixed)' != ''">
+    <GetFileHash Files="@(_BundledFixed)" Algorithm="SHA256" HashEncoding="hex">
+      <Output TaskParameter="Items" ItemName="_BundledHashed" />
+    </GetFileHash>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>bundled-sha256:%(_BundledHashed.Rel)</_Parameter1>
+        <_Parameter2>%(_BundledHashed.FileHash)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>

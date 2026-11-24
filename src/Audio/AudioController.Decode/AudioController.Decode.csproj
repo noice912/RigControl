@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>AudioController.Decode</RootNamespace>
+    <!-- Pinned like the original Directory.Build.props (RigControl's props say 'latest'). -->
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Core" Version="2.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- RigControl: the tests check FfmpegLocator's search order including the embedded-FFmpeg folder. -->
+    <InternalsVisibleTo Include="AudioController.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AudioController.Core\AudioController.Core.csproj" />
+  </ItemGroup>
+</Project>

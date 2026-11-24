@@ -1,0 +1,32 @@
+<Project>
+  <PropertyGroup>
+    <!-- .NET 8 is the runtime installed on this PC, so tests and debug runs work without extra installs.
+         The published exe is self-contained and carries its own runtime. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Version>1.0.0</Version>
+    <Product>RigControl</Product>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Release builds keep debug information inside each dll, so a published app is one file with readable crash logs. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <!--
+    All build output (bin + obj) goes to one "artifacts" folder instead of into each project folder.
+    When the source lives under a very long path, Windows' 260-character path limit breaks the compiler,
+    so in that case the artifacts folder is placed under %TEMP%. Set RIGCONTROL_ARTIFACTS to choose a folder.
+  -->
+  <PropertyGroup>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath Condition="'$(RIGCONTROL_ARTIFACTS)' != ''">$(RIGCONTROL_ARTIFACTS)</ArtifactsPath>
+    <ArtifactsPath Condition="'$(RIGCONTROL_ARTIFACTS)' == '' and $(MSBuildThisFileDirectory.Length) &gt; 110">$(TEMP)\rigcontrol-build</ArtifactsPath>
+    <ArtifactsPath Condition="'$(ArtifactsPath)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+  </PropertyGroup>
+</Project>

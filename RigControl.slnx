@@ -1,0 +1,42 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RigControl.App/RigControl.App.csproj" />
+    <Project Path="src/RigControl.Bios/RigControl.Bios.csproj" />
+    <Project Path="src/RigControl.Presence/RigControl.Presence.csproj" />
+    <Project Path="src/RigControl.Bundled/RigControl.Bundled.csproj" />
+    <Project Path="src/RigControl.Capture/RigControl.Capture.csproj" />
+    <Project Path="src/RigControl.Cooling/RigControl.Cooling.csproj" />
+    <Project Path="src/RigControl.Drivers/RigControl.Drivers.csproj" />
+    <Project Path="src/RigControl.Health/RigControl.Health.csproj" />
+    <Project Path="src/RigControl.Core/RigControl.Core.csproj" />
+    <Project Path="src/RigControl.Cpu/RigControl.Cpu.csproj" />
+    <Project Path="src/RigControl.Lighting/RigControl.Lighting.csproj" />
+    <Project Path="src/RigControl.Nvidia/RigControl.Nvidia.csproj" />
+    <Project Path="src/RigControl.Sensors/RigControl.Sensors.csproj" />
+  </Folder>
+  <Folder Name="/src/Audio/">
+    <Project Path="src/Audio/AudioController.App/AudioController.App.csproj" />
+    <Project Path="src/Audio/AudioController.Audio/AudioController.Audio.csproj" />
+    <Project Path="src/Audio/AudioController.Core/AudioController.Core.csproj" />
+    <Project Path="src/Audio/AudioController.Decode/AudioController.Decode.csproj" />
+    <Project Path="src/Audio/AudioController.Ffmpeg/AudioController.Ffmpeg.csproj" />
+    <Project Path="src/Audio/AudioController.Storage/AudioController.Storage.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RigControl.App.Tests/RigControl.App.Tests.csproj" />
+    <Project Path="tests/RigControl.Bios.Tests/RigControl.Bios.Tests.csproj" />
+    <Project Path="tests/RigControl.Presence.Tests/RigControl.Presence.Tests.csproj" />
+    <Project Path="tests/RigControl.Capture.Tests/RigControl.Capture.Tests.csproj" />
+    <Project Path="tests/RigControl.Cooling.Tests/RigControl.Cooling.Tests.csproj" />
+    <Project Path="tests/RigControl.Drivers.Tests/RigControl.Drivers.Tests.csproj" />
+    <Project Path="tests/RigControl.Health.Tests/RigControl.Health.Tests.csproj" />
+    <Project Path="tests/RigControl.Core.Tests/RigControl.Core.Tests.csproj" />
+    <Project Path="tests/RigControl.Cpu.Tests/RigControl.Cpu.Tests.csproj" />
+    <Project Path="tests/RigControl.Lighting.Tests/RigControl.Lighting.Tests.csproj" />
+    <Project Path="tests/RigControl.Nvidia.Tests/RigControl.Nvidia.Tests.csproj" />
+    <Project Path="tests/RigControl.Sensors.Tests/RigControl.Sensors.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Audio/">
+    <Project Path="tests/Audio/AudioController.Tests/AudioController.Tests.csproj" />
+  </Folder>
+</Solution>

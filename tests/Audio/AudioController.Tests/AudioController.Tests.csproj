@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>AudioController.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- Pinned like the original Directory.Build.props (RigControl's props say 'latest'). -->
+    <LangVersion>12</LangVersion>
+    <!-- Normalized: the source tree path is long, and unnormalized '..\..\..' globs exceed MAX_PATH. -->
+    <RigControlRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', '..'))</RigControlRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Audio\AudioController.Core\AudioController.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\Audio\AudioController.Storage\AudioController.Storage.csproj" />
+    <ProjectReference Include="..\..\..\src\Audio\AudioController.Decode\AudioController.Decode.csproj" />
+    <ProjectReference Include="..\..\..\src\Audio\AudioController.Audio\AudioController.Audio.csproj" />
+    <ProjectReference Include="..\..\..\src\Audio\AudioController.App\AudioController.App.csproj" />
+    <ProjectReference Include="..\..\..\src\Audio\AudioController.Ffmpeg\AudioController.Ffmpeg.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- RigControl: build output lives under %TEMP% (see Directory.Build.props), so FfmpegLocator's dev-tree walk can no
+         longer reach the bundled FFmpeg. Copying it to <test bin>\ffmpeg\ (the published layout, the locator's first
+         regular location) keeps the real-FFmpeg decoder tests running instead of returning early. -->
+    <None Include="$(RigControlRoot)third_party\ffmpeg\ffmpeg.exe" Link="ffmpeg\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(RigControlRoot)third_party\ffmpeg\ffprobe.exe" Link="ffmpeg\ffprobe.exe" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <!-- RigControl: the audio XAML sources, so a test can check every resource key they use resolves. -->
+    <None Include="$(RigControlRoot)src\Audio\AudioController.App\**\*.xaml" Link="AudioXaml\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+</Project>

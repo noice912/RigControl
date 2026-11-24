@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- RigControl: a WPF class library hosted in RigControl's window through Hosting/AudioHost (was WinExe).
+         App.xaml/App.xaml.cs and MainWindow are gone: AudioHost replaces the Application, AudioView the window,
+         Themes/AudioResources.xaml the App.xaml resources. -->
+    <OutputType>Library</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>AudioController</AssemblyName>
+    <RootNamespace>AudioController.App</RootNamespace>
+    <ApplicationTitle>Audio Controller</ApplicationTitle>
+    <Version>1.6.0</Version>
+    <!-- Pinned like the original Directory.Build.props (RigControl's props say 'latest'). -->
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AudioController.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AudioController.Core\AudioController.Core.csproj" />
+    <ProjectReference Include="..\AudioController.Storage\AudioController.Storage.csproj" />
+    <ProjectReference Include="..\AudioController.Decode\AudioController.Decode.csproj" />
+    <ProjectReference Include="..\AudioController.Audio\AudioController.Audio.csproj" />
+    <!-- RigControl: FFmpeg embedded in the exe (extracted on first use by AudioHost). -->
+    <ProjectReference Include="..\AudioController.Ffmpeg\AudioController.Ffmpeg.csproj" />
+  </ItemGroup>
+  <!-- RigControl: records the embedded FFmpeg files' SHA-256s in this assembly too ([AssemblyMetadata]), so AudioHost can
+       verify the extracted copy at start without loading the ~200 MB AudioController.Ffmpeg assembly. -->
+  <Import Project="..\AudioController.Ffmpeg\FfmpegPayload.targets" />
+</Project>

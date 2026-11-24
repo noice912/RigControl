@@ -1,0 +1,193 @@
+<Project>
+  <!--
+    The Discord application ids are not in the source. When private\discord-ids.json exists (the private repo only),
+    this step encrypts it into obj\...\discord-ids.bin and the dll carries that as the resource "RigControl.Presence.Ids";
+    AppIds.cs decrypts it in memory. Without the file nothing is embedded and the app says that Discord status
+    isn't set up in this build (people building from source add their own ids in settings.json: presence > appIds).
+
+    It runs inside MSBuild itself (an inline task), so it needs no extra tool and no extra build step, and it uses
+    only what every MSBuild has (dotnet build and Visual Studio alike): AES-GCM is written out here on top of plain
+    AES because Visual Studio's MSBuild has no ready-made one.
+
+    This is obfuscation against casual searching, not a secret: the key recipe below is public and the same recipe
+    is in AppIds.cs. Change both together. Nothing here prints an id.
+
+    Set the property DiscordIdsFile to use a file somewhere else. A project that only wants the task itself (the
+    tests seal a file of made-up ids with it, to check that this recipe and AppIds.cs agree) sets DiscordIdsEmbed
+    to false.
+  -->
+  <PropertyGroup>
+    <DiscordIdsFile Condition="'$(DiscordIdsFile)' == ''">$(MSBuildThisFileDirectory)..\..\private\discord-ids.json</DiscordIdsFile>
+  </PropertyGroup>
+
+  <UsingTask TaskName="SealDiscordIds" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source ParameterType="System.String" Required="true" />
+      <Output ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Language="cs"><![CDATA[
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.Build.Framework;
+using Microsoft.Build.Utilities;
+
+public class SealDiscordIds : Task
+{
+    [Required] public string Source { get; set; }
+    [Required] public string Output { get; set; }
+
+    public override bool Execute()
+    {
+        string json = File.ReadAllText(Source).TrimStart('﻿');
+        // A flat map of "name": "id". Nothing else is accepted, and no id is ever printed.
+        const string pair = "\"([A-Za-z][A-Za-z0-9]{0,31})\"\\s*:\\s*\"([^\"\\\\]*)\"";
+        if (!Regex.IsMatch(json, "^\\s*\\{\\s*(" + pair + "\\s*(,\\s*" + pair + "\\s*)*)?\\}\\s*$"))
+        {
+            Log.LogError("discord-ids.json must be one flat list of \"name\": \"id\" pairs, like { \"game\": \"...\", \"music\": \"...\" }.");
+            return false;
+        }
+        var text = new StringBuilder();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in Regex.Matches(json, pair))
+        {
+            string name = m.Groups[1].Value, id = m.Groups[2].Value;
+            if (!Regex.IsMatch(id, "^[0-9]{17,20}\\z"))
+            {
+                Log.LogError("discord-ids.json: the id for \"" + name + "\" is not a Discord application id (17 to 20 digits).");
+                return false;
+            }
+            if (!seen.Add(name))
+            {
+                Log.LogError("discord-ids.json: \"" + name + "\" is there twice.");
+                return false;
+            }
+            text.Append(name).Append('=').Append(id).Append('\n');
+        }
+
+        byte[] key = Key();
+        byte[] plain = Encoding.UTF8.GetBytes(text.ToString());
+        byte[] nonce = new byte[12];
+        using (var sha = SHA256.Create())
+        {
+            byte[] both = new byte[key.Length + plain.Length];
+            Buffer.BlockCopy(key, 0, both, 0, key.Length);
+            Buffer.BlockCopy(plain, 0, both, key.Length, plain.Length);
+            Buffer.BlockCopy(sha.ComputeHash(both), 0, nonce, 0, 12);
+        }
+        byte[] cipher, tag;
+        Gcm(key, nonce, plain, out cipher, out tag);
+
+        // [version 1][nonce 12][tag 16][ciphertext]
+        byte[] blob = new byte[1 + 12 + 16 + cipher.Length];
+        blob[0] = 1;
+        Buffer.BlockCopy(nonce, 0, blob, 1, 12);
+        Buffer.BlockCopy(tag, 0, blob, 13, 16);
+        Buffer.BlockCopy(cipher, 0, blob, 29, cipher.Length);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(Output)));
+        File.WriteAllBytes(Output, blob);
+        Log.LogMessage(MessageImportance.Normal, "Discord application ids: " + seen.Count + " embedded (encrypted).");
+        return true;
+    }
+
+    // The same recipe as AppIds.Key() in AppIds.cs.
+    static byte[] Key()
+    {
+        byte[] a = { 0x4f, 0xc2, 0x19, 0x7a, 0xe3, 0x08, 0xb5, 0x6d, 0x91, 0x2e, 0xd7, 0x40, 0xa8, 0x73, 0x1c, 0xf6 };
+        ulong b = 0x6A09E667F3BCC908UL ^ 0x1F83D9ABFB41BD6BUL;
+        char[] c = "ecneserP.lortnoCgiR".ToCharArray();
+        Array.Reverse(c);
+        var seed = new List<byte>(a);
+        for (int i = 7; i >= 0; i--) seed.Add((byte)(b >> (8 * i)));
+        seed.AddRange(Encoding.ASCII.GetBytes(c));
+        using (var sha = SHA256.Create()) return sha.ComputeHash(seed.ToArray());
+    }
+
+    // AES-256-GCM with a 12-byte nonce and no extra data (NIST SP 800-38D), on top of single-block AES.
+    static void Gcm(byte[] key, byte[] nonce, byte[] plain, out byte[] cipher, out byte[] tag)
+    {
+        using (var aes = Aes.Create())
+        {
+            aes.Mode = CipherMode.ECB;
+            aes.Padding = PaddingMode.None;
+            aes.Key = key;
+            using (var enc = aes.CreateEncryptor())
+            {
+                byte[] h = Block(enc, new byte[16]);
+                byte[] counter = new byte[16];
+                Buffer.BlockCopy(nonce, 0, counter, 0, 12);
+                counter[15] = 1;
+                byte[] first = Block(enc, counter);
+
+                cipher = new byte[plain.Length];
+                for (int off = 0; off < plain.Length; off += 16)
+                {
+                    for (int i = 15; i >= 12; i--) { if (++counter[i] != 0) break; }
+                    byte[] ks = Block(enc, counter);
+                    for (int i = 0; i < 16 && off + i < plain.Length; i++) cipher[off + i] = (byte)(plain[off + i] ^ ks[i]);
+                }
+
+                byte[] y = new byte[16];
+                for (int off = 0; off < cipher.Length; off += 16)
+                {
+                    for (int i = 0; i < 16 && off + i < cipher.Length; i++) y[i] ^= cipher[off + i];
+                    y = Mul(y, h);
+                }
+                ulong bits = (ulong)cipher.Length * 8;
+                for (int i = 0; i < 8; i++) y[15 - i] ^= (byte)(bits >> (8 * i));
+                y = Mul(y, h);
+
+                tag = new byte[16];
+                for (int i = 0; i < 16; i++) tag[i] = (byte)(y[i] ^ first[i]);
+            }
+        }
+    }
+
+    static byte[] Block(ICryptoTransform enc, byte[] input)
+    {
+        byte[] o = new byte[16];
+        enc.TransformBlock(input, 0, 16, o, 0);
+        return o;
+    }
+
+    // Multiplication in GF(2^128) as GCM defines it.
+    static byte[] Mul(byte[] x, byte[] y)
+    {
+        byte[] z = new byte[16];
+        byte[] v = (byte[])y.Clone();
+        for (int i = 0; i < 128; i++)
+        {
+            if (((x[i / 8] >> (7 - (i % 8))) & 1) == 1)
+                for (int j = 0; j < 16; j++) z[j] ^= v[j];
+            bool carry = (v[15] & 1) == 1;
+            for (int j = 15; j > 0; j--) v[j] = (byte)((v[j] >> 1) | ((v[j - 1] & 1) << 7));
+            v[0] = (byte)(v[0] >> 1);
+            if (carry) v[0] ^= 0xE1;
+        }
+        return z;
+    }
+}
+]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Encrypts the file; runs again only when the file or this recipe changed. -->
+  <Target Name="SealDiscordIds" BeforeTargets="BeforeBuild"
+          Condition="'$(DiscordIdsEmbed)' != 'false' And Exists('$(DiscordIdsFile)')"
+          Inputs="$(DiscordIdsFile);$(MSBuildThisFileFullPath)" Outputs="$(IntermediateOutputPath)discord-ids.bin">
+    <SealDiscordIds Source="$(DiscordIdsFile)" Output="$(IntermediateOutputPath)discord-ids.bin" />
+  </Target>
+
+  <!-- Puts the encrypted ids in the dll. A blob left over from an earlier build is not used once the file is gone. -->
+  <Target Name="EmbedDiscordIds" BeforeTargets="BeforeBuild" DependsOnTargets="SealDiscordIds"
+          Condition="'$(DiscordIdsEmbed)' != 'false' And Exists('$(DiscordIdsFile)')">
+    <ItemGroup>
+      <EmbeddedResource Include="$(IntermediateOutputPath)discord-ids.bin" LogicalName="RigControl.Presence.Ids" Type="Non-Resx" WithCulture="false" />
+      <FileWrites Include="$(IntermediateOutputPath)discord-ids.bin" />
+    </ItemGroup>
+  </Target>
+</Project>

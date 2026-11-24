@@ -1,0 +1,1596 @@
+{
+ "board": "ROG STRIX Z790-A GAMING WIFI II",
+ "bios": "2301",
+ "source": "Generated from ASUS BIOS 2301 (ROG-STRIX-Z790-A-GAMING-WIFI-II-ASUS-2301.CAP, zip sha256 6fb8ad42...dfd1bf), AMI Setup module IFR forms",
+ "store": {
+  "ifrName": "VARSTORE_OCMR_SETTINGS_NAME",
+  "guid": "a3a3b874-7636-4182-ba1e-f52c584494e3",
+  "size": 17546
+ },
+ "settings": [
+  {
+   "name": "Performance Preferences",
+   "form": "Ai Tweaker",
+   "offset": 348,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Performance Preferences offer options allowing you to adjust processor performance and power limit related settings based on your preferences.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Intel Default Settings"
+    },
+    {
+     "value": 2,
+     "label": "ASUS Advanced OC Profile"
+    }
+   ]
+  },
+  {
+   "name": "Intel Default Settings",
+   "form": "Ai Tweaker",
+   "offset": 352,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Load the Intel Default Settings and operate within Intel's recommended parameters.",
+   "options": [
+    {
+     "value": 1,
+     "label": "Performance"
+    },
+    {
+     "value": 2,
+     "label": "Extreme"
+    }
+   ]
+  },
+  {
+   "name": "Ai Overclock Tuner",
+   "form": "Ai Tweaker",
+   "offset": 0,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[Manual]: When the manual mode is selected, the BCLK (base clock) frequency can be assigned manually.\n[XMP I]:  Load the DIMM’s default XMP memory timings (CL, TRCD, TRP, TRAS) with BCLK frequency and other memory parameters optimized by ASUS.\n[XMP II]:  Load the DIMM’s complete default XMP profile.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Manual"
+    },
+    {
+     "value": 5,
+     "label": "XMP I"
+    },
+    {
+     "value": 6,
+     "label": "XMP II"
+    },
+    {
+     "value": 11,
+     "label": "XMP Tweaked"
+    },
+    {
+     "value": 7,
+     "label": "D.O.C.P. I"
+    },
+    {
+     "value": 8,
+     "label": "D.O.C.P. II"
+    },
+    {
+     "value": 9,
+     "label": "AEMP II"
+    },
+    {
+     "value": 10,
+     "label": "ROG Certified"
+    }
+   ]
+  },
+  {
+   "name": "XMP",
+   "form": "Ai Tweaker",
+   "offset": 22,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Each profile has its own DRAM frequency, timing and voltage.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Profile #1"
+    },
+    {
+     "value": 1,
+     "label": "Profile #2"
+    },
+    {
+     "value": 2,
+     "label": "Profile #3"
+    }
+   ]
+  },
+  {
+   "name": "D.O.C.P.",
+   "form": "Ai Tweaker",
+   "offset": 637,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Each profile has its own DRAM frequency, timing and voltage.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Profile #0"
+    },
+    {
+     "value": 1,
+     "label": "Profile #1"
+    }
+   ]
+  },
+  {
+   "name": "AEMP",
+   "form": "Ai Tweaker",
+   "offset": 639,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Each profile has its own DRAM frequency, timing and voltage.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Profile #0"
+    },
+    {
+     "value": 1,
+     "label": "Profile #1"
+    },
+    {
+     "value": 2,
+     "label": "Profile #2"
+    }
+   ]
+  },
+  {
+   "name": "BCLK Frequency",
+   "form": "Ai Tweaker",
+   "offset": 1,
+   "size": 4,
+   "kind": "numeric",
+   "help": "Using a higher BCLK frequency will alter the operating frequency of all associated clock domains (CPU, DRAM and Cache). 100 BCLK is default.",
+   "min": 0,
+   "max": 6500000
+  },
+  {
+   "name": "BCLK Trimmer",
+   "form": "Ai Tweaker",
+   "offset": 44,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Suggest to enable this item when applying higher BCLK parameters.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "Intel(R) Adaptive Boost Technology",
+   "form": "Ai Tweaker",
+   "offset": 338,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable/Disable IABT to improve performance by allowing higher multi-core turbo frequencies.\nOperating within system power and temperature specifications when current, power and thermal headroom exists, please ensure quality cooling for the CPU before enabling the ABT function.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "ASUS MultiCore Enhancement",
+   "form": "Ai Tweaker",
+   "offset": 45,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[Auto – Let BIOS Optimize]: ASUS optimized core ratio Turbo and temperature settings at default processor speeds.\n[Disabled – Enforce All limits]: Intel default Turbo core ratio settings.\n[Enabled – Remove All limits]: Optimized power, temperature and current thresholds for maintaining maximum performance.\n[Enabled – Remove All limits (90°C)]: Enable ASUS optimized power, current thresholds and li",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto – Let BIOS Optimize"
+    },
+    {
+     "value": 1,
+     "label": "Disabled – Enforce All limits"
+    },
+    {
+     "value": 2,
+     "label": "Enabled – Remove All limits"
+    },
+    {
+     "value": 3,
+     "label": "Enabled – Remove All limits (90°C)"
+    }
+   ]
+  },
+  {
+   "name": "SVID Behavior",
+   "form": "Ai Tweaker",
+   "offset": 46,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Programs the CPU’s SVID behavior based on CPU’s quality.\nThe more optimistic the mode selected, the lower the temperature of the CPU.\nIntel’s Fail Safe is the default behavior of the processor oblivious to the actual Motherboard design.\nTrained optimizes SVID behavior to match input parameters such as VRM Loadline and Target Frequencies.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Best-Case Scenario"
+    },
+    {
+     "value": 2,
+     "label": "Typical Scenario"
+    },
+    {
+     "value": 3,
+     "label": "Worst-Case Scenario"
+    },
+    {
+     "value": 4,
+     "label": "Intel’s Fail Safe"
+    },
+    {
+     "value": 5,
+     "label": "Trained"
+    }
+   ]
+  },
+  {
+   "name": "BCLK Frequency : DRAM Frequency Ratio",
+   "form": "Ai Tweaker",
+   "offset": 943,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[Auto]: The BCLK frequency to DRAM frequency ratio will be set to the optimized setting.\n[100:133]: The BCLK frequency to DRAM frequency ratio will be set to 100:133.\n[100:100]: The BCLK frequency to DRAM frequency ratio will be set to 100:100.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "100:133"
+    },
+    {
+     "value": 2,
+     "label": "100:100"
+    }
+   ]
+  },
+  {
+   "name": "Memory Controller : DRAM Frequency Ratio",
+   "form": "Ai Tweaker",
+   "offset": 944,
+   "size": 1,
+   "kind": "oneof",
+   "help": "BCLK Frequency : DRAM Frequency Ratio of 100:133 tends to overclock better and 1:2 Memory Controller : DRAM Frequency Ratio only works with even numbered DRAM Ratios and not odd numbered ratios.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "1:1"
+    },
+    {
+     "value": 2,
+     "label": "1:2"
+    },
+    {
+     "value": 4,
+     "label": "1:4"
+    }
+   ]
+  },
+  {
+   "name": "DRAM Ratio",
+   "form": "Ai Tweaker",
+   "offset": 945,
+   "size": 1,
+   "kind": "numeric",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "DRAM Frequency",
+   "form": "Ai Tweaker",
+   "offset": 947,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Select the DRAM operating frequency. The configurable options vary with the BCLK(base clock) frequency setting. Select the auto mode to apply the optimized setting.\nThe Frequency ratios in grey are not recommended, use BCLK + ratios in white to reach your target Frequency if needed.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    }
+   ]
+  },
+  {
+   "name": "DIMM Flex",
+   "form": "Ai Tweaker",
+   "offset": 652,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable to configure DRAM Timings and Frequencies based on DRAM Temperature. Disable to disable this feature.\nNote:\n  DRAM settings will remain at Level1 at BIOS boot until the handover to OS.\n  Excessive dynamic switching in the DRAM timings and frequency may lead to system instability whilst in OS.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Disabled"
+    },
+    {
+     "value": 1,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "Performance Core Ratio",
+   "form": "Ai Tweaker",
+   "offset": 55,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[Auto]: The system will adjust all Performance core ratios automatically.\n[Sync All Cores]: Configure a core ratio limit to synchronize all Performance cores.\n[Sync All Cores(+1 to 2)]: Similar to Synch All Cores but additional bin added to top 2 cores.\n[By Core Usage]: Configure the ratio limits for active cores depending on how many Performance cores are being utilized.\n[AI Optimized]: Use AI to",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Sync All Cores"
+    },
+    {
+     "value": 4,
+     "label": "Sync All Cores(+1 to 2)"
+    },
+    {
+     "value": 2,
+     "label": "By Core Usage"
+    },
+    {
+     "value": 3,
+     "label": "AI Optimized"
+    }
+   ]
+  },
+  {
+   "name": "1-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 56,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "2-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 57,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "3-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 58,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "4-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 59,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "5-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 60,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "6-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 61,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "7-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 62,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "8-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 63,
+   "size": 1,
+   "kind": "numeric",
+   "help": "The N-core ratio limit must be higher than or equal to the (N+1)-core ratio limit. (N stands for the number of CPU cores.)\nThe core ratio limit cannot be set to Auto when the core number is lower than N.\nThe biggest core’s ratio limit must be lower than or equal to the second biggest core’s ratio limit.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient Core Ratio",
+   "form": "Ai Tweaker",
+   "offset": 73,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[Auto]: The system will adjust all Efficient core ratios automatically.\n[Sync All Cores]: Configure a core ratio limit to synchronize all Efficient cores.\n[By Core Usage]: Configure the ratio limits for active cores depending on how many Efficient cores are being utilized.\n[AI Optimized]: Use AI to optimize the Efficient core ratios.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Sync All Cores"
+    },
+    {
+     "value": 2,
+     "label": "By Core Usage"
+    },
+    {
+     "value": 3,
+     "label": "AI Optimized"
+    }
+   ]
+  },
+  {
+   "name": "Efficient 1-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 74,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient 2-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 75,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient 3-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 76,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient 4-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 77,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient 5-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 78,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient 6-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 79,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient 7-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 80,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Efficient 8-Core Ratio Limit",
+   "form": "Ai Tweaker",
+   "offset": 81,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Ratio Limit for Efficient cores when N Efficient cores are loaded",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Ring Down Bin",
+   "form": "Ai Tweaker",
+   "offset": 199,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable/Disable Ring Downbin feature. Enabled - CPU will down bin the ring ratio, which means the requested max ring ratio may not be observed. Disable - CPU will not down bin the ring ratio and the requested ring ratio limit will be observed. Default is Enabled. Please use caution when disabling this feature as it may result in overvoltaging of the CPU. Uses OC mailbox command 0x19.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "Min. CPU Cache Ratio",
+   "form": "Ai Tweaker",
+   "offset": 200,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Configures the minimum possible CPU cache ratio.",
+   "min": 0,
+   "max": 63
+  },
+  {
+   "name": "Max. CPU Cache Ratio",
+   "form": "Ai Tweaker",
+   "offset": 201,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Configures the maximum possible CPU cache ratio.",
+   "min": 0,
+   "max": 63
+  },
+  {
+   "name": "Max. CPU Graphics Ratio",
+   "form": "Ai Tweaker",
+   "offset": 53,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Configures the CPU graphics ratio. The ratio may vary depednding on the system loading.",
+   "min": 0,
+   "max": 63
+  },
+  {
+   "name": "Extreme Over-voltage",
+   "form": "Ai Tweaker",
+   "offset": 558,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[Enabled]: Set to this option to select a high overclocking voltage, but which may affect the CPU lifespan.\n[Disabled]: Set to this option for CPU overvoltage protection.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Disabled"
+    },
+    {
+     "value": 1,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "BCLK Aware Adaptive Voltage",
+   "form": "Ai Tweaker",
+   "offset": 562,
+   "size": 1,
+   "kind": "oneof",
+   "help": "BCLK Aware Adaptive Voltage enable/disable. When enabled, pcode will be aware of the BCLK frequency when calculating the CPU V/F curves. This is ideal for BCLK OC to avoid high voltage overrides. Uses OC Mailbox command 0x15.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "Actual VRM Core Voltage",
+   "form": "Ai Tweaker",
+   "offset": 365,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Configure the VRM output rail for Core Voltage. Manual mode allows user-defined values. Offset mode modifies values by SVID.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Manual Mode"
+    },
+    {
+     "value": 2,
+     "label": "Offset Mode"
+    }
+   ]
+  },
+  {
+   "name": "CPU Core Voltage Override",
+   "form": "Ai Tweaker",
+   "offset": 366,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the input voltage for the CPU by the external voltage regulator.\n\n\n\nMin.: 0.600V   |   Max.: 1.700V   |   Standard: By CPU   |   Increment: 0.005V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Mode Sign",
+   "form": "Ai Tweaker",
+   "offset": 368,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[+]: Offset the CPU core voltage by a positive value.\n[-]: Offset the CPU core voltage by a negative value.",
+   "options": [
+    {
+     "value": 1,
+     "label": "-"
+    },
+    {
+     "value": 0,
+     "label": "+"
+    }
+   ]
+  },
+  {
+   "name": "CPU Core Voltage Offset",
+   "form": "Ai Tweaker",
+   "offset": 369,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the input voltage for the CPU by the external voltage regulator.\n\n\n\nMin.: 0.005V   |   Max.: 0.635V   |   Standard: By CPU   |   Increment: 0.005V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Global Core SVID Voltage",
+   "form": "Ai Tweaker",
+   "offset": 375,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Configure the global Core Voltage requested by the cores. Result may be influenced by Actual VRM Core Voltage.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Manual Mode"
+    },
+    {
+     "value": 2,
+     "label": "Offset Mode"
+    },
+    {
+     "value": 3,
+     "label": "Adaptive Mode"
+    }
+   ]
+  },
+  {
+   "name": "CPU Core Voltage Override",
+   "form": "Ai Tweaker",
+   "offset": 376,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the voltage for the CPU Core.\n\n\n\nMin.: 0.600V   |   Max.: 1.700V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Mode Sign",
+   "form": "Ai Tweaker",
+   "offset": 378,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[+]: Offset the CPU core voltage by a positive value.\n[-]: Offset the CPU core voltage by a negative value.",
+   "options": [
+    {
+     "value": 1,
+     "label": "-"
+    },
+    {
+     "value": 0,
+     "label": "+"
+    }
+   ]
+  },
+  {
+   "name": "Additional Turbo Mode CPU Core Voltage",
+   "form": "Ai Tweaker",
+   "offset": 371,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the amount of voltage fed to the CPU cores when running in Turbo mode. Increase the voltage when configuring a high CPU core frequency. This voltage will be affected by the offset value.\n\n\nMin.: 0.250V   |   Max.: 1.920V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Voltage",
+   "form": "Ai Tweaker",
+   "offset": 373,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the CPU core voltage offset value. Save changes and reset the system for the change to take effect.\n\n\n\nMin.: 0.001V   |   Max.: 0.999V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Cache SVID Voltage",
+   "form": "Ai Tweaker",
+   "offset": 399,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Configure the Cache Voltage requested by the Ring Domain. Result may be influenced Actual VRM Vore Voltage.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Manual Mode"
+    },
+    {
+     "value": 2,
+     "label": "Offset Mode"
+    },
+    {
+     "value": 3,
+     "label": "Adaptive Mode"
+    }
+   ]
+  },
+  {
+   "name": "Cache Voltage Override",
+   "form": "Ai Tweaker",
+   "offset": 400,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the voltage for the Cache.\n\n\n\nMin.: 0.600V   |   Max.: 1.700V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Mode Sign",
+   "form": "Ai Tweaker",
+   "offset": 402,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[+]: Offset the Cache voltage by a positive value.\n[-]: Offset the Cache voltage by a negative value.",
+   "options": [
+    {
+     "value": 1,
+     "label": "-"
+    },
+    {
+     "value": 0,
+     "label": "+"
+    }
+   ]
+  },
+  {
+   "name": "Additional Turbo Mode Cache Voltage",
+   "form": "Ai Tweaker",
+   "offset": 403,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the amount of voltage fed to the CPU cores when running in Turbo mode. Increase the voltage when configuring a high CPU core frequency. This voltage will be affected by the offset value.\n\n\nMin.: 0.250V   |   Max.: 1.920V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Voltage",
+   "form": "Ai Tweaker",
+   "offset": 405,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the Cache voltage offset value. Save changes and reset the system for the change to take effect.\n\n\n\nMin.: 0.001V   |   Max.: 0.999V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "CPU Graphics Voltage",
+   "form": "Ai Tweaker",
+   "offset": 383,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Configure the mode of voltage fed to the CPU Graphics. Manual mode allows user-defined values. Offset mode modifies values by SVID.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Manual Mode"
+    },
+    {
+     "value": 2,
+     "label": "Offset Mode"
+    }
+   ]
+  },
+  {
+   "name": "CPU Graphics Voltage Override",
+   "form": "Ai Tweaker",
+   "offset": 384,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the voltage for the CPU Graphics.\n\n\n\nMin.: 0.600V   |   Max.: 1.700V   |   Standard: By CPU   |   Increment: 0.005V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Mode Sign",
+   "form": "Ai Tweaker",
+   "offset": 386,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[+]: Offset the CPU graphics voltage by a positive value.\n[-]: Offset the CPU graphics voltage by a negative value.",
+   "options": [
+    {
+     "value": 0,
+     "label": "+"
+    },
+    {
+     "value": 1,
+     "label": "-"
+    }
+   ]
+  },
+  {
+   "name": "CPU Graphics Voltage Offset",
+   "form": "Ai Tweaker",
+   "offset": 387,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the CPU graphics voltage offset value. Save changes and reset the system for the change to take effect.\n\n\n\nMin.: 0.005V   |   Max.: 0.635V   |   Standard: By CPU   |   Increment: 0.005V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "CPU L2 Voltage",
+   "form": "Ai Tweaker",
+   "offset": 389,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Configure the voltage for the CPU L2. This may help for sustaining high clock speeds.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Manual Mode"
+    },
+    {
+     "value": 2,
+     "label": "Offset Mode"
+    },
+    {
+     "value": 3,
+     "label": "Adaptive Mode"
+    }
+   ]
+  },
+  {
+   "name": "CPU L2 Voltage Override",
+   "form": "Ai Tweaker",
+   "offset": 390,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the voltage for the CPU L2.\n\n\n\nMin.: 0.700V   |   Max.: 1.800V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Mode Sign",
+   "form": "Ai Tweaker",
+   "offset": 392,
+   "size": 1,
+   "kind": "oneof",
+   "help": "[+]: Offset the CPU L2 voltage by a positive value.\n[-]: Offset the CPU L2 voltage by a negative value.",
+   "options": [
+    {
+     "value": 1,
+     "label": "-"
+    },
+    {
+     "value": 0,
+     "label": "+"
+    }
+   ]
+  },
+  {
+   "name": "CPU L2 Voltage Offset",
+   "form": "Ai Tweaker",
+   "offset": 393,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the CPU L2 voltage offset value. Save changes and reset the system for the change to take effect.\n\n\n\nMin.: 0.001V   |   Max.: 0.999V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Additional Turbo Mode CPU L2 Voltage",
+   "form": "Ai Tweaker",
+   "offset": 395,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the amount of voltage fed to the CPU cores when running in Turbo mode. Increase the voltage when configuring a high CPU core frequency. This voltage will be affected by the offset value.\n\n\nMin.: 0.250V   |   Max.: 1.920V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Offset Voltage",
+   "form": "Ai Tweaker",
+   "offset": 397,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the CPU L2 voltage offset value. Save changes and reset the system for the change to take effect.\n\n\n\nMin.: 0.001V   |   Max.: 0.999V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "CPU System Agent Voltage",
+   "form": "Ai Tweaker",
+   "offset": 407,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Configure the voltage for the CPU System Agent.Manual mode allows user-defined values. Offset mode modifies values by SVID.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Manual Mode"
+    },
+    {
+     "value": 2,
+     "label": "Offset Mode"
+    }
+   ]
+  },
+  {
+   "name": "CPU System Agent Voltage Override",
+   "form": "Ai Tweaker",
+   "offset": 408,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the voltage for the CPU System Agent.\n\n\n\nMin.: 0.700V   |   Max.: 1.800V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "CPU System Agent Voltage Offset",
+   "form": "Ai Tweaker",
+   "offset": 411,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the CPU System Agent voltage offset value. Save changes and reset the system for the change to take effect.\n\n\n\nMin.: 0.001V   |   Max.: 0.999V   |   Standard: By CPU   |   Increment: 0.001V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "CPU Input Voltage",
+   "form": "Ai Tweaker",
+   "offset": 413,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Configure the voltage for the CPU Input.\n\n\n\nMin.: 1.500V   |   Max.: 2.100V   |   Standard: 1.800V   |   Increment: 0.010V",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "High DRAM Voltage Mode",
+   "form": "Ai Tweaker",
+   "offset": 445,
+   "size": 1,
+   "kind": "oneof",
+   "help": "If Disabled, the upper range for DRAM Voltage will be 1.435V. If Enabled, the upper range will be 2.070V. If enabled on non-supported DRAM, the voltage will be lower than requested.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "DRAM VDD Voltage",
+   "form": "Ai Tweaker",
+   "offset": 446,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Power for the DRAM ICs’ VDD portion",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "DRAM VDDQ Voltage",
+   "form": "Ai Tweaker",
+   "offset": 448,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Power for the DRAM ICs’ VDD Data portion",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Tcc Activation Offset",
+   "form": "Internal CPU Power Management",
+   "offset": 1373,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Offset from factory set Tcc activation temprature at which the Thermal Control Circuit must be activated. Tcc will be activated at: Tcc Activation Temp - Tcc Activation Offset.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Maximum CPU Core Temperature",
+   "form": "Internal CPU Power Management",
+   "offset": 1340,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Set the maximum allowable temperature for CPU cores. The CPU will throttle or shutdown when it reaches this temperature to prevent damaging the cores. \n\n*Do not set this value too high as high temperatures may damage the CPU permanently.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Fast Throttle Threshold",
+   "form": "Internal CPU Power Management",
+   "offset": 341,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Fast Throttle Threshold. Specified value for max allowed temperature when cores throttle. Support Fast Throttle Threshold in the range of 63 to 115 deg Celsius.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Package Temperature Threshold",
+   "form": "Internal CPU Power Management",
+   "offset": 1371,
+   "size": 1,
+   "kind": "numeric",
+   "help": "When regulation is set to enable, frequency will adjust to stay below this package temperature threshold.",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "IVR Transmitter VDDQ ICCMAX",
+   "form": "Internal CPU Power Management",
+   "offset": 545,
+   "size": 1,
+   "kind": "numeric",
+   "help": "Min.: 0   |   Max.: 15(4A)   |   Standard: 15(4A)",
+   "min": 0,
+   "max": 255
+  },
+  {
+   "name": "Unlimited ICCMAX",
+   "form": "Internal CPU Power Management",
+   "offset": 1357,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable/Disable Unlimited ICCMAX. Support VR Current Limit (ICCMAX) value set above 511.75A",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "CPU Core/Cache Current Limit Max.",
+   "form": "Internal CPU Power Management",
+   "offset": 1341,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Allows configuration of a current limit for frequency/power throttling. Can be set to maximum value (511.75) to prevent throttling when overclocking.",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "CPU Graphics Current Limit",
+   "form": "Internal CPU Power Management",
+   "offset": 1343,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Set a high current limit to prevent frequency or power throttling during overclocking.",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "Long Duration Package Power Limit",
+   "form": "Internal CPU Power Management",
+   "offset": 1358,
+   "size": 2,
+   "kind": "numeric",
+   "help": "An Intel parameter known as [power limit 1] and specified in Watts. The default value is defined by TDP of the processor. Increasing the value will allow the Turbo ratio to be maintained for a longer duration under higher current loads.\n\n\nMin.: 1   |   Max.: 4095",
+   "min": 0,
+   "max": 4095
+  },
+  {
+   "name": "Package Power Time Window",
+   "form": "Internal CPU Power Management",
+   "offset": 1360,
+   "size": 2,
+   "kind": "oneof",
+   "help": "An Intel parameter of [power limit 1] and specified in seconds. The applied value indicates how long the Turbo ratio can be active when TDP is exceeded.\n\n\nMin.: 1   |   Max.: 448",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "1"
+    },
+    {
+     "value": 2,
+     "label": "2"
+    },
+    {
+     "value": 3,
+     "label": "3"
+    },
+    {
+     "value": 4,
+     "label": "4"
+    },
+    {
+     "value": 5,
+     "label": "5"
+    },
+    {
+     "value": 6,
+     "label": "6"
+    },
+    {
+     "value": 7,
+     "label": "7"
+    },
+    {
+     "value": 8,
+     "label": "8"
+    },
+    {
+     "value": 10,
+     "label": "10"
+    },
+    {
+     "value": 12,
+     "label": "12"
+    },
+    {
+     "value": 14,
+     "label": "14"
+    },
+    {
+     "value": 16,
+     "label": "16"
+    },
+    {
+     "value": 20,
+     "label": "20"
+    },
+    {
+     "value": 24,
+     "label": "24"
+    },
+    {
+     "value": 28,
+     "label": "28"
+    },
+    {
+     "value": 32,
+     "label": "32"
+    },
+    {
+     "value": 40,
+     "label": "40"
+    },
+    {
+     "value": 48,
+     "label": "48"
+    },
+    {
+     "value": 56,
+     "label": "56"
+    },
+    {
+     "value": 64,
+     "label": "64"
+    },
+    {
+     "value": 80,
+     "label": "80"
+    },
+    {
+     "value": 96,
+     "label": "96"
+    },
+    {
+     "value": 112,
+     "label": "112"
+    },
+    {
+     "value": 128,
+     "label": "128"
+    },
+    {
+     "value": 160,
+     "label": "160"
+    },
+    {
+     "value": 192,
+     "label": "192"
+    },
+    {
+     "value": 224,
+     "label": "224"
+    },
+    {
+     "value": 256,
+     "label": "256"
+    },
+    {
+     "value": 320,
+     "label": "320"
+    },
+    {
+     "value": 384,
+     "label": "384"
+    },
+    {
+     "value": 448,
+     "label": "448"
+    }
+   ]
+  },
+  {
+   "name": "Short Duration Package Power Limit",
+   "form": "Internal CPU Power Management",
+   "offset": 1362,
+   "size": 2,
+   "kind": "numeric",
+   "help": "An Intel parameter known as [power limit 2] and specified in Watts. It is the second Intel power limit which provides protection when package power exceeds power limit 1. The default setting is 1.25 times power limit 1. According to Intel, the platform must support this value for up to 10msec when power consumption exceeds power limit 2. ASUS motherboards are engineered to support this duration fo",
+   "min": 0,
+   "max": 4095
+  },
+  {
+   "name": "IA AC Load Line",
+   "form": "Internal CPU Power Management",
+   "offset": 1353,
+   "size": 2,
+   "kind": "numeric",
+   "help": "AC Loadline defined in mOhms. Range is 0-62.49 mOhms.",
+   "min": 0,
+   "max": 63
+  },
+  {
+   "name": "IA DC Load Line",
+   "form": "Internal CPU Power Management",
+   "offset": 1355,
+   "size": 2,
+   "kind": "numeric",
+   "help": "DC Loadline defined in mOhms. Range is 0-62.49 mOhms.",
+   "min": 0,
+   "max": 63
+  },
+  {
+   "name": "IA CEP",
+   "form": "Internal CPU Power Management",
+   "offset": 1366,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable/Disable IA CEP (Current Excursion Protection) Support. Disabling CEP for better performance may increase power consumption and temperature. Ensure sufficient CPU cooling or use a higher-spec cooling solution.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "GT CEP",
+   "form": "Internal CPU Power Management",
+   "offset": 1367,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable/Disable GT CEP (Current Excursion Protection) Support. Disabling CEP for better performance may increase power consumption and temperature. Ensure sufficient CPU cooling or use a higher-spec cooling solution.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "SA CEP",
+   "form": "Internal CPU Power Management",
+   "offset": 1368,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable/Disable SA CEP (Current Excursion Protection) Support. Disabling CEP for better performance may increase power consumption and temperature. Ensure sufficient CPU cooling or use a higher-spec cooling solution.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "IA SoC Iccmax Reactive Protector",
+   "form": "Internal CPU Power Management",
+   "offset": 1369,
+   "size": 1,
+   "kind": "oneof",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "Inverse Temperature Dependency Throttle",
+   "form": "Internal CPU Power Management",
+   "offset": 1370,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable Inverse Temperature Dependency Throttle Support.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "IA VR Voltage Limit",
+   "form": "Internal CPU Power Management",
+   "offset": 1351,
+   "size": 2,
+   "kind": "numeric",
+   "help": "Voltage Limit (VMAX). This value represents the Maximum instantaneous voltage allowed at any given time. Range is 0 - 7999mV. Uses BIOS VR mailbox command 0x8.",
+   "min": 0,
+   "max": 65535
+  },
+  {
+   "name": "CPU DLVR Bypass Mode Enable",
+   "form": "Internal CPU Power Management",
+   "offset": 1339,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Enable CPU DLVR bypass mode support.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "CPU SVID Support",
+   "form": "Internal CPU Power Management",
+   "offset": 94,
+   "size": 1,
+   "kind": "oneof",
+   "help": "Disable this item to prevent the CPU from communicating with the external voltage regulator.",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Disabled"
+    },
+    {
+     "value": 2,
+     "label": "Enabled"
+    }
+   ]
+  },
+  {
+   "name": "IA TDC Current Limit",
+   "form": "Internal CPU Power Management",
+   "offset": 343,
+   "size": 1,
+   "kind": "oneof",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Intel's Default"
+    },
+    {
+     "value": 2,
+     "label": "Motherboard's Capability"
+    },
+    {
+     "value": 3,
+     "label": "Unlimited"
+    }
+   ]
+  },
+  {
+   "name": "GT TDC Current Limit",
+   "form": "Internal CPU Power Management",
+   "offset": 344,
+   "size": 1,
+   "kind": "oneof",
+   "options": [
+    {
+     "value": 0,
+     "label": "Auto"
+    },
+    {
+     "value": 1,
+     "label": "Intel's Default"
+    },
+    {
+     "value": 2,
+     "label": "Motherboard's Capability"
+    },
+    {
+     "value": 3,
+     "label": "Unlimited"
+    }
+   ]
+  }
+ ]
+}

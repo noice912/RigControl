@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    RigControl only (not in the standalone Audio Controller): carries FFmpeg inside the exe.
+    Every file listed in FfmpegPayload.targets is embedded as the resource "ffmpeg/<name>", and its SHA-256 is
+    computed at build time into [AssemblyMetadata("ffmpeg-sha256:<name>", "<hex>")]. AudioController.Decode's
+    FfmpegExtractor writes them to %LOCALAPPDATA%\RigControl\ffmpeg\<key>\ on first use and verifies them.
+    Kept in its own assembly so the ~200 MB payload is not re-embedded on every change to the UI assembly, and so it
+    is only loaded when the files really have to be written out (AudioController.App carries the same hashes).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>AudioController.Ffmpeg</RootNamespace>
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+
+  <Import Project="FfmpegPayload.targets" />
+
+  <ItemGroup>
+    <EmbeddedResource Include="@(FfmpegPayload)" LogicalName="ffmpeg/%(Filename)%(Extension)" Visible="false" />
+  </ItemGroup>
+</Project>

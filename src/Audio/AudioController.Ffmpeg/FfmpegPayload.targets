@@ -1,0 +1,41 @@
+<Project>
+  <!--
+    RigControl only: the FFmpeg files that travel inside the exe, and their SHA-256s.
+
+    Imported by two projects:
+      * AudioController.Ffmpeg embeds the files themselves (resources "ffmpeg/<name>").
+      * AudioController.App only records the hashes. It is loaded anyway, so at start the extractor can check the
+        copy already on disk without loading the ~200 MB payload assembly (which then stays out of memory unless
+        FFmpeg really has to be written out).
+    Each importing assembly gets [AssemblyMetadata("ffmpeg-sha256:<name>", "<sha256 hex>")] per file, computed from
+    third_party/ffmpeg on every build (not incremental on purpose: a replaced binary with an old timestamp must never
+    leave a stale hash behind).
+  -->
+  <PropertyGroup>
+    <FfmpegPayloadDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', '..', 'third_party', 'ffmpeg'))</FfmpegPayloadDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ffmpeg.exe decodes every import; ffprobe.exe reports the real length of an over-long file (FfmpegDecoder). -->
+    <FfmpegPayload Include="$(FfmpegPayloadDir)ffmpeg.exe" />
+    <FfmpegPayload Include="$(FfmpegPayloadDir)ffprobe.exe" />
+    <!-- Their notices travel with them (GPL-3.0 build). -->
+    <FfmpegPayload Include="$(FfmpegPayloadDir)README.md" />
+    <FfmpegPayload Include="$(FfmpegPayloadDir)THIRD_PARTY_NOTICES.md" />
+    <FfmpegPayload Include="$(FfmpegPayloadDir)COPYING.GPLv3.txt" />
+  </ItemGroup>
+
+  <Target Name="HashFfmpegPayload" BeforeTargets="GetAssemblyAttributes">
+    <Error Condition="!Exists('%(FfmpegPayload.FullPath)')"
+           Text="FFmpeg payload file missing: %(FfmpegPayload.FullPath). Copy ffmpeg.exe and ffprobe.exe into third_party\ffmpeg (see its README.md)." />
+    <GetFileHash Files="@(FfmpegPayload)" Algorithm="SHA256" HashEncoding="hex">
+      <Output TaskParameter="Items" ItemName="_FfmpegPayloadHashed" />
+    </GetFileHash>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>ffmpeg-sha256:%(_FfmpegPayloadHashed.Filename)%(_FfmpegPayloadHashed.Extension)</_Parameter1>
+        <_Parameter2>%(_FfmpegPayloadHashed.FileHash)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>

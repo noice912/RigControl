@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>AudioController.Core</RootNamespace>
+    <!-- Pinned like the original Directory.Build.props (RigControl's props say 'latest'). -->
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+</Project>

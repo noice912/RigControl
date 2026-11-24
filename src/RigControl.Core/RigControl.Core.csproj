@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>RigControl.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.Core.Tests" />
+  </ItemGroup>
+
+  <!-- The built-in graphics card list (Hardware\gpu-table.txt), carried inside the dll. -->
+  <Import Project="Hardware\Hardware.targets" />
+
+</Project>

@@ -1,0 +1,160 @@
+<UserControl x:Class="AudioController.App.Controls.SetupCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False">
+    <!-- DataContext: MainViewModel. The two picks + "EQ everything I hear" + "Also play on"; everything else is automatic. -->
+    <Border x:Name="Card" CornerRadius="8" Padding="12,10,12,12" BorderThickness="1" AutomationProperties.Name="Setup">
+        <Border.Style>
+            <Style TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource PanelAltBg}" />
+                <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding SetupNeeded}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                        <Setter Property="Background" Value="#FF1C2638" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+        <StackPanel>
+            <TextBlock Text="Setup" FontSize="14" FontWeight="SemiBold" />
+
+            <TextBlock Text="{Binding SetupNeededText}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" TextWrapping="Wrap"
+                       Margin="0,4,0,0" Visibility="{Binding SetupNeeded, Converter={StaticResource BoolToVis}}" />
+
+            <TextBlock Text="&#x1F3A4;  Microphone" Style="{StaticResource FieldLabel}" Foreground="{StaticResource TextBrush}" />
+            <ComboBox ItemsSource="{Binding MicChoices}" DisplayMemberPath="Name" SelectedValuePath="Id"
+                      SelectedValue="{Binding SelectedMicId}" AutomationProperties.Name="Microphone"
+                      ToolTip="Your real microphone. Discord hears it through the virtual mic, unchanged." />
+
+            <TextBlock Text="&#x1F3A7;  Headset" Style="{StaticResource FieldLabel}" Foreground="{StaticResource TextBrush}" />
+            <ComboBox ItemsSource="{Binding HeadsetChoices}" DisplayMemberPath="Name" SelectedValuePath="Id"
+                      SelectedValue="{Binding SelectedHeadsetId}" AutomationProperties.Name="Headset"
+                      ToolTip="Where you listen: your sounds, your PC audio and Windows' default output all go here." />
+
+            <CheckBox Margin="0,12,0,0" IsChecked="{Binding EqAllAudio}" IsEnabled="{Binding CanEqAllAudio}"
+                      AutomationProperties.Name="EQ everything I hear"
+                      ToolTip="The EQ sliders (Settings) then apply to all PC audio on your headset: games, browser, music — not only the soundboard. Your microphone is never equalized.">
+                <TextBlock Text="EQ everything I hear" TextWrapping="Wrap" />
+            </CheckBox>
+            <TextBlock Text="{Binding EqAllStatusText}" Foreground="{StaticResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="24,3,0,0"
+                       AutomationProperties.Name="EQ everything status" />
+            <Button Content="Open Device Selector" Command="{Binding OpenDeviceSelectorCommand}" HorizontalAlignment="Left"
+                    Style="{StaticResource SmallButton}" Padding="12,4" Margin="24,6,0,0" AutomationProperties.Name="Open Device Selector"
+                    ToolTip="Opens Equalizer APO's Device Selector (asks for administrator rights). Tick only your headset under Playback devices."
+                    Visibility="{Binding ShowApoDeviceSelectorHint, Converter={StaticResource BoolToVis}}" />
+            <TextBlock Text="{Binding ApoInfoText}" Foreground="{StaticResource TextFaint}" FontSize="11" TextWrapping="Wrap" Margin="24,5,0,0"
+                       AutomationProperties.Name="Equalizer APO note"
+                       Visibility="{Binding ApoInfoText, Converter={StaticResource NullToVis}}" />
+
+            <!-- Bluetooth headset mic = call mode -->
+            <Border Background="{StaticResource WarningBannerBg}" BorderBrush="{StaticResource Warning}" BorderThickness="1" CornerRadius="5"
+                    Padding="8,6" Margin="0,10,0,0" AutomationProperties.Name="Bluetooth call mode warning"
+                    Visibility="{Binding ShowCallModeWarning, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" Style="{StaticResource IconText}" Foreground="{StaticResource Warning}"
+                               VerticalAlignment="Top" Margin="0,2,7,0" />
+                    <TextBlock Text="{Binding CallModeWarningText}" TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource Warning}" />
+                </DockPanel>
+            </Border>
+
+            <TextBlock Text="{Binding SetupWarningText}" Foreground="{StaticResource Warning}" TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0"
+                       Visibility="{Binding SetupWarningText, Converter={StaticResource NullToVis}}" />
+
+            <!-- one status line per direction -->
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,8,0,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding SetupMicStatus}" TextWrapping="Wrap" FontWeight="SemiBold" AutomationProperties.Name="Discord mic status" />
+                    <TextBlock Text="{Binding SetupHearStatus}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,3,0,0" AutomationProperties.Name="What you hear" />
+                    <TextBlock Text="{Binding VirtualMicHint}"
+                               Foreground="{StaticResource TextFaint}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Also play on: a copy of the headset's sound (after Equalizer APO) on other outputs, e.g. optical / Toslink -->
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,8,0,0"
+                    AutomationProperties.Name="Also play on">
+                <StackPanel>
+                    <CheckBox IsChecked="{Binding MirrorEnabled}" AutomationProperties.Name="Also play on other outputs"
+                              ToolTip="Copies everything you hear on your headset — with your EQ and effects — to other outputs, e.g. an optical (Toslink) output. Only while this app is open. Your microphone is never copied.">
+                        <TextBlock Text="&#x1F50A;  Also play on other outputs" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <TextBlock Text="{Binding MirrorStatusText}" FontSize="11" TextWrapping="Wrap" Margin="24,3,0,0"
+                               AutomationProperties.Name="Also play on status">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding MirrorStatusIsError}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Warning}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <StackPanel Visibility="{Binding MirrorEnabled, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl ItemsSource="{Binding MirrorDevices}" Focusable="False" Margin="24,2,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,6,0,0">
+                                        <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding IsConnected}"
+                                                  AutomationProperties.Name="{Binding Name}"
+                                                  ToolTip="Also play what you hear on this output">
+                                            <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                                        </CheckBox>
+                                        <Grid Margin="24,4,0,0" Visibility="{Binding IsChecked, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="52" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Volume" FontSize="11" Foreground="{StaticResource TextDim}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <Slider Grid.Column="1" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10" TickFrequency="1"
+                                                    IsSnapToTickEnabled="True" VerticalAlignment="Center" Value="{Binding Volume, Mode=TwoWay}"
+                                                    IsEnabled="{Binding IsConnected}" ToolTip="{Binding VolumeHint}"
+                                                    AutomationProperties.Name="Volume of the copy" />
+                                            <TextBlock Grid.Column="2" Text="{Binding VolumeText}" FontSize="11" Foreground="{StaticResource TextDim}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Row="1" Text="Delay" FontSize="11" Foreground="{StaticResource TextDim}" VerticalAlignment="Center"
+                                                       Margin="0,4,8,0" ToolTip="{Binding DelayHint}" />
+                                            <Slider Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="500" SmallChange="5" LargeChange="50" TickFrequency="5"
+                                                    IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,4,0,0" Value="{Binding DelayMs, Mode=TwoWay}"
+                                                    IsEnabled="{Binding IsConnected}" ToolTip="{Binding DelayHint}"
+                                                    AutomationProperties.Name="Delay of the copy" />
+                                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding DelayText}" FontSize="11" Foreground="{StaticResource TextDim}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,4,0,0" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding StatusText}" FontSize="11" TextWrapping="Wrap" Margin="24,2,0,0"
+                                                   Visibility="{Binding StatusText, Converter={StaticResource NullToVis}}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource Success}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding StatusIsError}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource Warning}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="No other outputs are connected." Foreground="{StaticResource TextFaint}" FontSize="11" Margin="24,4,0,0"
+                                   Visibility="{Binding MirrorNoDevices, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding MirrorNoteText}" Foreground="{StaticResource TextFaint}" FontSize="11" TextWrapping="Wrap" Margin="24,6,0,0"
+                                   Visibility="{Binding MirrorNoteText, Converter={StaticResource NullToVis}}" />
+                        <TextBlock Foreground="{StaticResource TextFaint}" FontSize="11" TextWrapping="Wrap" Margin="24,6,0,0"
+                                   Text="The copy already has your EQ and effects. Bluetooth plays late: raise Delay until the outputs sound together. Only while this app is open." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Border>
+</UserControl>

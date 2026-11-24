@@ -1,0 +1,26 @@
+# Build output
+artifacts/
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Web UI: dependencies and the built bundle (the .NET build rebuilds it)
+node_modules/
+src/ui/dist/
+
+# FFmpeg binaries are over GitHub's 100 MB file limit: see third_party/ffmpeg/README.md
+third_party/ffmpeg/*.exe
+
+# Things that must never be published: your own Discord application ids (private/discord-ids.json, see the README)
+private/
+
+# Local tooling
+.claude/
+*.log
+
+# Apps RigControl carries inside its exe (see third_party/BUNDLED.md); filled by third_party/prepare-bundled.ps1
+third_party/openrgb/files/
+third_party/pawnio/*.exe
+third_party/equalizerapo/*.exe

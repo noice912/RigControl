@@ -1,0 +1,107 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Windows 10 SDK projection: the Discord status module reads Windows media controls (WinRT). -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>RigControl</AssemblyName>
+    <RootNamespace>RigControl.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF takes its DPI awareness from app.manifest; the WinForms analyzer (pulled in for the tray icon) would rather it did not. -->
+    <NoWarn>$(NoWarn);WFO0003;WFAC010</NoWarn>
+    <ApplicationIcon Condition="Exists('Assets\rigcontrol.ico')">Assets\rigcontrol.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- One self-contained exe: dotnet publish src\RigControl.App -c Release -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <!-- WPF, WinForms and reflection-heavy hardware libraries are not trim-safe. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms is referenced only for the tray icon; keep its namespaces out of the implicit usings so they do not clash with WPF. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RigControl.Core\RigControl.Core.csproj" />
+    <ProjectReference Include="..\RigControl.Sensors\RigControl.Sensors.csproj" />
+    <ProjectReference Include="..\RigControl.Nvidia\RigControl.Nvidia.csproj" />
+    <ProjectReference Include="..\RigControl.Cooling\RigControl.Cooling.csproj" />
+    <ProjectReference Include="..\RigControl.Lighting\RigControl.Lighting.csproj" />
+    <ProjectReference Include="..\RigControl.Capture\RigControl.Capture.csproj" />
+    <ProjectReference Include="..\RigControl.Drivers\RigControl.Drivers.csproj" />
+    <ProjectReference Include="..\RigControl.Bios\RigControl.Bios.csproj" />
+    <ProjectReference Include="..\RigControl.Cpu\RigControl.Cpu.csproj" />
+    <ProjectReference Include="..\RigControl.Presence\RigControl.Presence.csproj" />
+    <!-- Finds other programs and Windows settings that get in RigControl's way (it only looks and explains). -->
+    <ProjectReference Include="..\RigControl.Health\RigControl.Health.csproj" />
+    <!-- OpenRGB, the PawnIO setup and the Equalizer APO setup, carried inside the exe (third_party/BUNDLED.md). -->
+    <ProjectReference Include="..\RigControl.Bundled\RigControl.Bundled.csproj" />
+    <!-- The merged Audio Controller (soundboard, virtual mic, EQ, "also play on"), hosted as the Audio section. -->
+    <ProjectReference Include="..\Audio\AudioController.App\AudioController.App.csproj" />
+  </ItemGroup>
+
+  <!--
+    The HomeLab add-on (a hub for room lights and a 3D printer) is not part of every copy of the source. It is built
+    in only when its project is on disk: then HOMELAB is defined and the files under Private\ join the build.
+    Without it the app builds the same, just without that add-on. -p:IncludeHomeLab=false leaves it out on purpose.
+  -->
+  <PropertyGroup>
+    <IncludeHomeLab Condition="'$(IncludeHomeLab)' == '' and Exists('..\RigControl.HomeLab\RigControl.HomeLab.csproj')">true</IncludeHomeLab>
+    <DefineConstants Condition="'$(IncludeHomeLab)' == 'true'">$(DefineConstants);HOMELAB</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(IncludeHomeLab)' == 'true'">
+    <ProjectReference Include="..\RigControl.HomeLab\RigControl.HomeLab.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(IncludeHomeLab)' != 'true'">
+    <Compile Remove="Private\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+  </ItemGroup>
+
+  <!--
+    The web UI (src/ui) is built with npm and embedded in the exe, served to WebView2 from memory.
+    The build runs automatically when the UI sources are newer than the last build; set SkipUiBuild=true to skip it.
+    Items are added inside the target (not by a static glob) so files produced by this very build are included.
+  -->
+  <PropertyGroup>
+    <UiDir>$(MSBuildProjectDirectory)\..\ui</UiDir>
+    <UiDist>$(UiDir)\dist</UiDist>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <UiSource Include="$(UiDir)\src\**\*;$(UiDir)\index.html;$(UiDir)\package.json;$(UiDir)\vite.config.ts;$(UiDir)\tsconfig.json" />
+  </ItemGroup>
+
+  <Target Name="BuildWebUi" BeforeTargets="BeforeBuild" Condition="'$(SkipUiBuild)' != 'true'"
+          Inputs="@(UiSource)" Outputs="$(UiDist)\index.html">
+    <Error Condition="!Exists('$(UiDir)\node_modules')" Text="The web UI's packages are missing. Run 'npm install' in $(UiDir) once, or build with -p:SkipUiBuild=true." />
+    <Exec Command="npm run build" WorkingDirectory="$(UiDir)" />
+  </Target>
+
+  <Target Name="EmbedWebUi" AfterTargets="BuildWebUi" BeforeTargets="PrepareForBuild;BeforeBuild">
+    <Error Condition="!Exists('$(UiDist)\index.html') and '$(SkipUiBuild)' != 'true'" Text="The web UI was not built: $(UiDist)\index.html is missing." />
+    <ItemGroup>
+      <_UiFile Include="$(UiDist)\**\*" />
+      <EmbeddedResource Include="@(_UiFile)" LogicalName="ui/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+</Project>
