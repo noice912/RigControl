@@ -137,7 +137,13 @@ public sealed class ConflictScanner
             evidence.Add("Read from Windows settings");
 
         if (d.Facts.Count > 0 && d.Facts.All(f => s.Facts.TryGetValue(f, out var on) && on))
-            evidence.Add("Checked by RigControl");
+        {
+            // What it was seen on, when the check could say (which network, for one).
+            var notes = d.Facts.Select(f => s.FactNotes is { } all && all.TryGetValue(f, out var note) ? note.Trim().TrimEnd('.') : "")
+                .Where(n => n.Length > 0).ToList();
+            if (notes.Count > 0) evidence.AddRange(notes);
+            else evidence.Add("Checked by RigControl");
+        }
 
         return evidence.Count == 0 ? null : string.Join(". ", evidence) + ".";
     }

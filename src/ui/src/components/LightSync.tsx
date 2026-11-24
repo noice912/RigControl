@@ -1,16 +1,21 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { call } from "../bridge";
 import { useAction, useLive } from "../hooks";
 import { Slider, Switch } from "./controls";
 import { LedLayoutPanel } from "./LedLayout";
 import { EffectLibrary } from "./EffectLibrary";
-import { NanoleafPair } from "./NanoleafPair";
+import { NetworkLightsPanel } from "./NetworkLights";
 import type { LightSync } from "../types";
 
 /** Lights follow the screen or a capture card (RichPresence's light sync, as a Lighting mode). */
-export function LightSyncPanel() {
+export function LightSyncPanel(props: {
+  /** False while OpenRGB isn't connected: lights on the network still play, the PC's own lights wait. */
+  openRgb?: boolean;
+}) {
   const { data: s, setData } = useLive("lighting.sync", "lighting.getSync");
   const { busy, run } = useAction();
+  // Changes when a network light is paired, forgotten or read, so the layout lists it straight away.
+  const [netLights, setNetLights] = useState("");
   useEffect(() => {
     call<LightSync>("lighting.listSyncSources", undefined, 15000)
       .then(setData)
@@ -65,6 +70,13 @@ export function LightSyncPanel() {
             {s.enabled && s.captureSize ? ` · ${s.captureSize}` : ""}
           </span>
         </div>
+        {props.openRgb === false && (
+          <div className="sub">
+            OpenRGB isn't running, so the PC's own lights can't play right now.
+            Lights paired under Lights on your network still do; with none
+            paired, the effects can't be switched on.
+          </div>
+        )}
         <EffectLibrary sync={s} busy={busy !== null} save={save} />
         {s.effect === "screen" && (
           <>
@@ -265,8 +277,8 @@ export function LightSyncPanel() {
           </div>
         </div>
       </section>
-      <LedLayoutPanel syncOn={s.enabled} />
-      <NanoleafPair />
+      <LedLayoutPanel syncOn={s.enabled} reloadKey={netLights} />
+      <NetworkLightsPanel onChanged={setNetLights} />
     </>
   );
 }

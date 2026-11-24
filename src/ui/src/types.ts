@@ -366,7 +366,8 @@ export type LightDevice = {
   type: string;
   vendor: string;
   ledCount: number;
-  zones: { id: number; name: string; ledCount: number }[];
+  /** `resizable`: the user may set how many lights hang on this header (lighting.setZoneSize), within ledsMin..ledsMax. */
+  zones: { id: number; name: string; ledCount: number; ledsMin: number; ledsMax: number; resizable: boolean }[];
   modes: LightMode[];
   activeModeId: number;
   color: string | null;
@@ -514,14 +515,64 @@ export type LightSync = {
   effectParams: Record<string, EffectParams> | null;
 };
 
-export type NanoleafInfo = {
-  paired: boolean;
-  ip: string | null;
-  name: string | null;
-  panels: number;
+/** One brand of network light this build can drive. `tested` false = built but not tried on real hardware. */
+export type NetworkBrand = {
+  brand: string;
+  name: string;
+  tested: boolean;
+  notes: string;
+  steps: string[];
+  returnsSecret: boolean;
+  manualAddress: boolean;
+  options: { key: string; label: string; choices: { value: string; label: string }[]; default: string | null }[];
+  nothingFound: string | null;
+  maxFramesPerSecond: number;
+  /** False = this brand can't be searched for; the user types the light's address. */
+  canSearch: boolean;
+  /** False = a paired light of this brand is left alone until it is placed on the layout. */
+  followsUnplaced: boolean;
+};
+
+/** A paired network light. `id` is also its key on the layout. */
+export type NetworkLight = {
+  id: string;
+  brand: string;
+  brandName: string;
+  deviceId: string;
+  name: string;
+  model: string;
+  address: string;
+  tested: boolean;
+  kind: "single" | "strip" | "points";
+  points: number;
+  pointName: string;
+  placed: boolean;
   streaming: boolean;
   problem: string | null;
-  found: string[] | null;
+  note: string | null;
+};
+
+export type FoundLight = {
+  brand: string;
+  brandName: string;
+  deviceId: string;
+  name: string;
+  model: string;
+  address: string;
+  paired: boolean;
+};
+
+export type NetworkLights = {
+  brands: NetworkBrand[];
+  paired: NetworkLight[];
+  found: FoundLight[];
+  scanning: boolean;
+  scanProblems: string[];
+  notSupported: { brand: string; name: string; why: string }[];
+  /** True when the last search was stopped before every brand had finished. */
+  scanStopped: boolean;
+  /** The brands whose search ran to its end in the last search. */
+  scanFinished: string[];
 };
 
 export type EffectInfo = { id: string; name: string; description: string; group: string; audio: boolean; uses: string[] };
@@ -541,7 +592,7 @@ export type LayoutZone = {
   matrix: number[] | null;
   connected: boolean;
   placed: LayoutItem | null;
-  /** Nanoleaf Lines: each bar's two ends, [x1, y1, x2, y2] in 0-1 across the box. */
+  /** Lights drawn as bars (Nanoleaf Lines): each bar's two ends, [x1, y1, x2, y2] in 0-1 across the box. */
   segments?: number[][] | null;
 };
 

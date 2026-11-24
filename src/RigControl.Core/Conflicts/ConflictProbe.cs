@@ -59,6 +59,12 @@ public sealed record ConflictSnapshot
     /// <summary>Facts by <see cref="ConflictFacts"/> name. A fact that could not be worked out is left out.</summary>
     public IReadOnlyDictionary<string, bool> Facts { get; init; } = new Dictionary<string, bool>();
 
+    /// <summary>
+    /// What a fact was seen on, by <see cref="ConflictFacts"/> name: one plain sentence without its full stop
+    /// (for example which network is set to Public). Shown as the finding's evidence. Optional.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> FactNotes { get; init; } = new Dictionary<string, string>();
+
     /// <summary>Numbers by <see cref="ConflictCounts"/> name.</summary>
     public IReadOnlyDictionary<string, int> Counts { get; init; } = new Dictionary<string, int>();
 

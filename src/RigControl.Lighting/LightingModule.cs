@@ -3,6 +3,7 @@ using System.Text.Json;
 using RigControl.Core.Logging;
 using RigControl.Core.Modules;
 using RigControl.Core.Rpc;
+using RigControl.Lighting.Network;
 
 namespace RigControl.Lighting;
 
@@ -10,7 +11,8 @@ namespace RigControl.Lighting;
 
 public sealed record OpenRgbDto(bool Installed, string? Path, bool Running, bool Connected, int Port, string? Version, string? Message);
 
-public sealed record LightZoneDto(int Id, string Name, int LedCount);
+/// <summary>A zone. <c>Resizable</c>: its number of lights can be set by the user (a header with a strip or fans plugged in), within LedsMin to LedsMax.</summary>
+public sealed record LightZoneDto(int Id, string Name, int LedCount, int LedsMin = 0, int LedsMax = 0, bool Resizable = false);
 
 public sealed record LightModeDto(int Id, string Name, int ColorCount, bool SupportsSpeed, bool SupportsBrightness,
     int? SpeedMin, int? SpeedMax, int? BrightnessMin, int? BrightnessMax);
@@ -69,6 +71,8 @@ public sealed class LightingSettings
     public List<string> LeftOut { get; set; } = new();
     /// <summary>A Nanoleaf paired directly, so each panel can get its own colour (null = none).</summary>
     public NanoleafSettings? Nanoleaf { get; set; }
+    /// <summary>Other lights paired over the network (WLED, Hue and so on). Their keys are protected for this Windows user.</summary>
+    public List<StoredNetworkLight> NetworkLights { get; set; } = new();
 }
 
 public sealed record NanoleafDto(bool Paired, string? Ip, string? Name, int Panels, bool Streaming, string? Problem, IReadOnlyList<string>? Found = null);
@@ -113,7 +117,8 @@ public sealed class SyncSettings
 /// Rules enforced here:
 ///  - OpenRGB is started automatically when installed (unless something already serves its port); RigControl never
 ///    installs it and never stops an OpenRGB it did not start.
-///  - Nothing is ever saved into a device's own flash memory, and zones are never resized.
+///  - Nothing is ever saved into a device's own flash memory. A zone's number of lights is only changed when the
+///    user sets it (setZoneSize, for a header with a strip or daisy-chained fans); OpenRGB remembers that itself.
 ///  - Every mode change is built from the mode exactly as the device reported it, changing only colour, speed
 ///    and brightness, within the device's own limits.
 /// </summary>
@@ -150,6 +155,8 @@ public sealed class LightingModule : IAppModule
     private int _disposed;
     private Thread? _syncThread;
     private int _syncGen;
+    /// <summary>The newest sync run that was started. A run that ends while a newer one has taken over leaves the network lights to it.</summary>
+    private int _runGen;
     private string _syncStatus = "Off";
     private int? _syncColor;
     private string? _captureSize;
@@ -159,15 +166,27 @@ public sealed class LightingModule : IAppModule
 
     public LightingModule() : this(new OpenRgbServer(), name => Process.GetProcessesByName(name).Length > 0, background: true, new GigabyteControlCenter()) { }
 
-    public LightingModule(IOpenRgb rgb, Func<string, bool> isProcessRunning, bool background, IGigabyteControlCenter? gcc = null)
+    /// <param name="network">How network lights are reached; tests pass a fake so nothing leaves the PC.</param>
+    /// <param name="providers">The light brands; null = every provider built into the program.</param>
+    public LightingModule(IOpenRgb rgb, Func<string, bool> isProcessRunning, bool background, IGigabyteControlCenter? gcc = null,
+        ILightNetwork? network = null, IEnumerable<INetworkLightProvider>? providers = null, ISecretProtector? protector = null)
     {
         _rgb = rgb;
         _isRunning = isProcessRunning;
         _background = background;
         _gcc = gcc ?? new NoGigabyteControlCenter();
+        _network = network ?? new RealLightNetwork();
+        _providers = providers?.ToList();
+        _netStore = new NetworkLightStore(() => _settings, SaveSettings, _gate, protector);
+        _net = new NetworkLights(_network, _netStore, NullLog.Instance, _providers);
     }
 
     private readonly IGigabyteControlCenter _gcc;
+    private readonly ILightNetwork _network;
+    private readonly IReadOnlyList<INetworkLightProvider>? _providers;
+    private readonly NetworkLightStore _netStore;
+    /// <summary>The lights paired over the network (Nanoleaf, WLED, Hue...). See Network/NetworkLights.cs.</summary>
+    private NetworkLights _net;
 
     public string Name => "lighting";
     public string DisplayName => "Lighting (OpenRGB)";
@@ -178,6 +197,7 @@ public sealed class LightingModule : IAppModule
         _ctx = context;
         _log = context.Log;
         _settings = context.Settings.Get<LightingSettings>(LightingSettings.Section);
+        _net = new NetworkLights(_network, _netStore, _log, _providers);
         _status = new ModuleStatus(ModuleState.Starting);
         if (_background)
         {
@@ -332,7 +352,8 @@ public sealed class LightingModule : IAppModule
         return new LightDeviceDto(c.Index, c.Name,
             c.Type >= 0 && c.Type < DeviceTypes.Length ? DeviceTypes[c.Type] : "Device",
             c.Vendor, c.Colors.Count,
-            c.Zones.Select((z, i) => new LightZoneDto(i, z.Name, (int)z.LedsCount)).ToList(),
+            c.Zones.Select((z, i) => new LightZoneDto(i, z.Name, (int)z.LedsCount, (int)Math.Min(z.LedsMin, MaxZoneLeds),
+                (int)Math.Min(z.LedsMax, MaxZoneLeds), z.CanResize(c.Protocol))).ToList(),
             modes, c.ActiveMode, color is { } v ? OpenRgbProtocol.ColorToHex(v) : null);
     }
 
@@ -344,7 +365,12 @@ public sealed class LightingModule : IAppModule
         if (method == "getNanoleaf") return Task.FromResult<object?>(NanoleafStatus());
         if (method == "findNanoleaf") return FindNanoleafAsync(ct);
         if (method == "pairNanoleaf") return PairNanoleafAsync(RpcArgs.Require<NanoleafArgs>(args), ct);
-        if (method == "forgetNanoleaf") return Task.FromResult<object?>(ForgetNanoleaf());
+        if (method == "forgetNanoleaf") return ForgetNanoleafAsync();
+        if (method == "getNetworkLights") return Task.FromResult<object?>(NetworkStatus());
+        if (method == "scanNetworkLights") return ScanNetworkLightsAsync(RpcArgs.Optional<NetScanArgs>(args), ct);
+        if (method == "cancelNetworkScan") { _net.CancelScan(); return Task.FromResult<object?>(NetworkStatus()); }
+        if (method == "pairNetworkLight") return PairNetworkLightAsync(RpcArgs.Require<NetPairArgs>(args), ct);
+        if (method == "forgetNetworkLight") return ForgetNetworkLightAsync(RpcArgs.Require<NetForgetArgs>(args));
         if (method == "getSyncPreview") return Task.FromResult<object?>(Preview());
         // Changing the lights by hand ends the sync (without putting the old lights back: the hand change wins).
         if (method is "setColor" or "setZoneColor" or "setMode" or "off" or "applyScene" && _settings.Sync.Enabled) StopSync(restore: false);
@@ -358,6 +384,7 @@ public sealed class LightingModule : IAppModule
                 "installOpenRgb" => InstallOpenRgb(),
                 "setColor" => SetColor(RpcArgs.Require<ColorArgs>(args)),
                 "setZoneColor" => SetZoneColor(RpcArgs.Require<ZoneColorArgs>(args)),
+                "setZoneSize" => SetZoneSize(RpcArgs.Require<ZoneSizeArgs>(args)),
                 "setMode" => SetMode(RpcArgs.Require<ModeArgs>(args)),
                 "off" => SetColor(new ColorArgs { DeviceIds = RpcArgs.Optional<ColorArgs>(args).DeviceIds, Color = "#000000" }),
                 "listScenes" => ListScenes(),
@@ -531,6 +558,87 @@ public sealed class LightingModule : IAppModule
         return Refresh();
     });
 
+    /// <summary>No header takes more lights than this; a bigger number from a device is a mistake.</summary>
+    private const uint MaxZoneLeds = 2048;
+
+    /// <summary>
+    /// Sets how many lights hang on a header (a strip, or fans chained one after another). Only ever on the user's
+    /// own request, and only for zones the device says can be sized, within the device's own limits. OpenRGB keeps
+    /// the number itself, so it is still set after a restart.
+    /// </summary>
+    private LightingStatusDto SetZoneSize(ZoneSizeArgs a) => Guard(() =>
+    {
+        var c = Device(a.DeviceId);
+        if (a.Zone < 0 || a.Zone >= c.Zones.Count) throw RpcException.InvalidArgs("Unknown zone.");
+        var z = c.Zones[a.Zone];
+        if (!z.CanResize(c.Protocol)) throw RpcException.Unavailable($"{z.Name} on {c.Name} has a fixed number of lights.");
+        var max = Math.Min(z.LedsMax, MaxZoneLeds);
+        if (a.Leds < 0 || a.Leds < z.LedsMin || a.Leds > max) throw RpcException.InvalidArgs($"{z.Name} takes {z.LedsMin} to {max} lights.");
+        // Lian Li's fan hubs work out the number of fans as lights / 16; anything else confuses the hub.
+        if ((c.Name + " " + c.Vendor).Contains("Lian Li", StringComparison.OrdinalIgnoreCase) && c.Name.Contains("Hub", StringComparison.OrdinalIgnoreCase) && a.Leds % 16 != 0)
+            throw RpcException.InvalidArgs("This hub counts 16 lights for each fan: pick a multiple of 16.");
+        _log.Info($"{c.Name}, {z.Name}: set to {a.Leds} light(s) at the user's request (was {z.LedsCount}). OpenRGB remembers this itself.");
+        var before = new List<uint>(c.Colors);
+        var start = c.Zones.Take(a.Zone).Sum(x => (int)x.LedsCount);
+        var was = (int)z.LedsCount;
+        var perLed = c.ActiveMode >= 0 && c.ActiveMode < c.Modes.Count && c.Modes[c.ActiveMode].ColorMode == 1;
+        _rgb.ResizeZone(c.Index, a.Zone, a.Leds);
+        // The device's lights are numbered afresh after this: read it again before anything else is sent.
+        _controllers = _rgb.ReadControllers();
+        // OpenRGB empties the device's colours on a resize. While the lights follow the sync it sends new ones at
+        // once; otherwise the colours it showed are given back (the header's own stretched over its new length).
+        if (!_settings.Sync.Enabled && perLed && before.Count > 0
+            && _controllers.FirstOrDefault(x => x.Index == c.Index) is { Colors.Count: > 0 } now)
+            _rgb.UpdateLeds(now.Index, FitLedColors(before, now.Colors.Count, start, was, a.Leds));
+        return Refresh();
+    });
+
+    /// <summary>
+    /// Saved colours for a device whose number of lights has changed since (a header was resized). The header that
+    /// changed gets its colours stretched or squeezed over its new length; the other lights keep theirs.
+    /// </summary>
+    /// <param name="start">The first light of the header that changed.</param>
+    /// <param name="was">How many lights that header had when the colours were saved.</param>
+    /// <param name="now">How many it has now.</param>
+    internal static List<uint> FitLedColors(IReadOnlyList<uint> saved, int want, int start, int was, int now)
+    {
+        if (want <= 0) return new List<uint>();
+        if (saved.Count == want) return saved.ToList();
+        if (saved.Count == 0) return Enumerable.Repeat(0u, want).ToList();
+        if (start >= 0 && was >= 0 && now >= 0 && start + was <= saved.Count && saved.Count - was + now == want)
+        {
+            var fitted = new List<uint>(want);
+            fitted.AddRange(saved.Take(start));
+            var zone = saved.Skip(start).Take(was).ToList();
+            // A header that had no lights takes the colour of the light before it (or after it).
+            if (zone.Count == 0) zone.Add(saved[Math.Clamp(start - 1, 0, saved.Count - 1)]);
+            for (var i = 0; i < now; i++) fitted.Add(zone[(int)((long)i * zone.Count / now)]);
+            fitted.AddRange(saved.Skip(start + was));
+            return fitted;
+        }
+        // Which header changed isn't known: the whole row is stretched over the new length.
+        var all = new List<uint>(want);
+        for (var i = 0; i < want; i++) all.Add(saved[(int)((long)i * saved.Count / want)]);
+        return all;
+    }
+
+    /// <summary>
+    /// Saved colours fitted to a device as it is now. A scene doesn't say which header was resized since; when the
+    /// device has exactly one header whose size can be set, it was that one.
+    /// </summary>
+    internal static List<uint> FitLedColors(IReadOnlyList<uint> saved, RgbController c)
+    {
+        var want = c.Colors.Count;
+        var sizable = c.Zones.Select((z, i) => (Zone: z, Index: i)).Where(x => x.Zone.CanResize(c.Protocol)).ToList();
+        if (sizable.Count == 1 && c.Zones.Sum(z => (long)z.LedsCount) == want)
+        {
+            var now = (int)sizable[0].Zone.LedsCount;
+            var start = c.Zones.Take(sizable[0].Index).Sum(z => (int)z.LedsCount);
+            return FitLedColors(saved, want, start, saved.Count - (want - now), now);
+        }
+        return FitLedColors(saved, want, -1, -1, -1);
+    }
+
     private static bool InRange(uint value, uint a, uint b) => value >= Math.Min(a, b) && value <= Math.Max(a, b);
 
     private LightingStatusDto SetMode(ModeArgs a) => Guard(() =>
@@ -673,139 +781,102 @@ public sealed class LightingModule : IAppModule
 
     public static bool IsNanoleafName(string name) => name.Contains("nanoleaf", StringComparison.OrdinalIgnoreCase);
 
-    // ---------------------------------------------------------------- Nanoleaf, panel by panel
+    // ---------------------------------------------------------------- network lights (Network/NetworkLights.cs)
 
-    private volatile List<NanoleafPanel>? _nlPanels;
-    private volatile string? _nlProblem;
-    private int _nlLoading;
-    private volatile bool _nlStreaming;
+    private NetworkLightsDto NetworkStatus()
+    {
+        List<LayoutItem> placed;
+        lock (_gate) placed = _settings.Layout.Items.ToList();
+        return _net.Status(placed);
+    }
 
-    /// <summary>True while the paired Nanoleaf takes a colour per panel from RigControl (the hub must leave it alone).</summary>
-    public bool NanoleafStreaming => _nlStreaming;
+    /// <summary>Looks for lights on the network. Only ever run by this call (the user pressed search), never by itself.</summary>
+    private async Task<object?> ScanNetworkLightsAsync(NetScanArgs a, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, _stop.Token);
+        try { await _net.ScanAsync(string.IsNullOrWhiteSpace(a.Brand) ? null : a.Brand, cts.Token).ConfigureAwait(false); }
+        catch (ArgumentException ex) { throw RpcException.InvalidArgs(ex.Message); }
+        catch (InvalidOperationException ex) { throw RpcException.Unavailable(ex.Message); }
+        catch (OperationCanceledException) { /* stopped by the user: what was found before stays */ }
+        return NetworkStatus();
+    }
 
-    private string? NanoleafKey => _settings.Nanoleaf is { } n ? $"nanoleaf|{n.Name}|{n.Serial}" : null;
+    private async Task<object?> PairNetworkLightAsync(NetPairArgs a, CancellationToken ct)
+    {
+        await PairCoreAsync(a.Brand ?? "", a.Address, a.Options, ct).ConfigureAwait(false);
+        return NetworkStatus();
+    }
+
+    private async Task<PairedLight> PairCoreAsync(string brand, string? address, IReadOnlyDictionary<string, string>? options, CancellationToken ct)
+    {
+        PairedLight light;
+        try { light = await _net.PairAsync(brand, address, options, ct).ConfigureAwait(false); }
+        catch (ArgumentException ex) { throw RpcException.InvalidArgs(ex.Message); }
+        catch (InvalidOperationException ex) { throw RpcException.Unavailable(ex.Message); }
+        if (light.Brand == NetworkLightStore.NanoleafBrand)
+        {
+            lock (_gate)
+            {
+                // Where its one-colour room-light box was placed, its panels go now. The same Nanoleaf under an
+                // older name (it was renamed in the Nanoleaf app) keeps its place too: its key ends in its serial.
+                foreach (var item in _settings.Layout.Items.Where(i =>
+                             (i.Key.StartsWith(ExternalKeyPrefix, StringComparison.Ordinal) && IsNanoleafName(i.Key))
+                             || (i.Key != light.LayoutKey && i.Key.StartsWith("nanoleaf|", StringComparison.Ordinal)
+                                 && i.Key.EndsWith("|" + light.Id, StringComparison.Ordinal))))
+                    item.Key = light.LayoutKey;
+                _settings.Layout.Items = _settings.Layout.Items.GroupBy(i => (i.Key, i.Zone)).Select(g => g.Last()).ToList();
+                SaveSettings();
+            }
+        }
+        return light;
+    }
+
+    private async Task<object?> ForgetNetworkLightAsync(NetForgetArgs a)
+    {
+        // Its box stays on the layout (shown as not connected), so pairing the same light again puts it back in place.
+        if (!await _net.ForgetAsync(a.Id ?? "").ConfigureAwait(false)) throw RpcException.InvalidArgs("That light isn't paired.");
+        return NetworkStatus();
+    }
+
+    // ---------------------------------------------------------------- Nanoleaf (the older calls, kept for the page that uses them)
+
+    /// <summary>
+    /// True while the paired Nanoleaf takes a colour per panel from RigControl (the hub must leave it alone).
+    /// Takes no lock: the room lights' module asks this while it holds its own lock, and the lighting lock is
+    /// sometimes held while that module is called, so a lock here could stop both for good.
+    /// </summary>
+    public bool NanoleafStreaming => _net.IsStreaming(NetworkLightStore.NanoleafBrand);
+
+    private PairedLight? PairedNanoleaf => _netStore.All().FirstOrDefault(l => l.Brand == NetworkLightStore.NanoleafBrand);
 
     private NanoleafDto NanoleafStatus(IReadOnlyList<string>? found = null)
     {
-        var n = _settings.Nanoleaf;
-        if (n is not null) EnsureNanoleafLoaded();
-        return new NanoleafDto(n is not null, n?.Ip, n?.Name, _nlPanels?.Count ?? 0, _nlStreaming, n is null ? null : _nlProblem, found);
-    }
-
-    /// <summary>Reads the panels in the background; if the Nanoleaf moved to another address, finds it again.</summary>
-    private void EnsureNanoleafLoaded()
-    {
-        var n = _settings.Nanoleaf;
-        if (n is null || _nlPanels is not null || Interlocked.Exchange(ref _nlLoading, 1) == 1) return;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var token = n.Token() ?? throw new InvalidOperationException("Its pairing can't be read on this Windows account; pair it again.");
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                // The token only ever goes to the address it was paired at: trying it on whatever else answers on
-                // port 16021 would hand it to any device pretending to be a Nanoleaf. If it moved, the user pairs again.
-                List<NanoleafPanel>? panels = null;
-                try
-                {
-                    using var c = new NanoleafClient(n.Ip, token);
-                    panels = await c.PanelsAsync(cts.Token).ConfigureAwait(false);
-                }
-                catch (Exception) when (!cts.IsCancellationRequested)
-                {
-                    // reported below
-                }
-                if (panels is null)
-                    throw new InvalidOperationException($"It doesn't answer at {n.Ip}. If it got a new address, press Forget, then Find my Nanoleaf and pair it again (its place on the layout is kept).");
-                _nlPanels = panels;
-                _nlProblem = null;
-            }
-            catch (Exception ex)
-            {
-                if (_nlProblem != ex.Message) _log.Warn($"Nanoleaf: {ex.Message}");
-                _nlProblem = ex.Message;
-            }
-            finally
-            {
-                Volatile.Write(ref _nlLoading, 0);
-            }
-        });
+        var n = PairedNanoleaf;
+        var d = n is null ? null : _net.Description(n);
+        return new NanoleafDto(n is not null, n?.Address, n?.Name, d?.Points.Count ?? 0, NanoleafStreaming, n is null ? null : _net.Problem(n), found);
     }
 
     private async Task<object?> FindNanoleafAsync(CancellationToken ct)
     {
-        List<string> found;
-        try { found = await NanoleafClient.DiscoverAsync(ct).ConfigureAwait(false); }
+        try { await _net.ScanAsync(NetworkLightStore.NanoleafBrand, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex) { throw RpcException.Unavailable("Couldn't look for a Nanoleaf: " + ex.Message); }
-        _log.Info(found.Count == 0 ? "Nanoleaf: none found on the network." : "Nanoleaf found at " + string.Join(", ", found) + ".");
-        return NanoleafStatus(found);
+        var status = NetworkStatus();
+        if (status.ScanProblems.FirstOrDefault() is { } problem) throw RpcException.Unavailable("Couldn't look for a Nanoleaf: " + problem);
+        return NanoleafStatus(status.Found.Where(f => f.Brand == NetworkLightStore.NanoleafBrand).Select(f => f.Address).ToList());
     }
 
     private async Task<object?> PairNanoleafAsync(NanoleafArgs a, CancellationToken ct)
     {
-        if (a.Ip is not { } ip || !IPAddressIsLocal(ip)) throw RpcException.InvalidArgs("Pick a Nanoleaf found on your network.");
-        string token;
-        try { token = await NanoleafClient.PairAsync(ip, ct).ConfigureAwait(false); }
-        catch (InvalidOperationException ex) { throw RpcException.Unavailable(ex.Message); }
-        catch (Exception ex) { throw RpcException.Unavailable("The Nanoleaf didn't answer: " + ex.Message); }
-        using var c = new NanoleafClient(ip, token);
-        (string Name, string Serial) info;
-        List<NanoleafPanel> panels;
-        try
-        {
-            info = await c.InfoAsync(ct).ConfigureAwait(false);
-            panels = await c.PanelsAsync(ct).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            throw RpcException.Unavailable("Paired, but its panels couldn't be read: " + ex.Message);
-        }
-        lock (_gate)
-        {
-            var n = new NanoleafSettings { Ip = ip, Name = info.Name, Serial = info.Serial };
-            n.SetToken(token);
-            _settings.Nanoleaf = n;
-            _nlPanels = panels;
-            _nlProblem = null;
-            // Where its one-colour room-light box was placed, its panels go now.
-            foreach (var item in _settings.Layout.Items.Where(i => i.Key.StartsWith(ExternalKeyPrefix, StringComparison.Ordinal) && IsNanoleafName(i.Key)))
-                item.Key = NanoleafKey!;
-            _settings.Layout.Items = _settings.Layout.Items.GroupBy(i => (i.Key, i.Zone)).Select(g => g.Last()).ToList();
-            SaveSettings();
-        }
-        _log.Info($"Nanoleaf {info.Name} paired at {ip}: {panels.Count} panel(s), each can follow its own part of the effects.");
+        if (a.Ip is not { } ip || !LanAddress.IsPrivate(ip)) throw RpcException.InvalidArgs("Pick a Nanoleaf found on your network.");
+        await PairCoreAsync(NetworkLightStore.NanoleafBrand, ip, null, ct).ConfigureAwait(false);
         return NanoleafStatus();
     }
 
-    private static bool IPAddressIsLocal(string ip) =>
-        System.Net.IPAddress.TryParse(ip, out var a) && a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
-        && a.GetAddressBytes() is var b && (b[0] == 10 || (b[0] == 172 && b[1] is >= 16 and <= 31) || (b[0] == 192 && b[1] == 168));
-
-    private NanoleafDto ForgetNanoleaf()
+    private async Task<object?> ForgetNanoleafAsync()
     {
-        lock (_gate)
-        {
-            // Its box stays on the layout (shown as not connected), so pairing the same Nanoleaf again puts it back in place.
-            _settings.Nanoleaf = null;
-            _nlPanels = null;
-            _nlProblem = null;
-            SaveSettings();
-        }
-        _log.Info("Nanoleaf forgotten; it follows as one room light through the hub again, if one is set up.");
+        if (PairedNanoleaf is { } n) await _net.ForgetAsync(n.LayoutKey).ConfigureAwait(false);
         return NanoleafStatus();
-    }
-
-    /// <summary>A rough grid of where the panels are, so the layout page can draw them.</summary>
-    private static (int W, int H, List<int> Matrix) PanelMatrix(IReadOnlyList<NanoleafPanel> panels)
-    {
-        const int W = 20, H = 12;
-        var m = Enumerable.Repeat(-1, W * H).ToList();
-        for (var i = 0; i < panels.Count; i++)
-        {
-            var cell = (int)Math.Round(panels[i].Y * (H - 1)) * W + (int)Math.Round(panels[i].X * (W - 1));
-            if (m[cell] < 0) m[cell] = i;
-        }
-        return (W, H, m);
     }
 
     /// <summary>How often the colour is read and sent (about 15 times a second, as RichPresence).</summary>
@@ -917,10 +988,26 @@ public sealed class LightingModule : IAppModule
         SaveSettings();
         if (a.Enabled == true && !s.Enabled)
         {
-            RequireConnected();
+            // Lights on the network need no OpenRGB: with one paired, the sync runs without it (the PC's own
+            // lights join in once OpenRGB is there).
+            if (_netStore.All().Count == 0) RequireConnected();
             // Remember the lights as they are, to put them back when the sync stops.
-            _controllers = _rgb.ReadControllers();
-            s.Before = Snapshot("Before light sync");
+            s.Before = null;
+            if (_rgb.Connected)
+            {
+                try
+                {
+                    _controllers = _rgb.ReadControllers();
+                    s.Before = Snapshot("Before light sync");
+                }
+                catch (Exception ex) when (ex is not RpcException && _netStore.All().Count > 0)
+                {
+                    _rgb.Disconnect();
+                    _controllers = Array.Empty<RgbController>();
+                    _message = "The connection to OpenRGB was lost: " + Plain(ex);
+                    SetStatus();
+                }
+            }
             s.Enabled = true;
             SaveSettings();
             StartSync();
@@ -964,17 +1051,9 @@ public sealed class LightingModule : IAppModule
                     zone.Matrix?.Select(v => v >= zone.LedsCount ? -1 : (int)v).ToList(), true, placed));
             }
         }
-        if (NanoleafKey is { } nlKey && _settings.Nanoleaf is { } nl)
-        {
-            EnsureNanoleafLoaded();
-            var panels = _nlPanels;
-            seen.Add((nlKey, LedLayout.WholeDevice));
-            var (mw, mh, matrix) = panels is null ? (0, 0, (List<int>?)null) : PanelMatrix(panels);
-            zones.Add(new LayoutZoneDto(nlKey, nl.Name + " (Nanoleaf)", LedLayout.WholeDevice, "Whole device", Math.Max(1, panels?.Count ?? 1), mw, mh,
-                matrix, panels is not null, layout.Items.FirstOrDefault(i => i.Key == nlKey && i.Zone == LedLayout.WholeDevice),
-                // Each Lines bar as drawn on the wall (0-1 inside the box), so the page can show the real shape.
-                panels?.Select(p => new[] { p.X1, p.Y1, p.X2, p.Y2 }).ToList()));
-        }
+        // Lights paired over the network (a Nanoleaf panel by panel, WLED, Hue...) are one box each.
+        foreach (var zone in _net.LayoutZones(layout.Items))
+            if (seen.Add((zone.Key, zone.Zone))) zones.Add(zone);
         // Room lights from an add-on are one box each.
         foreach (var ext in SafeExternalLights())
         {
@@ -1034,6 +1113,7 @@ public sealed class LightingModule : IAppModule
     private void StartSync()
     {
         var gen = Interlocked.Increment(ref _syncGen);
+        Volatile.Write(ref _runGen, gen);
         _syncStatus = "Starting";
         _syncThread = new Thread(() => SyncLoop(gen)) { IsBackground = true, Name = "RigControl light sync" };
         _syncThread.Start();
@@ -1054,6 +1134,9 @@ public sealed class LightingModule : IAppModule
         _previewGrid = null;
         _syncStatus = "Off";
         try { SyncColorChanged?.Invoke(null); } catch { /* ignore */ }
+        // The log says "put back" only for what was put back.
+        var putBack = false;
+        IReadOnlyList<string> fitted = Array.Empty<string>();
         if (restore && before is not null)
         {
             lock (_gate)
@@ -1063,8 +1146,9 @@ public sealed class LightingModule : IAppModule
                     if (_rgb.Connected)
                     {
                         _controllers = _rgb.ReadControllers();
-                        ApplySceneCore(before);
+                        fitted = ApplySceneCore(before);
                         _controllers = _rgb.ReadControllers();
+                        putBack = true;
                     }
                 }
                 catch (Exception ex)
@@ -1073,7 +1157,11 @@ public sealed class LightingModule : IAppModule
                 }
             }
         }
-        _log.Info(restore ? "Light sync off; lights put back as they were." : "Light sync off (lights changed by hand).");
+        _log.Info(!restore ? "Light sync off (lights changed by hand)."
+            : putBack ? "Light sync off; lights put back as they were."
+            : "Light sync off.");
+        foreach (var name in fitted)
+            _log.Info($"{name} has a different number of lights than before the sync, so its old colours were stretched to fit.");
         _ctx?.Events.Publish("lighting.sync", SyncStatus());
         LightingStatusDto? after = null;
         lock (_gate)
@@ -1093,26 +1181,6 @@ public sealed class LightingModule : IAppModule
         var effectGrid = new byte[ColorMath.GridW * ColorMath.GridH * 4];
         var clock = System.Diagnostics.Stopwatch.StartNew();
         float rawBass = 0, rawMid = 0, rawTreble = 0;
-        NanoleafClient? nl = null;
-        string? nlBefore = null;
-        var nlStarted = DateTime.MinValue;
-        var nlSent = DateTime.MinValue;
-        var nlRetry = DateTime.MinValue;
-        void StopNanoleaf()
-        {
-            if (nl is null) return;
-            _nlStreaming = false;
-            try
-            {
-                // Its own effect from before comes back.
-                if (nlBefore is { Length: > 0 } before && !before.StartsWith("*", StringComparison.Ordinal))
-                    nl.SelectEffectAsync(before, CancellationToken.None).GetAwaiter().GetResult();
-            }
-            catch { /* it keeps the last colours */ }
-            nl.Dispose();
-            nl = null;
-            _log.Info("Nanoleaf: panel-by-panel colours stopped.");
-        }
         CaptureSource? capture = null;
         ObsSource? obs = null;
         BassMeter? bass = null;
@@ -1136,6 +1204,10 @@ public sealed class LightingModule : IAppModule
         byte[]? grid = null;
         var perLed = new Dictionary<int, (double R, double G, double B)[]>();
         var gentle = new Dictionary<int, (DateTime At, List<uint> Colors)>();
+        // OpenRGB going away must not stop the lights on the network: it is noted, and asked for again now and then.
+        var rgbLost = false;
+        var rgbRetryAt = DateTime.MinValue;
+        var rgbTries = 0;
 
         // Graphics cards take colours over the card's own I2C bus; Gigabyte's light chip locks up (until the PC
         // restarts) when written ~15 times a second. They get a colour at most once a second, and only on a real change.
@@ -1341,15 +1413,40 @@ public sealed class LightingModule : IAppModule
                     if (items.Count > 0 || color != last || (DateTime.UtcNow - sent).TotalSeconds > 2)
                     {
                         int devices;
+                        var rgbUp = false;
                         lock (_gate)
                         {
                             if (!Live()) break;
+                            if (!_rgb.Connected && rgbLost && DateTime.UtcNow >= rgbRetryAt)
+                            {
+                                // Soon after it dropped, then only now and then (OpenRGB may need the user).
+                                rgbRetryAt = DateTime.UtcNow.AddSeconds(++rgbTries <= 1 ? 3 : 30);
+                                try
+                                {
+                                    StartAndConnect();
+                                    _log.Info("Light sync: OpenRGB is back; the PC's lights follow again.");
+                                }
+                                catch { /* tried again later */ }
+                                SetStatus();
+                            }
                             if (!_rgb.Connected)
                             {
-                                _syncStatus = "Waiting for OpenRGB";
                                 direct.Clear();
-                                goto sleep;
+                                gentle.Clear();
+                                perLed.Clear();
                             }
+                            else
+                            {
+                              try
+                              {
+                                rgbLost = false;
+                                rgbTries = 0;
+                                // Started without OpenRGB (only lights on the network): how the PC's lights are now is what is put back.
+                                if (s.Enabled && s.Before is null)
+                                {
+                                    s.Before = Snapshot("Before light sync");
+                                    SaveSettings();
+                                }
                             var slowDue = (DateTime.UtcNow - lastSlow).TotalMilliseconds >= 500;
                             devices = 0;
                             foreach (var dev in Driven)
@@ -1397,6 +1494,24 @@ public sealed class LightingModule : IAppModule
                                 }
                             }
                             if (slowDue) lastSlow = DateTime.UtcNow;
+                                rgbUp = true;
+                              }
+                              catch (Exception ex)
+                              {
+                                // The PC's lights wait; everything below (room lights, lights on the network) carries on.
+                                _log.Warn("Light sync: OpenRGB stopped answering. Lights on your network carry on; the PC's lights follow again once OpenRGB is back.", ex);
+                                try { _rgb.Disconnect(); } catch { /* asked for again below */ }
+                                _controllers = Array.Empty<RgbController>();
+                                _message = "The connection to OpenRGB was lost: " + Plain(Inner(ex));
+                                SetStatus();
+                                direct.Clear();
+                                gentle.Clear();
+                                perLed.Clear();
+                                rgbLost = true;
+                                rgbTries = 0;
+                                rgbRetryAt = DateTime.UtcNow.AddSeconds(3);
+                              }
+                            }
                         }
                         if (items.Count > 0 && grid is not null && ExternalLightColor is not null)
                         {
@@ -1411,58 +1526,19 @@ public sealed class LightingModule : IAppModule
                                 try { ExternalLightColor(item.Key, rgb); } catch { /* the room lights' problem stays theirs */ }
                             }
                         }
-                        // The paired Nanoleaf: each panel takes the part of the picture under it, about 10 times a second.
-                        var nlItem = NanoleafKey is { } nk && grid is not null ? items.FirstOrDefault(i => i.Key == nk) : null;
-                        var nlPanels = _nlPanels;
-                        if (nlItem is null || nlPanels is null || nlPanels.Count == 0) StopNanoleaf();
-                        else if ((DateTime.UtcNow - nlSent).TotalMilliseconds >= 100 && DateTime.UtcNow >= nlRetry)
+                        // Lights paired over the network: each light point takes the part of the picture under it,
+                        // every light at its own pace (a Nanoleaf about 10 times a second). They are put back when
+                        // they leave the layout or the sync stops.
                         {
-                            try
+                            var k = s.Brightness / 100.0;
+                            int Shade(int rc)
                             {
-                                if (nl is null)
-                                {
-                                    var token = _settings.Nanoleaf?.Token() ?? throw new InvalidOperationException("its pairing can't be read; pair it again");
-                                    nl = new NanoleafClient(_settings.Nanoleaf!.Ip, token);
-                                    nlBefore = nl.SelectedEffectAsync(CancellationToken.None).GetAwaiter().GetResult();
-                                    nlStarted = DateTime.MinValue;
-                                }
-                                // Asked again every 20 s, in case the Nanoleaf app or the hub switched it to something else.
-                                if ((DateTime.UtcNow - nlStarted).TotalSeconds >= 20)
-                                {
-                                    var first = nlStarted == DateTime.MinValue;
-                                    nl.StartStreamAsync(CancellationToken.None).GetAwaiter().GetResult();
-                                    nlStarted = DateTime.UtcNow;
-                                    _nlStreaming = true;
-                                    if (first) _log.Info($"Nanoleaf: {nlPanels.Count} panel(s) follow their part of the picture.");
-                                }
-                                var k = s.Brightness / 100.0;
-                                var rw = Math.Max(nlItem.W * 0.12, 1.5 / ColorMath.GridW);
-                                var rh = Math.Max(nlItem.H * 0.12, 1.5 / ColorMath.GridH);
-                                var frame = new List<(int, int)>(nlPanels.Count);
-                                foreach (var p in nlPanels)
-                                {
-                                    var px = Math.Clamp(nlItem.X + p.X * nlItem.W - rw / 2, 0, 1 - rw);
-                                    var py = Math.Clamp(nlItem.Y + p.Y * nlItem.H - rh / 2, 0, 1 - rh);
-                                    var rc = ColorMath.Region(grid!, ColorMath.GridW, ColorMath.GridH, px, py, rw, rh);
-                                    if (vivid) rc = ColorMath.Vivid(rc);
-                                    var pc = Pulse((((rc >> 16) & 255) * k, ((rc >> 8) & 255) * k, (rc & 255) * k));
-                                    frame.Add((p.Id, ((int)Math.Clamp(pc.R, 0, 255) << 16) | ((int)Math.Clamp(pc.G, 0, 255) << 8) | (int)Math.Clamp(pc.B, 0, 255)));
-                                }
-                                nl.Send(frame, 1);
-                                nlSent = DateTime.UtcNow;
-                                _nlProblem = null;
+                                if (vivid) rc = ColorMath.Vivid(rc);
+                                var pc = Pulse((((rc >> 16) & 255) * k, ((rc >> 8) & 255) * k, (rc & 255) * k));
+                                return ((int)Math.Clamp(pc.R, 0, 255) << 16) | ((int)Math.Clamp(pc.G, 0, 255) << 8) | (int)Math.Clamp(pc.B, 0, 255);
                             }
-                            catch (Exception ex)
-                            {
-                                var problem = Inner(ex).Message;
-                                if (_nlProblem != problem) _log.Warn($"Nanoleaf: {problem}; trying again in 15 s.");
-                                _nlProblem = problem;
-                                nl?.Dispose();
-                                nl = null;
-                                _nlStreaming = false;
-                                nlRetry = DateTime.UtcNow.AddSeconds(15);
-                                _nlPanels = null; // read again (it may have moved to another address)
-                            }
+                            var one = (int)(((color & 0xFF) << 16) | (color & 0xFF00) | ((color >> 16) & 0xFF));
+                            _net.Frame(new NetworkFrame(items, grid, ColorMath.GridW, ColorMath.GridH, Shade, one));
                         }
                         last = color;
                         sent = DateTime.UtcNow;
@@ -1473,8 +1549,11 @@ public sealed class LightingModule : IAppModule
                             : capture is not null ? (s.SourceName != "" ? s.SourceName : "the capture card")
                             : captureProblem is not null ? $"the screen ({(s.SourceName != "" ? s.SourceName : "capture card")}: {captureProblem})"
                             : "the screen";
-                        _syncStatus = isScreen ? $"Following {from}" : "Playing " + EffectRenderer.Catalog.First(e => e.Id == effect).Name
+                        var doing = isScreen ? $"Following {from}" : "Playing " + EffectRenderer.Catalog.First(e => e.Id == effect).Name
                             + (items.Count == 0 ? " (one colour: place your devices on the layout to see it move across them)" : "");
+                        _syncStatus = rgbUp ? doing
+                            : _netStore.All().Count > 0 ? doing + " (the PC's own lights are waiting for OpenRGB)"
+                            : "Waiting for OpenRGB";
                         if ((DateTime.UtcNow - _lastRoomColor).TotalSeconds >= 2)
                         {
                             _lastRoomColor = DateTime.UtcNow;
@@ -1503,14 +1582,15 @@ public sealed class LightingModule : IAppModule
                         try { if (!_rgb.Connected) StartAndConnect(); } catch { /* try again next time */ }
                     }
                 }
-            sleep:
                 // With the bass on, twice as often (about 30 times a second) so short kicks aren't missed.
                 Thread.Sleep(s.Bass || s.Mid || s.Treble || s.Effect != EffectRenderer.Screen ? Math.Min(SyncIntervalMs, 33) : SyncIntervalMs);
             }
         }
         finally
         {
-            StopNanoleaf();
+            // A newer run that has already taken over keeps the network lights: handing them back here would make
+            // every one of them drop out and be taken again in the middle of the new run.
+            if (Volatile.Read(ref _runGen) == gen || _disposed != 0) _net.StopAll();
             capture?.Dispose();
             obs?.Dispose();
             bass?.Dispose();
@@ -1558,12 +1638,18 @@ public sealed class LightingModule : IAppModule
         var name = SceneName(a);
         var scene = _settings.Scenes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
                     ?? throw RpcException.InvalidArgs("That scene no longer exists.");
-        ApplySceneCore(scene);
+        foreach (var device in ApplySceneCore(scene))
+            _log.Info($"Scene \"{scene.Name}\": {device} has a different number of lights than when it was saved, so its colours were stretched to fit.");
         return Refresh();
     });
 
-    private void ApplySceneCore(Scene scene)
+    /// <summary>
+    /// Puts a saved scene on the devices. Returns the names of devices whose number of lights has changed since it
+    /// was saved (a header was resized): their colours were stretched to fit instead of being left out.
+    /// </summary>
+    private IReadOnlyList<string> ApplySceneCore(Scene scene)
     {
+        var fitted = new List<string>();
         foreach (var saved in scene.Devices)
         {
             var c = _controllers.FirstOrDefault(x => x.Key == saved.Key);
@@ -1583,9 +1669,19 @@ public sealed class LightingModule : IAppModule
                 m.ColorMode = 1;
             }
             _rgb.UpdateMode(c.Index, index, Sanitise(m));
-            if (m.ColorMode == 1 && saved.LedColors.Count == c.Colors.Count && c.Colors.Count > 0)
+            if (m.ColorMode != 1 || c.Colors.Count == 0 || saved.LedColors.Count == 0) continue;
+            if (saved.LedColors.Count == c.Colors.Count)
+            {
                 _rgb.UpdateLeds(c.Index, saved.LedColors);
+            }
+            else
+            {
+                // A header was resized since: the saved colours are fitted, so the device isn't left on whatever it showed.
+                _rgb.UpdateLeds(c.Index, FitLedColors(saved.LedColors, c));
+                fitted.Add(c.Name);
+            }
         }
+        return fitted;
     }
 
     private IReadOnlyList<SceneDto> DeleteScene(SceneArgs a)
@@ -1603,6 +1699,8 @@ public sealed class LightingModule : IAppModule
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return ValueTask.CompletedTask;
         Interlocked.Increment(ref _syncGen); // the sync keeps its setting, so it resumes at the next start
         try { _syncThread?.Join(2000); } catch { /* ignore */ }
+        try { _net.Dispose(); } catch { /* ignore */ }
+        try { (_network as IDisposable)?.Dispose(); } catch { /* ignore */ }
         _stop.Cancel();
         _thread?.Join(3000);
         lock (_gate)
@@ -1644,6 +1742,32 @@ public sealed class LightingModule : IAppModule
     private sealed class NanoleafArgs
     {
         public string? Ip { get; set; }
+    }
+
+    private sealed class ZoneSizeArgs
+    {
+        public int DeviceId { get; set; }
+        public int Zone { get; set; }
+        public int Leds { get; set; }
+    }
+
+    private sealed class NetScanArgs
+    {
+        /// <summary>One brand to search for; empty = all of them.</summary>
+        public string? Brand { get; set; }
+    }
+
+    private sealed class NetPairArgs
+    {
+        public string? Brand { get; set; }
+        public string? Address { get; set; }
+        public Dictionary<string, string>? Options { get; set; }
+    }
+
+    private sealed class NetForgetArgs
+    {
+        /// <summary>The light's id from getNetworkLights (also its key on the layout).</summary>
+        public string? Id { get; set; }
     }
 
     private sealed class LayoutArgs

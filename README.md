@@ -40,8 +40,7 @@ One desktop PC with these parts. Everything in this list is used daily.
 | Motherboard fans | Boards that [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) can control |
 | Graphics page, graphics card fans | Other NVIDIA GeForce cards with a current driver |
 | Recording and instant replay | NVIDIA cards with NVENC (GTX 10-series or newer) |
-| Lighting | Devices that [OpenRGB](https://openrgb.org) 1.1 supports |
-| Nanoleaf | Nanoleaf panels and Lines with the local API, on the same network as the PC |
+| Lighting | Devices that [OpenRGB](https://openrgb.org) 1.1 supports, and Wi-Fi lights of the brands listed under [Which lights work](#which-lights-work) |
 | Drivers page | ASUS motherboards (ASUS's driver list); Windows Update drivers on any PC |
 | Audio | Any PC. The virtual microphone needs [VB-Audio Virtual Cable](https://vb-audio.com/Cable), which you install yourself |
 | Discord status, game library | Any PC with the Discord desktop app |
@@ -50,6 +49,55 @@ One desktop PC with these parts. Everything in this list is used daily.
 **AMD processors: built, but not tested on real hardware.** The AMD side of the CPU page was written without an AMD
 PC to try it on. It only reads values and changes Windows power-plan settings, which Windows can put back. It never
 writes voltages, Curve Optimizer or PBO values.
+
+### Which lights work
+
+Only three kinds of light have been tried on real hardware: NZXT and Razer devices through OpenRGB, and Nanoleaf.
+Everything else in these two tables was built from published protocol descriptions and has **not been tried on a
+real device yet**. The Lighting page says the same next to each brand. If you own one, a report is very welcome.
+
+**Lights on your network (Wi-Fi).** RigControl talks to each light directly over your home network. It never signs
+in to a cloud account for lights. You pair a light on the Lighting page under "Lights on your network", which shows
+the steps for its brand. These lights do not need OpenRGB: they play the effects even while OpenRGB is not running.
+
+| Brand | Tried on real hardware | How to pair | What it does, and its limits |
+|---|---|---|---|
+| Nanoleaf (panels, Shapes, Lines) | Yes (Nanoleaf Lines) | Search, hold the Nanoleaf's power button 5 to 7 seconds until it flashes, then press Pair within 30 seconds. | Each panel takes its own part of the picture, about 10 times a second. |
+| WLED | **No.** Built from WLED's published protocol. | Search or type its address, press Pair. Nothing to press on the light. "Receive UDP realtime" must be ticked in WLED (it is by default). | Every LED of a strip or matrix takes its own part of the picture. A strip over 489 LEDs is sent in several parts. |
+| Philips Hue (through a Hue Bridge) | **No.** Built from open-source descriptions of the bridge's local API. | Search (or type the bridge's address), press the round button on the bridge, then press Pair within 30 seconds. Then place the bridge on the layout: until you do, no Hue light is touched. | The colour lights in the bridge's entertainment area follow (make one in the Hue app to choose which lights). **A bridge with no entertainment area follows with every colour light it has, in every room.** Lights that follow are switched on, and go back to how they were, on or off, when the effect stops. Each light shows one colour, a few times a second. Hue's fast Entertainment stream is not built yet, so gradient strips are not lit piece by piece. |
+| Govee | **No.** Built from Govee's published LAN protocol and open-source projects. | In the Govee Home app switch on "LAN Control" for each light first. Then search (or type its address) and press Pair. | Only lights that show a "LAN Control" switch. One colour for the whole light, or a colour per piece on lights that accept Govee's unofficial Razer stream (you choose the number of pieces). A running scene or music mode is not put back afterwards. |
+| Yeelight | **No.** Built from Yeelight's published specification. | In the Yeelight app switch on "LAN Control" for each light first. Then search (or type its address) and press Pair. | One colour for the whole light (plus the background light on models that have one). Lights without that switch, and ones set up through Mi Home, cannot be driven locally. |
+| Cololight (Hexagon, Strip, MIX) | **No.** The maker publishes nothing; built from the open-source pycololight project. | Type the light's address (your router shows it) and choose which Cololight it is. It cannot be searched for. | One colour for the whole light. |
+| LeetDesk Aura | **No.** The maker publishes nothing; built from a third-party add-on last changed in 2024, so current desks may behave differently. | Search or type the desk's address, press Pair. | The desk's light strip, as one strip. Use "Run backwards" on the layout if it runs the wrong way. |
+
+Not supported: lights that only work through an account (Tuya / Smart Life, Wiz cloud scenes, TP-Link cloud), Hue's
+Entertainment stream, Govee and Yeelight lights without a LAN Control switch, Yeelight strips LED by LED, and a
+colour per Cololight panel. The Lighting page lists these with the reason.
+
+If a search finds nothing: the light and the PC must be on the same network; Windows Firewall blocks most answers
+when your home network is set to Public in Windows (the Health page names the network if it is, and says how to
+change it if it is your own home network); a VPN can hide the home network; and Govee and Yeelight lights need LAN
+Control switched on in their own app. Only networks with a router are searched, never a VPN or a virtual
+machine's network. The first search may make Windows ask whether to allow RigControl on private networks.
+
+**Lights through OpenRGB (USB and motherboard).**
+
+| Device | Tried on real hardware |
+|---|---|
+| NZXT RGB & Fan Controller, Kraken Elite ring | Yes |
+| Razer keyboard and mouse | Yes |
+| Razer Chroma light strip controller | No |
+| Motherboard RGB headers, addressable and plain | No |
+| Corsair Commander and Lighting Node | No |
+| Thermaltake Riing controllers | No |
+| Lian Li Uni fan hubs | No |
+| Strips and fans chained on one header, with the number of lights set per header | No |
+
+For a header that cannot count its own lights, the Lighting page has "Lights on this header" under the device's
+**More** button: you type how many lights are plugged in and press Set. OpenRGB remembers the number. Lian Li hubs
+count 16 lights for each fan, so they take multiples of 16. If the maker's own program (iCUE, TT RGB Plus,
+L-Connect, Synapse, NZXT CAM) runs at the same time, it may fight over the same device. RigControl tells you and
+never closes it.
 
 ### Not supported
 
@@ -127,7 +175,7 @@ see "Removing it" in [PRIVACY.md](PRIVACY.md).
 | **Recording** | NVIDIA only. Screen recording and instant replay (the last 60 seconds by default) encoded on the graphics card, with system sound. Hotkeys (Alt+F9 record, Alt+F10 save replay, Alt+R overlay) and a small on-screen overlay with temperatures. Files go to `Videos\RigControl` unless you pick another folder. |
 | **Games** | Your game library (Steam, Epic, GOG, other launcher folders and folders you add) with Play buttons. **Discord status**: the game you play, your Apple Music or Spotify song with album art and the current lyric line, what you watch (with the browser extension), the app in front (off unless you turn it on), and custom statuses. Settings for the in-game panel. |
 | **In-game panel** | Ctrl+Alt+G or the controller's logo button opens a panel over the game: music controls, volume per app, games, Steam, Xbox and PlayStation shortcuts, Discord's own web app, Phone Link, full controller navigation with an on-screen keyboard, and an optional pause of PS Remote Play while the panel is open. |
-| **Lighting** | Every light OpenRGB finds: one colour for everything or per device and zone, device modes, saved scenes. **Effects**: solid, breathing, colour cycle, rainbow wave and spiral, gradient sweep, starfield, colour rain, and three that follow sound (visualiser, bass ripple, sound colour). **Screen sync**: lights follow the screen or a capture card, with optional brightness from the bass and flashes from the treble. **Layout**: place devices, zones or single LEDs on a picture of your setup so effects and screen colours land in the right place. **Nanoleaf**: pair over the local network and light it panel by panel. "Take over" from GIGABYTE Control Center where it is installed. |
+| **Lighting** | Every light OpenRGB finds: one colour for everything or per device and zone, device modes, saved scenes. **Effects**: solid, breathing, colour cycle, rainbow wave and spiral, gradient sweep, starfield, colour rain, and three that follow sound (visualiser, bass ripple, sound colour). **Screen sync**: lights follow the screen or a capture card, with optional brightness from the bass and flashes from the treble. **Layout**: place devices, zones or single LEDs on a picture of your setup so effects and screen colours land in the right place. **Lights on your network**: search for and pair Wi-Fi lights (Nanoleaf, WLED, LeetDesk Aura, Philips Hue, Govee, Yeelight, Cololight) and place them on the layout; see [Which lights work](#which-lights-work). **Header sizes**: set how many lights hang on a header. "Take over" from GIGABYTE Control Center where it is installed. |
 | **CPU** | Processor name, cores and threads, generation, live temperature, clock, load and power. Tuning through Windows power-plan settings (boost mode, minimum and maximum processor state, frequency cap, core parking) with "Put back Windows' defaults". On the one supported ASUS board it also shows the BIOS's CPU settings. AMD: built, not tested on real hardware. |
 | **Drivers** | On ASUS boards: ASUS's driver list compared with what is installed, with download and install. On any PC: driver updates from Windows Update. |
 | **Audio** | Soundboard with hotkeys, virtual microphone (through VB-Audio Virtual Cable), equaliser and effects (through Equalizer APO), and "also play on" a second output. The sound library is stored encrypted on your PC. |
@@ -158,6 +206,9 @@ RigControl writes to fan controllers, the cooler and the graphics driver. It is 
   after 15 seconds unless you confirm it.
 - Graphics card lights get at most one colour a second, because faster writes can lock up some cards' light chip
   until the PC is fully powered off.
+- Lights on your network are only searched for when you press Search for lights, are only controlled on your
+  home network, and a pairing key is only ever sent to the light it came from. The number of lights on a header
+  only changes when you type it and press Set.
 - Driver installers only run when they come from NVIDIA's or ASUS's download servers over https and are signed by a
   trusted maker. ASUS packages must also match the checksum ASUS publishes.
 - Security settings (Memory Integrity, Defender, Controlled Folder Access) are never changed. VPNs are never closed.
@@ -235,14 +286,18 @@ RigControl stands on other people's work. The full list with versions and licenc
   streaming follows [kraken-elite-screen-manager](https://github.com/KhalloufHassan/kraken-elite-screen-manager).
 - Recording and audio decoding use an unmodified [FFmpeg](https://ffmpeg.org) build. Audio uses
   [NAudio](https://github.com/naudio/NAudio).
+- Lights on your network were written from the makers' published protocols and from open-source projects that
+  describe them: [WLED](https://kno.wled.ge), the Yeelight Inter-Operation Specification, python-yeelight,
+  govee-local-api, govee2mqtt, pycololight, Hyperion.ng, aiohue, Q42.HueApi and OpenHue. No code was copied.
 - Graphics card names come from the [PCI ID database](https://pci-ids.ucw.cz/).
 - The Games page, Discord status, in-game panel, screen sync and browser extension are a rebuild of
   [RichPresence](https://github.com/noice912/Discord-status) (MIT).
 - Song lyrics come from [LRCLIB](https://lrclib.net), album art from Apple's iTunes Search, show posters from
   [TVmaze](https://www.tvmaze.com) and Cinemeta, Genshin Impact profiles from [Enka.Network](https://enka.network).
 
-RigControl is not made, endorsed or supported by NVIDIA, NZXT, ASUS, GIGABYTE, Razer, Nanoleaf, Discord, Intel, AMD,
-Microsoft or any other company named here. Their names are used only to say what the app works with.
+RigControl is not made, endorsed or supported by NVIDIA, NZXT, ASUS, GIGABYTE, Razer, Nanoleaf, Signify (Philips
+Hue), Govee, Yeelight, the WLED project, LifeSmart (Cololight), LeetDesk, Corsair, Thermaltake, Lian Li, Discord,
+Intel, AMD, Microsoft or any other company named here. Their names are used only to say what the app works with.
 
 ## Licence
 

@@ -407,6 +407,14 @@ public class FirstRunTests : IDisposable
         Assert.StartsWith(reason, st.GetProperty("discordReason").GetString());
         Assert.Equal(running, st.GetProperty("discordRunning").GetBoolean());
         Assert.Equal(JsonValueKind.Null, st.GetProperty("attachedUser").ValueKind);
+        // "Not running" is also what the status says before the first look at Discord, so the status can be right a
+        // moment before the line is in the log: wait for the line before stopping.
+        for (var i = 0; i < 250; i++)
+        {
+            lock (log.Lines)
+                if (log.Lines.Any(l => l.StartsWith("Discord status: " + reason, StringComparison.Ordinal))) break;
+            await Task.Delay(20);
+        }
         await m.DisposeAsync();
         lock (log.Lines) Assert.Single(log.Lines, l => l.StartsWith("Discord status: " + reason, StringComparison.Ordinal)); // said once, not every pass
     }

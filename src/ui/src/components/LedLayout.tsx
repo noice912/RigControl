@@ -18,6 +18,17 @@ const zoneId = (z: { key: string; zone: number }) => `${z.key}#${z.zone}`;
 /** A box that holds a whole device (zone -1) is named after the device. */
 const boxName = (z: LayoutZone) => (z.zone < 0 ? z.device : z.name);
 
+/** Keys of lights paired over the network: "net|<brand>|<id>", and a directly paired Nanoleaf. */
+const isNetworkLight = (key: string) =>
+  key.startsWith("net|") || key.startsWith("nanoleaf|");
+/** What one light point of a zone is called in the list. */
+const pointWord = (z: LayoutZone) =>
+  z.segments || z.key.startsWith("nanoleaf|")
+    ? "panel"
+    : isNetworkLight(z.key) && (z.matrix || z.leds <= 1)
+      ? "light"
+      : "LED";
+
 /** Where each LED of a placed zone looks, the same way the app works it out (a grid for keyboards, else a strip). */
 function ledSpots(item: LayoutItem, z: LayoutZone): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
@@ -60,8 +71,15 @@ const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, v));
 
 /** SignalRGB-style layout: put each zone where it sits around the picture; each LED then takes the colour under it. */
-export function LedLayoutPanel({ syncOn }: { syncOn: boolean }) {
-  const q = useQuery<LayoutState>("lighting.getLayout");
+export function LedLayoutPanel({
+  syncOn,
+  reloadKey = "",
+}: {
+  syncOn: boolean;
+  /** The layout is read again whenever this changes (a network light was paired, forgotten or read). */
+  reloadKey?: string;
+}) {
+  const q = useQuery<LayoutState>("lighting.getLayout", undefined, [reloadKey]);
   const { busy, run } = useAction();
   const [items, setItems] = useState<LayoutItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -390,7 +408,7 @@ export function LedLayoutPanel({ syncOn }: { syncOn: boolean }) {
                   >
                     {label}{" "}
                     <span className="sub">
-                      · {z.leds} {z.segments ? "panel" : "LED"}
+                      · {z.leds} {pointWord(z)}
                       {z.leds === 1 ? "" : "s"}
                       {z.connected ? "" : " · not connected"}
                     </span>

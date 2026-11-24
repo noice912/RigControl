@@ -1,10 +1,7 @@
-using System.Net;
-using System.Net.Http.Json;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using RigControl.Lighting.Network;
 
 namespace RigControl.Lighting;
 
@@ -45,6 +42,7 @@ public sealed record NanoleafPanel(int Id, double X, double Y, double X1 = 0, do
 /// <summary>
 /// Nanoleaf's local API: find it on the network, pair (the user holds the power button), read where the panels are,
 /// and stream a colour per panel ("extControl" v2 over UDP port 60222, as Nanoleaf documents for screen mirroring).
+/// Everything goes through <see cref="ILightNetwork"/>; the token is only ever filled in for the paired address.
 /// </summary>
 public sealed class NanoleafClient : IDisposable
 {
@@ -54,63 +52,51 @@ public sealed class NanoleafClient : IDisposable
     // Shapes that carry no light of their own: Rhythm module, Shapes controller, Lines connector, controller cap, power connector.
     private static readonly HashSet<int> NoLight = new() { 1, 12, 16, 19, 20 };
 
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
-    private UdpClient? _udp;
+    private readonly ILightNetwork _net;
+    private readonly BoundSecret _token;
+    private IUdpPort? _udp;
 
     public string Ip { get; }
-    private readonly string _token;
 
-    public NanoleafClient(string ip, string token)
+    public NanoleafClient(ILightNetwork net, string ip, BoundSecret token)
     {
+        _net = net;
         Ip = ip;
         _token = token;
     }
 
-    private Uri Api(string path) => new($"http://{Ip}:{ApiPort}/api/v1/{_token}/{path}");
+    private string Api(string path) => $"http://{Ip}:{ApiPort}/api/v1/{HttpAsk.SecretMark}/{path}";
+
+    private async Task<string> GetAsync(string path, CancellationToken ct) =>
+        (await _net.HttpAsync(HttpAsk.Get(Api(path)) with { Secret = _token }, ct).ConfigureAwait(false)).EnsureOk().Body;
+
+    private Task<HttpReply> PutAsync(string path, object body, CancellationToken ct) =>
+        _net.HttpAsync(HttpAsk.Put(Api(path), JsonSerializer.Serialize(body)) with { Secret = _token }, ct);
 
     // ---------------------------------------------------------------- finding and pairing
 
-    /// <summary>Every address on this PC's local networks that answers like a Nanoleaf (port 16021, 401 without a token).</summary>
-    public static async Task<List<string>> DiscoverAsync(CancellationToken ct)
+    /// <summary>Every address on this PC's home networks that answers like a Nanoleaf (port 16021, 401 without a token).</summary>
+    public static async Task<List<string>> DiscoverAsync(ILightNetwork net, CancellationToken ct)
     {
-        var hosts = new List<IPAddress>();
-        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-        {
-            if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
-            var props = nic.GetIPProperties();
-            // Only networks with a router (leaves out VPN adapters and virtual switches without one).
-            if (!props.GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any))) continue;
-            foreach (var ua in props.UnicastAddresses)
-            {
-                if (ua.Address.AddressFamily != AddressFamily.InterNetwork || ua.PrefixLength is < 22 or > 30) continue;
-                var ip = BitConverter.ToUInt32(Enumerable.Reverse(ua.Address.GetAddressBytes()).ToArray());
-                var mask = uint.MaxValue << (32 - ua.PrefixLength);
-                var net = ip & mask;
-                for (var h = net + 1; h < (net | ~mask); h++)
-                    if (h != ip) hosts.Add(new IPAddress(Enumerable.Reverse(BitConverter.GetBytes(h)).ToArray()));
-            }
-        }
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        // Only networks with a router (leaves out VPN adapters and virtual switches without one), and only small ones.
+        var hosts = net.LocalNetworks().Where(n => n.HasGateway).SelectMany(n => n.OtherHosts()).Distinct().ToList();
         var found = new System.Collections.Concurrent.ConcurrentBag<string>();
-        await Parallel.ForEachAsync(hosts.Distinct(), new ParallelOptions { MaxDegreeOfParallelism = 64, CancellationToken = ct }, async (addr, token) =>
+        await Parallel.ForEachAsync(hosts, new ParallelOptions { MaxDegreeOfParallelism = 64, CancellationToken = ct }, async (addr, token) =>
         {
             try
             {
-                using var tcp = new TcpClient();
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                cts.CancelAfter(500);
-                await tcp.ConnectAsync(addr, ApiPort, cts.Token).ConfigureAwait(false);
+                using var tcp = await net.ConnectTcpAsync(addr, ApiPort, TimeSpan.FromMilliseconds(500), token).ConfigureAwait(false);
             }
-            catch
+            catch (Exception) when (!token.IsCancellationRequested)
             {
                 return;
             }
             try
             {
-                using var r = await http.GetAsync($"http://{addr}:{ApiPort}/api/v1/", token).ConfigureAwait(false);
-                if (r.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) found.Add(addr.ToString());
+                var r = await net.HttpAsync(HttpAsk.Get($"http://{addr}:{ApiPort}/api/v1/") with { Timeout = TimeSpan.FromSeconds(2) }, token).ConfigureAwait(false);
+                if (r.Status is 401 or 403) found.Add(addr);
             }
-            catch
+            catch (Exception) when (!token.IsCancellationRequested)
             {
                 // not a Nanoleaf
             }
@@ -122,14 +108,13 @@ public sealed class NanoleafClient : IDisposable
     /// Asks the Nanoleaf for a token. It only gives one in the 30 s after its power button was held for 5-7 s
     /// (the lights flash); otherwise it answers 403.
     /// </summary>
-    public static async Task<string> PairAsync(string ip, CancellationToken ct)
+    public static async Task<string> PairAsync(ILightNetwork net, string ip, CancellationToken ct)
     {
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        using var r = await http.PostAsync($"http://{ip}:{ApiPort}/api/v1/new", null, ct).ConfigureAwait(false);
-        if (r.StatusCode == HttpStatusCode.Forbidden)
+        var r = await net.HttpAsync(HttpAsk.Post($"http://{ip}:{ApiPort}/api/v1/new") with { Timeout = TimeSpan.FromSeconds(5) }, ct).ConfigureAwait(false);
+        if (r.Status == 403)
             throw new InvalidOperationException("The Nanoleaf isn't ready to pair. Hold its power button for 5 to 7 seconds until the lights flash, then press Pair within 30 seconds.");
-        r.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+        r.EnsureOk();
+        using var doc = JsonDocument.Parse(r.Body);
         return doc.RootElement.GetProperty("auth_token").GetString() ?? throw new InvalidOperationException("The Nanoleaf answered without a token.");
     }
 
@@ -137,7 +122,7 @@ public sealed class NanoleafClient : IDisposable
 
     public async Task<(string Name, string Serial)> InfoAsync(CancellationToken ct)
     {
-        using var doc = JsonDocument.Parse(await _http.GetStringAsync(Api(""), ct).ConfigureAwait(false));
+        using var doc = JsonDocument.Parse(await GetAsync("", ct).ConfigureAwait(false));
         var root = doc.RootElement;
         return (root.TryGetProperty("name", out var n) ? n.GetString() ?? "Nanoleaf" : "Nanoleaf",
                 root.TryGetProperty("serialNo", out var s) ? s.GetString() ?? "" : "");
@@ -145,11 +130,11 @@ public sealed class NanoleafClient : IDisposable
 
     public async Task<List<NanoleafPanel>> PanelsAsync(CancellationToken ct)
     {
-        var layoutJson = await _http.GetStringAsync(Api("panelLayout/layout"), ct).ConfigureAwait(false);
+        var layoutJson = await GetAsync("panelLayout/layout", ct).ConfigureAwait(false);
         var orientation = 0.0;
         try
         {
-            using var o = JsonDocument.Parse(await _http.GetStringAsync(Api("panelLayout/globalOrientation"), ct).ConfigureAwait(false));
+            using var o = JsonDocument.Parse(await GetAsync("panelLayout/globalOrientation", ct).ConfigureAwait(false));
             if (o.RootElement.TryGetProperty("value", out var v)) orientation = v.GetDouble();
         }
         catch
@@ -201,7 +186,7 @@ public sealed class NanoleafClient : IDisposable
     {
         try
         {
-            var s = await _http.GetStringAsync(Api("effects/select"), ct).ConfigureAwait(false);
+            var s = await GetAsync("effects/select", ct).ConfigureAwait(false);
             return JsonSerializer.Deserialize<string>(s);
         }
         catch
@@ -213,7 +198,7 @@ public sealed class NanoleafClient : IDisposable
     /// <summary>Puts an effect back (the one that was on before RigControl streamed).</summary>
     public async Task SelectEffectAsync(string name, CancellationToken ct)
     {
-        using var r = await _http.PutAsJsonAsync(Api("effects"), new { select = name }, ct).ConfigureAwait(false);
+        await PutAsync("effects", new { select = name }, ct).ConfigureAwait(false);
     }
 
     // ---------------------------------------------------------------- streaming
@@ -221,18 +206,18 @@ public sealed class NanoleafClient : IDisposable
     /// <summary>Turns the Nanoleaf on and into external control; colours then go by <see cref="Send"/>.</summary>
     public async Task StartStreamAsync(CancellationToken ct)
     {
-        using (await _http.PutAsJsonAsync(Api("state"), new { on = new { value = true } }, ct).ConfigureAwait(false)) { }
-        using var r = await _http.PutAsJsonAsync(Api("effects"),
+        await PutAsync("state", new { on = new { value = true } }, ct).ConfigureAwait(false);
+        var r = await PutAsync("effects",
             new { write = new { command = "display", animType = "extControl", extControlVersion = "v2" } }, ct).ConfigureAwait(false);
-        r.EnsureSuccessStatusCode();
-        _udp ??= new UdpClient();
+        r.EnsureOk();
+        _udp ??= _net.OpenUdp();
     }
 
     /// <summary>One frame: a colour (0xRRGGBB) per panel, fading over <paramref name="transitionTenths"/> x 100 ms.</summary>
     public void Send(IReadOnlyList<(int Id, int Rgb)> panels, int transitionTenths = 1)
     {
         var packet = Packet(panels, transitionTenths);
-        (_udp ??= new UdpClient()).Send(packet, packet.Length, Ip, StreamPort);
+        (_udp ??= _net.OpenUdp()).Send(packet, Ip, StreamPort);
     }
 
     /// <summary>extControl v2: panel count (2 bytes), then per panel id (2), R, G, B, W, transition (2); big-endian.</summary>
@@ -256,9 +241,5 @@ public sealed class NanoleafClient : IDisposable
         return b;
     }
 
-    public void Dispose()
-    {
-        _http.Dispose();
-        _udp?.Dispose();
-    }
+    public void Dispose() => _udp?.Dispose();
 }

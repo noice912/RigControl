@@ -136,6 +136,8 @@ public static class ConflictFacts
     public const string OtherSessionRunsRigControl = "otherSessionRunsRigControl";
     /// <summary>RigControl starts with Windows as administrator from a folder that programs without administrator rights can change.</summary>
     public const string ProgramFolderOpen = "programFolderOpen";
+    /// <summary>A network this PC is connected to is set to "Public" in Windows (the firewall then blocks most answers from devices on it).</summary>
+    public const string PublicNetwork = "publicNetwork";
 }
 
 /// <summary>Names of the numbers a probe can report in <see cref="ConflictSnapshot.Counts"/>.</summary>

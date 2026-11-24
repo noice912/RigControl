@@ -52,6 +52,17 @@ public sealed class RgbZone
 
     /// <summary>How many colour slots the zone really owns (an "effects-only" zone owns at most one).</summary>
     public int ColorSlots => (Flags & 1) != 0 ? (int)Math.Min(LedsCount, 1) : (int)LedsCount;
+
+    /// <summary>OpenRGB's zone flag "the user sets how many lights are on this header".</summary>
+    public const uint SizeIsSetByUser = 1 << 1;
+
+    /// <summary>
+    /// True when the number of lights on this zone can be set (a header that a strip or fans plug into). OpenRGB says
+    /// so with a flag from protocol 5 on; older servers send no flags, and there a zone whose smallest and largest
+    /// size differ is one.
+    /// </summary>
+    public bool CanResize(int protocol) =>
+        LedsMax > LedsMin && (protocol >= 5 ? (Flags & SizeIsSetByUser) != 0 : true);
 }
 
 public sealed class RgbController
@@ -69,6 +80,8 @@ public sealed class RgbController
     public List<RgbZone> Zones { get; set; } = new();
     public int LedCount { get; set; }
     public List<uint> Colors { get; set; } = new();
+    /// <summary>The SDK protocol version this description was read with (0 when it was not read from a server).</summary>
+    public int Protocol { get; set; }
 
     /// <summary>Stable identity across restarts (indices change; two identical controllers differ by location/serial).</summary>
     public string Key => $"{Type}|{Name}|{Serial}|{Location}";
@@ -79,7 +92,8 @@ public readonly record struct OpenRgbPacket(uint DeviceId, uint Id, byte[] Paylo
 /// <summary>
 /// The OpenRGB SDK wire format, protocol versions 3 to 5. See docs/protocols/openrgb-integration.md section 3.
 /// Colours are u32 values R | G&lt;&lt;8 | B&lt;&lt;16 (bytes R, G, B, 0 on the wire). Strings are u16 length (including the
-/// terminating NUL) followed by the bytes. SAVEMODE (writes to device flash) and RESIZEZONE are deliberately absent.
+/// terminating NUL) followed by the bytes. SAVEMODE (writes to device flash) is deliberately absent. RESIZEZONE is
+/// only ever sent when the user sets a header's number of lights (lighting.setZoneSize).
 /// </summary>
 public static class OpenRgbProtocol
 {
@@ -93,6 +107,7 @@ public static class OpenRgbProtocol
     public const uint RequestProtocolVersion = 40;
     public const uint SetClientName = 50;
     public const uint DeviceListUpdated = 100;
+    public const uint ResizeZone = 1000;
     public const uint UpdateLeds = 1050;
     public const uint UpdateZoneLeds = 1051;
     public const uint UpdateMode = 1101;
@@ -142,6 +157,19 @@ public static class OpenRgbProtocol
     public static byte[] ControllerCountRequest() => Packet(0, RequestControllerCount);
 
     public static byte[] ControllerDataRequest(int index, int version) => Packet((uint)index, RequestControllerData, U32((uint)version));
+
+    /// <summary>
+    /// "This zone has <paramref name="leds"/> lights": two 32-bit numbers, the zone and the new size. The server acts on
+    /// it only for zones it marks as sizeable, does not check the size against the zone's limits (the caller must),
+    /// sends no answer, and saves the size itself. The device's LED numbering changes: read the device again after.
+    /// </summary>
+    public static byte[] ResizeZonePacket(int device, int zone, int leds)
+    {
+        var payload = new byte[8];
+        BinaryPrimitives.WriteInt32LittleEndian(payload, zone);
+        BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(4), leds);
+        return Packet((uint)device, ResizeZone, payload);
+    }
 
     public static byte[] UpdateLedsPacket(int device, IReadOnlyList<uint> colors)
     {
@@ -199,7 +227,7 @@ public static class OpenRgbProtocol
         if (version is < MinVersion or > MaxVersion) throw new ArgumentOutOfRangeException(nameof(version));
         var r = new Reader(payload);
         r.U32(); // data_size
-        var c = new RgbController { Index = index, Type = r.I32(), Name = r.String(), Vendor = r.String(), Description = r.String(),
+        var c = new RgbController { Index = index, Protocol = version, Type = r.I32(), Name = r.String(), Vendor = r.String(), Description = r.String(),
             Version = r.String(), Serial = r.String(), Location = r.String() };
         var modeCount = r.U16();
         c.ActiveMode = r.I32();

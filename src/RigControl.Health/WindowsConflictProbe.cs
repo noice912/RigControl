@@ -92,6 +92,22 @@ public sealed class WindowsConflictProbe : IConflictProbe
         try { facts[ConflictFacts.PendingRestart] = PendingRestart(); }
         catch (Exception ex) { failed.Add(new("whether Windows needs a restart", ex.Message)); }
 
+        // Left out when Windows won't say: the finding then simply doesn't show.
+        var notes = new Dictionary<string, string>();
+        try
+        {
+            var (isPublic, names) = PublicHomeNetworks();
+            if (isPublic is { } yes)
+            {
+                facts[ConflictFacts.PublicNetwork] = yes;
+                if (yes && PublicNetworkNote(names) is { } note) notes[ConflictFacts.PublicNetwork] = note;
+            }
+        }
+        catch
+        {
+            // not worth a "couldn't check" line
+        }
+
         return new ConflictSnapshot
         {
             Processes = processes,
@@ -102,6 +118,7 @@ public sealed class WindowsConflictProbe : IConflictProbe
             Tasks = tasks,
             Registry = registry,
             Facts = facts,
+            FactNotes = notes,
             Counts = counts,
             Failed = failed,
         };
@@ -267,6 +284,150 @@ public sealed class WindowsConflictProbe : IConflictProbe
         {
             return null;
         }
+    }
+
+    // ---------------------------------------------------------------- network type (read-only)
+
+    /// <summary>One connected network as Windows lists it, with the adapters it runs over.</summary>
+    /// <param name="Name">The name Windows shows for it (the Wi-Fi name, "Network 2", "Unidentified network").</param>
+    /// <param name="CarriesHomeNetwork">
+    /// True when one of its adapters is a cable or Wi-Fi adapter that is up and has a router (an IPv4 default
+    /// gateway). False for VPN adapters, virtual machine switches and anything else without a router.
+    /// </param>
+    internal sealed record SeenNetwork(string Name, bool IsPublic, bool CarriesHomeNetwork);
+
+    /// <summary>
+    /// Is the home network set to Public? Only networks that carry the home network count: a VPN or a virtual
+    /// machine's network is "Public" by default in Windows, but that doesn't stop a light on the home network from
+    /// answering. True (with the names) when such a network is Public, false when none is, null when there is no
+    /// such network to judge.
+    /// </summary>
+    internal static (bool? IsPublic, IReadOnlyList<string> Names) Judge(IEnumerable<SeenNetwork> networks)
+    {
+        var home = networks.Where(n => n.CarriesHomeNetwork).ToList();
+        if (home.Count == 0) return (null, Array.Empty<string>());
+        var names = home.Where(n => n.IsPublic).Select(n => n.Name.Trim()).Where(n => n.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return (home.Any(n => n.IsPublic), names);
+    }
+
+    /// <summary>The evidence line that names the network(s), without its full stop; null when Windows gave no name.</summary>
+    internal static string? PublicNetworkNote(IReadOnlyList<string> names) => names.Count switch
+    {
+        0 => null,
+        1 => $"The network \"{names[0]}\" is set to Public",
+        _ => "These networks are set to Public: " + string.Join(", ", names.Select(n => "\"" + n + "\"")),
+    };
+
+    /// <summary>
+    /// True when a network that carries this PC's home network is set to "Public" in Windows, false when none is,
+    /// null when there is none or Windows won't say. Asks Windows' own network list; sends nothing anywhere.
+    /// </summary>
+    internal static bool? OnPublicNetwork() => PublicHomeNetworks().IsPublic;
+
+    /// <summary>The same, with the names of the networks that are Public.</summary>
+    internal static (bool? IsPublic, IReadOnlyList<string> Names) PublicHomeNetworks()
+    {
+        const int Connected = 1, Public = 0;
+        var type = Type.GetTypeFromCLSID(new Guid("DCB00C01-570F-4A9B-8D69-199FDBA5723B")); // Network List Manager
+        if (type is null) return (null, Array.Empty<string>());
+        var homeAdapters = HomeAdapterIds();
+        object? manager = null;
+        try
+        {
+            manager = Activator.CreateInstance(type);
+            if (manager is null) return (null, Array.Empty<string>());
+            var seen = new List<SeenNetwork>();
+            foreach (dynamic network in ((dynamic)manager).GetNetworks(Connected))
+            {
+                try
+                {
+                    var isPublic = (int)network.GetCategory() == Public;
+                    string name;
+                    try { name = (string)network.GetName() ?? ""; } catch { name = ""; }
+                    var home = false;
+                    foreach (object connection in network.GetNetworkConnections())
+                    {
+                        try
+                        {
+                            // The adapter's id is a GUID, which the late-bound call can't hand over: the typed interface can.
+                            if (connection is INetworkConnection typed && homeAdapters.Contains(typed.GetAdapterId())) home = true;
+                        }
+                        catch
+                        {
+                            // An adapter Windows won't name is not counted as carrying the home network.
+                        }
+                        finally
+                        {
+                            Marshal.ReleaseComObject(connection);
+                        }
+                    }
+                    // The name is Windows' own (often the Wi-Fi name); tidied before it is shown.
+                    seen.Add(new SeenNetwork(new string(name.Where(c => !char.IsControl(c)).Take(64).ToArray()), isPublic, home));
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(network);
+                }
+            }
+            return Judge(seen);
+        }
+        finally
+        {
+            if (manager is not null) Marshal.ReleaseComObject(manager);
+        }
+    }
+
+    /// <summary>Windows' own "one connection of a network" (netlistmgr.h), only as far as it is read here. Read-only.</summary>
+    [ComImport, Guid("DCB00005-570F-4A9B-8D69-199FDBA5723B"), InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    private interface INetworkConnection
+    {
+        [return: MarshalAs(UnmanagedType.Interface)] object GetNetwork();
+        bool IsConnectedToInternet { get; }
+        bool IsConnected { get; }
+        int GetConnectivity();
+        Guid GetConnectionId();
+        Guid GetAdapterId();
+        int GetDomainType();
+    }
+
+    /// <summary>The adapters that carry a home network: cable or Wi-Fi, up, with a router. Reads only.</summary>
+    private static HashSet<Guid> HomeAdapterIds()
+    {
+        var ids = new HashSet<Guid>();
+        foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+        {
+            try
+            {
+                if (nic.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                if (!IsHomeAdapter(nic.NetworkInterfaceType, nic.Description,
+                        nic.GetIPProperties().GatewayAddresses.Any(g => g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                                                                       && !g.Address.Equals(System.Net.IPAddress.Any))))
+                    continue;
+                if (Guid.TryParse(nic.Id, out var id)) ids.Add(id);
+            }
+            catch
+            {
+                // an adapter that can't be read is not counted
+            }
+        }
+        return ids;
+    }
+
+    /// <summary>A cable or Wi-Fi adapter with a router. Virtual machine adapters are left out even when one has a gateway.</summary>
+    internal static bool IsHomeAdapter(System.Net.NetworkInformation.NetworkInterfaceType type, string? description, bool hasIpv4Gateway)
+    {
+        if (!hasIpv4Gateway) return false;
+        if (type is not (System.Net.NetworkInformation.NetworkInterfaceType.Ethernet
+            or System.Net.NetworkInformation.NetworkInterfaceType.GigabitEthernet
+            or System.Net.NetworkInformation.NetworkInterfaceType.FastEthernetT
+            or System.Net.NetworkInformation.NetworkInterfaceType.FastEthernetFx
+            or System.Net.NetworkInformation.NetworkInterfaceType.Ethernet3Megabit
+            or System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211))
+            return false;
+        var d = description ?? "";
+        return !new[] { "Hyper-V", "VirtualBox", "VMware", "Virtual Ethernet", "TAP-", "WireGuard", "Wintun", "OpenVPN", "TunnelBear", "NordLynx" }
+            .Any(v => d.Contains(v, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool PendingRestart()

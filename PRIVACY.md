@@ -58,8 +58,21 @@ login or token, and it never uses another Windows user's Discord.
 
 | What | When | Details |
 |---|---|---|
-| **Nanoleaf** on your home network | When you press "Find" on the Lighting page | RigControl tries port 16021 on every address of the PC's own local network (small home networks only) to find a Nanoleaf. Other devices on the network see a short connection attempt. |
-| **Nanoleaf** you paired | While it is paired | Colours go to that Nanoleaf's address over your network (its local API on port 16021, colour stream on UDP port 60222). The Nanoleaf's access token is only ever sent to the address you paired. Nothing goes through Nanoleaf's cloud. |
+| **A search for lights** on your home network | Only when you press "Search for lights" on the Lighting page. Never by itself, never on a timer. | Only networks that have a router are searched; a VPN adapter or a virtual machine's network is never searched. Every brand is asked at once, each in its own way: a name question to the whole home network (mDNS) for WLED, LeetDesk and the Hue Bridge; one question to a group address for Yeelight (239.255.255.250, UDP port 1982) and one for Govee (239.255.255.250, UDP port 4001); and for Nanoleaf a try of port 16021 on every address of the PC's own local network (small home networks only). Other devices on the network see these short questions and connection attempts. A device that answers the name question is then asked what it is, at the address its answer came from and nowhere else. Cololight is not searched for: you type its address. The search stops by itself after about half a minute, or when you press Stop. |
+| **A light you are pairing** | When you press "Pair" | RigControl asks the light at that address what it is and, for Nanoleaf and Philips Hue, asks it for a key after you pressed the button on the light. Only addresses on a home network are accepted. |
+| **A light you paired** | While it is paired | Once in a while RigControl reads what the light is made of (how many panels or LEDs). While an effect or the screen sync runs, colours go to that light's address and nowhere else. When the effect stops, the light is put back as it was. A key the light gave at pairing (Nanoleaf's access token, Hue's application key) is only ever sent to the address it was paired with. |
+| **Yeelight fast mode** | While a Yeelight follows an effect | RigControl asks the light to connect back to this PC, so colours can be sent quickly. For that RigControl listens on one port, on your home network's address only, until the light has connected. Windows Firewall may ask once whether to allow RigControl on private networks. |
+| **Govee answers** | During a search, while pairing, and for a moment when a paired Govee light is read or starts following | Govee lights send their answers to UDP port 4002 on this PC, so RigControl listens there (on every local network address of the PC, so a light you paired by typing its address can answer too) for as long as it waits for an answer, then stops. Windows Firewall may ask once whether to allow RigControl on private networks. |
+
+All of this stays inside your home network. RigControl refuses to send light traffic to any address that is not a
+home-network address, and **no cloud account is used for lights**: not Nanoleaf's, Philips Hue's, Govee's,
+Yeelight's or anyone else's. Every brand other than Nanoleaf was built from the published protocol and has not been
+tried on a real device yet (see the README).
+
+The rest of what RigControl contacts on this PC:
+
+| What | When | Details |
+|---|---|---|
 | **OBS** on this PC (`127.0.0.1`, OBS's WebSocket port, 4455 unless you changed it) | Only while lights follow a capture card **and** OBS, Streamlabs or XSplit is running | Many capture cards open in one program at a time, so RigControl asks OBS for small pictures of the capture source instead. **To do that it reads OBS's saved WebSocket settings, including the WebSocket password, from OBS's own settings file** (`%APPDATA%\obs-studio\plugin_config\obs-websocket\config.json`). The password is used only to sign in to OBS on this PC. It is never logged, shown, stored by RigControl or sent anywhere else. Only read-only requests are made. |
 | **OpenRGB** on this PC (`127.0.0.1:6742`) | Whenever lighting is in use | RigControl runs OpenRGB hidden as a local server and sends it colours. |
 | **The browser extension link** (`127.0.0.1`, the first free port from 47610 to 47619) | While RigControl runs | RigControl listens here for the browser extension. Only this PC can reach it, and only programs of your own Windows user in your own session are answered. Websites cannot post to it. |
@@ -109,7 +122,7 @@ Everything is on your PC. Nothing is synced.
 
 | Where | What |
 |---|---|
-| `%LOCALAPPDATA%\RigControl\settings.json` | All settings: fan curves, lighting scenes and layout, hotkeys, Discord status choices and custom statuses, the paired Nanoleaf's address, name and serial number, and its access token **encrypted for your Windows user** (Windows DPAPI) |
+| `%LOCALAPPDATA%\RigControl\settings.json` | All settings: fan curves, lighting scenes and layout, hotkeys, Discord status choices and custom statuses, and for each light you paired on your network: its brand, name, model, id (serial number or hardware address) and network address, plus the key it gave at pairing (Nanoleaf's access token, Hue's application key and client key) **in protected form, encrypted for your Windows user** (Windows DPAPI). Forgetting a light removes its entry and its key. |
 | `%LOCALAPPDATA%\RigControl\logs` | Log files in plain text: what the app did and what went wrong. They can contain device names, program names and file paths. RigControl does not write passwords or tokens to them. Nothing uploads them; you choose whether to attach one to an issue. |
 | `%LOCALAPPDATA%\RigControl\presence` | The game library that was found, Discord's public game list, and the secret for the browser extension link |
 | `%LOCALAPPDATA%\RigControl\browser-extension-xxxxxxxx` | The copy of the browser extension made by "Get the browser extension" |

@@ -15,6 +15,7 @@ internal sealed class FakeProbe : IConflictProbe
     public HashSet<string> Services { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, RegistryReading> Registry { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, bool> Facts { get; } = new();
+    public Dictionary<string, string> FactNotes { get; } = new();
     public Dictionary<string, int> Counts { get; } = new();
     public List<ConflictProbeFailure> Failed { get; } = new();
     public Exception? Throw { get; set; }
@@ -33,6 +34,7 @@ internal sealed class FakeProbe : IConflictProbe
             Services = new HashSet<string>(Services, StringComparer.OrdinalIgnoreCase),
             Registry = new Dictionary<string, RegistryReading>(Registry, StringComparer.OrdinalIgnoreCase),
             Facts = new Dictionary<string, bool>(Facts),
+            FactNotes = new Dictionary<string, string>(FactNotes),
             Counts = new Dictionary<string, int>(Counts),
             Failed = Failed.ToList(),
         };
@@ -177,6 +179,33 @@ public sealed class HealthModuleTests : IDisposable
     }
 
     [Fact]
+    public async Task The_finding_names_the_network_that_is_set_to_Public()
+    {
+        var module = await StartAsync();
+        _probe.Facts[ConflictFacts.PublicNetwork] = true;
+        _probe.FactNotes[ConflictFacts.PublicNetwork] = "The network \"Home Wi-Fi\" is set to Public";
+        var finding = Assert.Single((await Call(module, "rescan")).Findings, f => f.Id == "lighting.public-network");
+        Assert.Equal("Your network is set to Public in Windows", finding.Name);
+        Assert.Equal("The network \"Home Wi-Fi\" is set to Public.", finding.Evidence);
+        Assert.Contains("the connection named above", finding.WhatToDo);
+    }
+
+    [Fact]
+    public async Task A_network_set_to_Public_is_explained_for_lights_on_the_network_and_never_gets_a_button()
+    {
+        var module = await StartAsync();
+        Assert.DoesNotContain((await Call(module, "rescan")).Findings, f => f.Id == "lighting.public-network");
+
+        _probe.Facts[ConflictFacts.PublicNetwork] = true;
+        var finding = Assert.Single((await Call(module, "rescan")).Findings, f => f.Id == "lighting.public-network");
+
+        Assert.Equal(ConflictSeverity.Info, finding.Severity);
+        Assert.Null(finding.Fix);
+        Assert.Contains("Private", finding.WhatToDo);
+        Assert.Contains("never changes", finding.WhatToDo);
+    }
+
+    [Fact]
     public async Task Without_an_answer_from_the_probe_elevated_comes_from_the_app()
     {
         Assert.True((await Call(await StartAsync(elevated: true), "getReport")).System.Elevated);
@@ -270,6 +299,67 @@ public sealed class TaskFileTests : IDisposable
             $"<Settings>{setting}<Hidden>false</Hidden></Settings>" +
             "<Actions><Exec><Command>x.exe</Command></Exec></Actions></Task>",
             System.Text.Encoding.Unicode);
+    }
+
+    [Fact]
+    public void A_VPN_or_a_virtual_machines_network_set_to_Public_does_not_count_when_the_home_network_is_Private()
+    {
+        // Home Wi-Fi is Private; VirtualBox's host-only network and a VPN are "Public" by Windows' default.
+        var (isPublic, names) = WindowsConflictProbe.Judge(new[]
+        {
+            new WindowsConflictProbe.SeenNetwork("Home Wi-Fi", IsPublic: false, CarriesHomeNetwork: true),
+            new WindowsConflictProbe.SeenNetwork("Unidentified network", IsPublic: true, CarriesHomeNetwork: false),
+            new WindowsConflictProbe.SeenNetwork("NordLynx", IsPublic: true, CarriesHomeNetwork: false),
+        });
+        Assert.False(isPublic);
+        Assert.Empty(names);
+    }
+
+    [Fact]
+    public void A_home_network_set_to_Public_is_named()
+    {
+        var (isPublic, names) = WindowsConflictProbe.Judge(new[]
+        {
+            new WindowsConflictProbe.SeenNetwork("Home Wi-Fi", IsPublic: true, CarriesHomeNetwork: true),
+            new WindowsConflictProbe.SeenNetwork("Unidentified network", IsPublic: true, CarriesHomeNetwork: false),
+        });
+        Assert.True(isPublic);
+        Assert.Equal(new[] { "Home Wi-Fi" }, names);
+        Assert.Equal("The network \"Home Wi-Fi\" is set to Public", WindowsConflictProbe.PublicNetworkNote(names));
+        Assert.Equal("These networks are set to Public: \"Cable\", \"Wi-Fi\"", WindowsConflictProbe.PublicNetworkNote(new[] { "Cable", "Wi-Fi" }));
+        Assert.Null(WindowsConflictProbe.PublicNetworkNote(Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void With_only_VPN_or_virtual_networks_there_is_nothing_to_judge()
+    {
+        var (isPublic, _) = WindowsConflictProbe.Judge(new[] { new WindowsConflictProbe.SeenNetwork("Unidentified network", true, false) });
+        Assert.Null(isPublic);
+        Assert.Null(WindowsConflictProbe.Judge(Array.Empty<WindowsConflictProbe.SeenNetwork>()).IsPublic);
+    }
+
+    [Theory]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "Intel(R) Ethernet Controller I226-V", true, true)]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211, "Intel(R) Wi-Fi 6E AX211", true, true)]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "Intel(R) Ethernet Controller I226-V", false, false)] // no router
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "VirtualBox Host-Only Ethernet Adapter", true, false)]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "Hyper-V Virtual Ethernet Adapter", true, false)]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, "TAP-Windows Adapter V9", true, false)]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Tunnel, "WireGuard Tunnel", true, false)]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Ppp, "VPN connection", true, false)]
+    [InlineData(System.Net.NetworkInformation.NetworkInterfaceType.Loopback, "Loopback", true, false)]
+    public void Only_a_cable_or_wifi_adapter_with_a_router_carries_the_home_network(
+        System.Net.NetworkInformation.NetworkInterfaceType type, string description, bool hasRouter, bool expected)
+    {
+        Assert.Equal(expected, WindowsConflictProbe.IsHomeAdapter(type, description, hasRouter));
+    }
+
+    [Fact]
+    public void Asking_Windows_whether_the_network_is_Public_only_reads_and_never_throws()
+    {
+        // Whatever this PC is connected to (yes, no, or "can't tell"), it must never throw.
+        var error = Record.Exception(() => { _ = WindowsConflictProbe.OnPublicNetwork(); });
+        Assert.Null(error);
     }
 
     [Fact]

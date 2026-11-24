@@ -93,7 +93,41 @@ For bugs that are not security problems, open a normal issue.
   trust.
 - OBS's WebSocket password is read from OBS's own settings to sign in to OBS on this PC, for read-only requests. It
   is never logged, shown or stored by RigControl.
-- The Nanoleaf token is stored encrypted for your Windows user and is only sent to the address you paired.
+
+### Lights on your network
+
+- **Pairing keys.** Nanoleaf gives an access token at pairing; a Philips Hue Bridge gives an application key and a
+  client key. They are protected with Windows data protection (DPAPI) for the signed-in Windows user before they
+  are written to the settings file, and they are never written to the log or shown in the interface.
+- **A key only goes to the light it came from.** One central check in the code fills a key into a request only when
+  the request goes to the address that key was paired with. A request that would carry a key anywhere else is
+  refused before anything is sent. A paired light with a key is never moved to a new address by a search: you pair
+  it again.
+- **Home network only.** Light traffic is refused for any address that is not a home-network address (or this PC
+  itself). Requests to lights do not follow redirects, do not go through a proxy and carry no cookies.
+- **Philips Hue.** The bridge is spoken to over https. Its certificate must carry the bridge's own id, and the
+  certificate seen at pairing is remembered (pinned): later requests are refused if the bridge shows a different
+  one. Pair the bridge again if it was replaced or reset.
+- **Lights without a key.** Govee, Yeelight, WLED, LeetDesk and Cololight lights have no key at all. Anyone on the
+  same network can control such a light, with or without RigControl. That is how those lights work; keep them on a
+  network you trust. The colour stream to a Nanoleaf is not encrypted either.
+- **Searching** only happens when you press Search for lights, and only on networks that have a router (never a
+  VPN adapter or a virtual switch). Answers from the network are treated as untrusted:
+  - A device speaks for itself only. A light that announces itself is asked what it is at the address its answer
+    really came from, on that brand's usual port, and only when that address is on a searched network. An
+    announcement cannot point RigControl at another address or port.
+  - A found light with an address outside the home network is dropped. At most 64 lights of one brand are listed.
+  - Names, models and ids from a device are cut to a short length and stripped of control characters before they
+    are shown, saved or written to the log.
+  - An answer longer than 1 MB is dropped unread.
+  - A light without a key that answers from a new address is noted there only when it no longer answers at its old
+    address and only one device claims to be it.
+- **Listening.** While it waits for an answer from a Govee light (a search, pairing, reading a paired light)
+  RigControl listens on UDP port 4002 and takes an answer only from the address it asked. Yeelight's fast mode makes
+  it listen on one port on your home network's address until the light has connected; only a connection from that
+  light's own address is taken.
+- No cloud account, sign-in or OAuth is used for lights.
+- Every brand other than Nanoleaf was built from published protocols and has not been tried on a real device yet.
 
 ### Discord
 
@@ -115,6 +149,8 @@ under "Safety" in the [README](README.md).
 - Settings in `%LOCALAPPDATA%\RigControl\settings.json` can be changed by any program you run. RigControl treats
   that file as untrusted for anything that installs software or changes a service, but a program on your PC could
   still change your fan curves or lighting through it.
+- The settings file also holds each paired light's address and its key in protected form. Another program running
+  as your Windows user can ask Windows to unprotect that key, as with any data protected this way.
 - Hardware control was tested on one PC. On other hardware a wrong assumption is possible; the README says which
   parts are untested.
 - The log folder is plain text. Look through a log before you attach it to a public issue.

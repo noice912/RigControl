@@ -109,6 +109,28 @@ Albert Pool, Martin Mares and other volunteers of the PCI ID Project.
 | NVIDIA Profile Inspector | Setting ids for DLSS and RTX HDR come from its `CustomSettingNames.xml`. | MIT | https://github.com/Orbmu2k/nvidiaProfileInspector |
 | OpenRGB SDK protocol | RigControl has its own client for OpenRGB's network protocol, written from OpenRGB's source and documentation. | GPL-2.0-only (OpenRGB) | https://codeberg.org/OpenRGB/OpenRGB |
 
+### Lights on your network: protocol descriptions
+
+RigControl's code for Wi-Fi lights and for setting the number of lights on a header was written from these projects'
+documentation and observed behaviour. **No code was copied from any of them**, and none of them is carried in the
+exe. They are named here to say thank you and to say where the knowledge comes from. Apart from Nanoleaf, none of
+this has been tried on a real device yet.
+
+| Project | What it was used for | Licence | Source |
+|---|---|---|---|
+| WLED and its documentation | How a WLED light is found, read and sent colours | EUPL-1.2 | https://github.com/wled/WLED, https://kno.wled.ge |
+| Yeelight WiFi Light Inter-Operation Specification | Yeelight's local protocol (search, commands, fast mode) | The maker's published specification | https://www.yeelight.com |
+| python-yeelight | How Yeelight lights behave in practice | BSD-2-Clause | https://gitlab.com/stavros/python-yeelight |
+| govee-local-api | Govee's LAN protocol | Apache-2.0 | https://github.com/Galorhallen/govee-local-api |
+| govee2mqtt | Govee's LAN protocol and its limits | MIT | https://github.com/wez/govee2mqtt |
+| OpenRGB | Govee's per-piece colour stream, and how a header's number of lights is set (zone resize) | GPL-2.0-only | https://codeberg.org/OpenRGB/OpenRGB |
+| pycololight | The Cololight messages (LifeSmart publishes none) | MIT | https://github.com/BazaJayGee66/pycololight |
+| Hyperion.ng | How a Hue Bridge is paired and driven | MIT | https://github.com/hyperion-project/hyperion.ng |
+| aiohue and Home Assistant | The Hue Bridge's local API in practice | Apache-2.0 | https://github.com/home-assistant-libs/aiohue |
+| Q42.HueApi | The Hue Bridge's local API in practice | MIT | https://github.com/michielpost/Q42.HueApi |
+| OpenHue | A written description of the Hue Bridge's local API | Apache-2.0 | https://github.com/openhue/openhue-api |
+| SignalRGB's public LeetDesk add-on | Behaviour only: which pages a LeetDesk Aura answers on. LeetDesk publishes no protocol. | Not checked; nothing was copied | SignalRGB's public add-on collection |
+
 ## 6. Used by tests only (not carried in the exe)
 
 xunit 2.9.x (Apache-2.0), xunit.runner.visualstudio (Apache-2.0), Microsoft.NET.Test.Sdk (MIT).
@@ -125,6 +147,7 @@ RigControl works with these but does not carry them, and none of their code is i
 
 ## Trademarks
 
-NVIDIA, GeForce, NZXT, Kraken, ASUS, ROG, GIGABYTE, Razer, Nanoleaf, Discord, Intel, AMD, Ryzen, Microsoft, Windows
-and the other product names in this repository belong to their owners. RigControl is not made, endorsed or supported
+NVIDIA, GeForce, NZXT, Kraken, ASUS, ROG, GIGABYTE, Razer, Nanoleaf, Philips Hue (Signify), Govee, Yeelight, WLED,
+LifeSmart Cololight, LeetDesk, Corsair, Thermaltake, Lian Li, Discord, Intel, AMD, Ryzen, Microsoft, Windows and
+the other product names in this repository belong to their owners. RigControl is not made, endorsed or supported
 by any of them.

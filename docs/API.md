@@ -229,6 +229,7 @@ Event `cooling.status` → `CoolingStatus`, about once per second.
 | `lighting.installOpenRgb` | – | `{ started: boolean, message }`. Opens OpenRGB's own download page in the browser (winget has no current package, and RigControl never installs programs itself). |
 | `lighting.setColor` | `{ deviceIds?: number[], color }` (omit ids = every device) | `LightingStatus` |
 | `lighting.setZoneColor` | `{ deviceId, zoneId, color }` | `LightingStatus` |
+| `lighting.setZoneSize` | `{ deviceId, zone, leds }` | `LightingStatus`. Sets how many lights hang on a header (a strip, or daisy-chained fans). Only for zones with `resizable: true`, within `ledsMin`..`ledsMax`; Lian Li fan hubs take multiples of 16 only. Call it only when the user asks: OpenRGB saves the number itself and keeps it after a restart. Errors: `invalidArgs` (unknown device/zone, size outside the limits), `unavailable` (fixed zone, device left to its own program, OpenRGB not running). |
 | `lighting.setMode` | `{ deviceId, modeId, colors?: string[], speed?: number, brightness?: number }` | `LightingStatus` |
 | `lighting.off` | `{ deviceIds?: number[] }` | `LightingStatus` |
 | `lighting.listScenes` | – | `{ name, savedAt }[]` |
@@ -247,7 +248,9 @@ type LightingStatus = {
 type LightDevice = {
   id: number; name: string; type: string; vendor: string;
   ledCount: number;
-  zones: { id: number; name: string; ledCount: number }[];
+  zones: { id: number; name: string; ledCount: number;
+           ledsMin: number; ledsMax: number;       // the device's own limits for this zone
+           resizable: boolean }[];                 // true = the user may set ledCount with lighting.setZoneSize
   modes: { id: number; name: string; colorCount: number; supportsSpeed: boolean; supportsBrightness: boolean;
            speedMin: number|null; speedMax: number|null; brightnessMin: number|null; brightnessMax: number|null }[];
   activeModeId: number;
@@ -256,6 +259,83 @@ type LightDevice = {
 ```
 
 Event `lighting.changed` → `LightingStatus`.
+
+### lighting: network lights (Wi-Fi lights, local control only)
+
+Lights paired over the user's own network: Nanoleaf, and whichever other brands this build has a provider for (see
+`brands`). No cloud account is ever used. Pairing keys are kept protected for the Windows user in the settings file and
+are only ever sent to the address they were paired with. Nothing is searched for until `scanNetworkLights` is called.
+
+| Method | Params | Result |
+|---|---|---|
+| `lighting.getNetworkLights` | – | `NetworkLights`. Sends nothing to the network by itself (it only reads each paired light's description once, in the background). |
+| `lighting.scanNetworkLights` | `{ brand?: string }` (omit = every brand) | `NetworkLights` once the search is over (every brand at the same time, each for a bounded time; allow 35 s). Call only on the user's click. Only networks with a router are searched (never a VPN adapter or a virtual switch), and at most 64 lights of a brand are listed. When the user stopped it, the result has `scanStopped: true` and `scanFinished` names the brands that were done: only those count as searched. Errors: `invalidArgs` (unknown brand), `unavailable` (a search is already running). |
+| `lighting.cancelNetworkScan` | – | `NetworkLights`. Stops a running search. What the brands that were already done had found is kept; a brand that was still searching keeps what it had found earlier. The stopped `scanNetworkLights` call then returns with `scanStopped: true`. |
+| `lighting.pairNetworkLight` | `{ brand, address, options?: { [key]: value } }` | `NetworkLights`. `address` is a private IPv4 address (a found light's, or typed by the user when the brand's `manualAddress` is true). `options` answers the brand's `options`. Some brands wait for a button press: allow 50 s. Errors: `invalidArgs` (unknown brand, address not on the home network, bad option), `unavailable` (the light refused or didn't answer; the message says what to do, and starts with "Not paired:" when the device paired but has nothing RigControl can colour). A light that paired but couldn't be read straight away is still saved: it comes back in `paired` with a `problem`, and is read again in the background. |
+| `lighting.forgetNetworkLight` | `{ id }` (a paired light's `id`) | `NetworkLights`. The light is put back as it was if it was following; its box stays on the layout as "not connected", so pairing it again puts it back in place. Error: `invalidArgs` (not paired). |
+
+```ts
+type NetworkLights = {
+  brands: NetworkBrand[];            // every brand this build can drive
+  paired: NetworkLight[];
+  found: FoundLight[];               // from the last search(es)
+  scanning: boolean;
+  scanProblems: string[];            // plain sentences, e.g. "WLED: the search took too long and was stopped."
+  notSupported: { brand: string; name: string; why: string }[];   // asked-for things that can't be done locally, and why
+  scanStopped: boolean;              // the last search was stopped by the user before every brand had finished
+  scanFinished: string[];            // brands whose search ran to its end in the last search
+};
+
+type NetworkBrand = {
+  brand: string;                     // id used in calls and keys, e.g. "wled"
+  name: string;                      // "WLED"
+  tested: boolean;                   // false = built but not tried on real hardware: the page must say so
+  notes: string;                     // what this brand can and can't do here
+  steps: string[];                   // pairing instructions, in order
+  returnsSecret: boolean;            // true = the light hands over a key at pairing (kept protected)
+  manualAddress: boolean;            // true = the user may type the light's address
+  options: { key: string; label: string; choices: { value: string; label: string }[]; default: string | null }[];
+  nothingFound: string | null;       // what to check when a search finds none of this brand
+  maxFramesPerSecond: number;
+  canSearch: boolean;                // false = can't be searched for (Cololight): show the address box only, no search button
+  followsUnplaced: boolean;          // false = a paired light is left alone until it is placed on the layout (Nanoleaf, Philips Hue)
+};
+
+type NetworkLight = {
+  id: string;                        // also its key on the layout: "net|<brand>|<deviceId>" ("nanoleaf|<name>|<serial>" for a Nanoleaf)
+  brand: string; brandName: string;
+  deviceId: string;                  // the device's own id (serial number, MAC address)
+  name: string; model: string; address: string;
+  tested: boolean;
+  kind: "single" | "strip" | "points";   // one colour / lights in a row / lights with known places
+  points: number;                    // how many light points (0 until it has been read)
+  pointName: string;                 // "panel", "LED", "light"
+  placed: boolean;                   // has a box on the layout
+  streaming: boolean;                // takes colours from RigControl right now
+  problem: string | null;            // plain sentence when it doesn't answer
+  note: string | null;
+};
+
+type FoundLight = { brand: string; brandName: string; deviceId: string; name: string; model: string; address: string; paired: boolean };
+```
+
+Layout: every paired light is one zone in `lighting.getLayout` with `key` = its `id` and `zone` = -1. Place it with
+`lighting.setLayout` like any other zone. A `strip` is cut into equal slices along the longer side of its box
+(`reverse` turns it round); `points` take the picture under their own place inside the box; a `single` light takes
+its whole box. While an effect or the screen sync runs, a placed light follows its part of the picture; a paired
+light that is not placed follows the one overall colour, unless its brand has `followsUnplaced: false` (a Nanoleaf
+and a Philips Hue Bridge are left alone until they are placed). A placed Hue Bridge drives the colour lights of its
+entertainment area only (every colour light when the bridge has no such area). When the sync stops, or the light
+leaves the layout, it is put back as it was; the log says so only when that worked.
+
+Lights on the network do not need OpenRGB. With at least one paired, the effects (`lighting.setSync { enabled: true }`)
+can be switched on and keep playing on them while OpenRGB is not connected; the sync's `status` then ends in
+"(the PC's own lights are waiting for OpenRGB)". With none paired and OpenRGB not connected, switching the effects on
+fails with `unavailable`.
+
+The older Nanoleaf calls still work and act on the same paired Nanoleaf: `lighting.getNanoleaf`,
+`lighting.findNanoleaf`, `lighting.pairNanoleaf { ip }`, `lighting.forgetNanoleaf`, each returning
+`{ paired, ip, name, panels, streaming, problem, found }`.
 
 ## Additions: cooler screen and Armoury Crate
 

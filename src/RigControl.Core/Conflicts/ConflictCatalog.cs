@@ -41,6 +41,11 @@ public static class ConflictCatalog
     private const string LightsBreak = "It also sets the PC's lights, so colours can flicker or switch back.";
     private static string LightsDo(string name) => $"Turn off lighting control in {name}, or close it.";
 
+    private static string HoldsBreak(string what) =>
+        $"While it runs it holds {what}, so they can be missing from RigControl's Lighting page, flicker, or switch back to its colours.";
+    private static string HoldsDo(string name) =>
+        $"Quit {name} from its icon next to the clock (closing its window is not enough), then press Reconnect on the Lighting page. Or leave those lights to {name}.";
+
     private const string FansBreak = "It also talks to the motherboard's sensor chip and can set fan speeds, so readings can glitch and fans may not follow RigControl.";
     private static string FansDo(string name) => $"Use one program for fan control. Turn fan control off in {name}, or close it.";
 
@@ -184,13 +189,15 @@ public static class ConflictCatalog
             "It also sets the graphics card's lights, and two programs writing at once can lock the card's light chip.",
             "Use Take over on the Lighting page, or leave the graphics card's lights to GIGABYTE Control Center.",
             P(GccProcess), tasks: P(GccTask), verified: true, fix: TakeOverGcc);
-        yield return App("lighting.razer-synapse", Lighting, "Razer Synapse", Warn, LightsBreak, LightsDo("Razer Synapse"),
+        yield return App("lighting.razer-synapse", Lighting, "Razer Synapse", Warn, HoldsBreak("Razer devices and Razer's light strip controller"),
+            HoldsDo("Razer Synapse"),
             P("RazerAppEngine", "Razer Synapse 3"), verified: true);
         yield return App("lighting.razer-chroma", Lighting, "Razer Chroma", Warn,
             "Razer's Chroma service keeps setting Razer lights even when Synapse is closed.",
             "Turn off Chroma effects in Razer Synapse, or close Razer's apps.",
             P("RazerChromaSDKServer", "Razer Chroma SDK Server"), services: P("Razer Chroma SDK Service", "Razer Chroma SDK Server"));
-        yield return App("lighting.icue", Lighting, "Corsair iCUE", Warn, LightsBreak, LightsDo("iCUE"),
+        yield return App("lighting.icue", Lighting, "Corsair iCUE", Warn, HoldsBreak("Corsair's controllers (Commander, Lighting Node)"),
+            HoldsDo("iCUE"),
             P("iCUE"), verified: true);
         yield return App("lighting.corsair-service", Lighting, "Corsair background service", Info,
             "Corsair's service can keep setting Corsair lights after iCUE's window is closed.",
@@ -198,6 +205,12 @@ public static class ConflictCatalog
             P("Corsair.Service", "CueLLAccessService"), services: P("CorsairService", "CorsairLLAService"));
         yield return App("lighting.signalrgb", Lighting, "SignalRGB", Warn, LightsBreak, LightsDo("SignalRGB"),
             P("SignalRgb"), verified: true);
+        yield return App("lighting.tt-rgb-plus", Lighting, "Thermaltake TT RGB Plus", Warn, HoldsBreak("Thermaltake's fan and light controllers"),
+            HoldsDo("TT RGB Plus"),
+            P("TT RGB Plus"));
+        yield return App("lighting.l-connect", Lighting, "Lian Li L-Connect", Warn, HoldsBreak("Lian Li's fan hubs"),
+            HoldsDo("L-Connect"),
+            P("L-Connect 3", "L-Connect 2"));
         yield return App("lighting.msi-center", Lighting, "MSI Center (Mystic Light)", Warn, LightsBreak, LightsDo("MSI Center"),
             P("MSI Center", "MSI.CentralServer", "MysticLight", "LEDKeeper2"), services: P("MSI Central Service", "Mystic_Light_Service"));
         yield return App("lighting.rgb-fusion", Lighting, "GIGABYTE RGB Fusion", Warn, LightsBreak, LightsDo("RGB Fusion"),
@@ -224,6 +237,15 @@ public static class ConflictCatalog
             "Windows can take over keyboards, mice and other devices that support Dynamic Lighting.",
             "If a device ignores RigControl's colours, open Settings > Personalisation > Dynamic Lighting and turn it off for that device.",
             new[] { User(@"Software\Microsoft\Lighting", "AmbientLightingEnabled", RegistryCheck.Is, 1) }, verified: true);
+        // Explain only: the network type is a Windows security setting, and RigControl never changes it.
+        // Only a network that carries the home network counts (Wi-Fi or cable, with a router): a VPN or a virtual
+        // machine's network set to Public doesn't stop answers on the home network, and is not reported.
+        yield return new ConflictEntry("lighting.public-network", Lighting, "Your network is set to Public in Windows", ConflictKind.Setting,
+            new ConflictDetect { Facts = new[] { ConflictFacts.PublicNetwork } },
+            Info,
+            "On a Public network Windows Firewall blocks most answers from other devices. Search for lights (on the Lighting page) may find nothing, and Govee and Yeelight lights can't answer this PC. Lights on the PC itself are not affected.",
+            "Only if this is your own home network: open Settings > Network & internet, pick the connection named above and set Network profile type to Private. Leave it on Public anywhere you don't trust the network. RigControl never changes this.",
+            Verified: false, Fix: null, ExplainOnly: true);
     }
 
     private static IEnumerable<ConflictEntry> CoolingEntries()

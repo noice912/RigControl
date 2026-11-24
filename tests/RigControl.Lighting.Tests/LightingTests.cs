@@ -165,6 +165,8 @@ internal sealed class FakeRgb : IOpenRgb
     public bool ListChanged { get; set; }
     public List<RgbController> Devices { get; } = new();
     public List<string> Sent { get; } = new();
+    /// <summary>Set to make every colour and effect write fail, as when OpenRGB stops answering.</summary>
+    public Exception? FailWrites { get; set; }
 
     public string? FindExecutable() => Executable;
     public bool IsListening() => Listening;
@@ -191,6 +193,7 @@ internal sealed class FakeRgb : IOpenRgb
 
     public void UpdateMode(int device, int modeIndex, RgbMode mode)
     {
+        if (FailWrites is not null) throw FailWrites;
         Sent.Add($"mode {device} {modeIndex} cm={mode.ColorMode} speed={mode.Speed} bright={mode.Brightness} dir={mode.Direction} colors=[{string.Join(",", mode.Colors.Select(OpenRgbProtocol.ColorToHex))}]");
         var c = Devices[device];
         c.ActiveMode = modeIndex;
@@ -199,12 +202,23 @@ internal sealed class FakeRgb : IOpenRgb
 
     public void UpdateLeds(int device, IReadOnlyList<uint> colors)
     {
+        if (FailWrites is not null) throw FailWrites;
         Sent.Add($"leds {device} n={colors.Count} {OpenRgbProtocol.ColorToHex(colors[0])}");
         Devices[device].Colors = colors.ToList();
     }
 
     public void UpdateZoneLeds(int device, int zone, IReadOnlyList<uint> colors)
         => Sent.Add($"zone {device} {zone} n={colors.Count} {OpenRgbProtocol.ColorToHex(colors[0])}");
+
+    public void ResizeZone(int device, int zone, int leds)
+    {
+        Sent.Add($"resize {device} {zone} {leds}");
+        // As OpenRGB does: the zone gets that many lights and the device's colour list is rebuilt.
+        var c = Devices[device];
+        c.Zones[zone].LedsCount = (uint)leds;
+        c.Colors = Enumerable.Repeat(0u, c.Zones.Sum(z => (int)z.LedsCount)).ToList();
+        c.LedCount = c.Colors.Count;
+    }
 
     public bool DeviceListChanged()
     {

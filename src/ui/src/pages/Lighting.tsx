@@ -94,6 +94,101 @@ function ColorChooser(props: {
   );
 }
 
+type LightZone = LightDevice["zones"][number];
+
+/** Lian Li fan hubs count 16 lights for each fan, whatever the fan really has. */
+const isLianLiHub = (name: string) => /lian li/i.test(name) && /hub/i.test(name);
+
+/**
+ * How many lights hang on a header. Only sent when the user presses Set: OpenRGB keeps the number, and a wrong one
+ * leaves lights dark or lights ones that aren't there.
+ */
+function HeaderSize(props: {
+  device: LightDevice;
+  zone: LightZone;
+  onStatus: (s: LightingStatus) => void;
+}) {
+  const { device: d, zone: z } = props;
+  const [text, setText] = useState(String(z.ledCount));
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const toast = useToast();
+  const leds = /^\d+$/.test(text.trim()) ? Number(text.trim()) : null;
+  const hub = isLianLiHub(d.name);
+  const max = Math.min(z.ledsMax, 2048);
+
+  const set = async () => {
+    if (leds === null) return;
+    setSaving(true);
+    setProblem(null);
+    try {
+      const r = await call<LightingStatus>(
+        "lighting.setZoneSize",
+        { deviceId: d.id, zone: z.id, leds },
+        20000,
+      );
+      props.onStatus(r);
+      toast.show(
+        `${z.name}: ${leds} light${leds === 1 ? "" : "s"}`,
+        "ok",
+      );
+    } catch (err) {
+      setProblem(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="field">
+      <div className="field-label">
+        <span>Lights on this header</span>
+        <span className="sub">
+          Tell RigControl how many lights are plugged into this header: count
+          the LEDs of the strip, or add up every fan on the chain. OpenRGB
+          remembers the number.
+          {hub
+            ? " This hub counts 16 lights for each fan, so use a multiple of 16."
+            : ""}
+        </span>
+        {z.ledCount === 0 && (
+          <span className="sub header-empty">
+            No lights set for this header yet.
+          </span>
+        )}
+        {problem && (
+          <span className="sub header-empty" role="alert">
+            {problem}
+          </span>
+        )}
+      </div>
+      <div className="field-control header-size">
+        <input
+          className="input num"
+          type="number"
+          min={z.ledsMin}
+          max={max}
+          step={hub ? 16 : 1}
+          value={text}
+          aria-label={`Lights on ${z.name}`}
+          disabled={saving}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <span className="sub">
+          {z.ledsMin} to {max}
+        </span>
+        <button
+          className="btn small"
+          disabled={saving || leds === null || leds === z.ledCount}
+          onClick={() => void set()}
+        >
+          {saving ? "Setting…" : "Set"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DeviceRow(props: {
   device: LightDevice;
   color: string;
@@ -143,6 +238,9 @@ function DeviceRow(props: {
             : mode
               ? `, ${mode.name}`
               : ""}
+          {!d.leftOut && d.zones.some((z) => z.resizable && z.ledCount === 0)
+            ? ". A header has no lights set yet: press More to set how many."
+            : ""}
         </div>
       </div>
       {!d.leftOut && (
@@ -230,30 +328,47 @@ function DeviceRow(props: {
                 </div>
               </div>
             )}
-          {d.zones.length > 1 &&
-            d.zones.map((z) => (
-              <div className="field" key={z.id}>
-                <div className="field-label">
-                  <span>{z.name}</span>
-                  <span className="sub">{z.ledCount} LEDs</span>
+          {d.zones
+            .filter((z) => d.zones.length > 1 || z.resizable)
+            .map((z) => (
+              <div key={z.id}>
+                <div className="field">
+                  <div className="field-label">
+                    <span>{z.name}</span>
+                    <span className="sub">
+                      {z.resizable && z.ledCount === 0
+                        ? "No lights set for this header yet"
+                        : `${z.ledCount} LED${z.ledCount === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                  <div className="field-control">
+                    {d.zones.length > 1 && (
+                      <button
+                        className="btn small"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          void run("zone", () =>
+                            call<LightingStatus>("lighting.setZoneColor", {
+                              deviceId: d.id,
+                              zoneId: z.id,
+                              color: props.color,
+                            }),
+                          ).then((r) => r && props.onStatus(r))
+                        }
+                      >
+                        Use this colour here
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="field-control">
-                  <button
-                    className="btn small"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      void run("zone", () =>
-                        call<LightingStatus>("lighting.setZoneColor", {
-                          deviceId: d.id,
-                          zoneId: z.id,
-                          color: props.color,
-                        }),
-                      ).then((r) => r && props.onStatus(r))
-                    }
-                  >
-                    Use this colour here
-                  </button>
-                </div>
+                {z.resizable && (
+                  <HeaderSize
+                    key={z.ledCount}
+                    device={d}
+                    zone={z}
+                    onStatus={props.onStatus}
+                  />
+                )}
               </div>
             ))}
         </div>
@@ -561,11 +676,29 @@ export function Lighting() {
             </div>
           </section>
 
-          <LightSyncPanel />
+        </>
+      )}
 
+      {/* Lights on the network need no OpenRGB, so the effects and the network lights show without it too. */}
+      {o && <LightSyncPanel openRgb={o.connected} />}
+
+      {o?.connected && (
+        <>
           <section className="panel">
             <div className="panel-head">
-              <h2>Devices</h2>
+              <div>
+                <h2>Devices</h2>
+                <div className="sub">
+                  Everything in this list comes through OpenRGB. Only NZXT and
+                  Razer devices have been tried on real hardware. Addressable
+                  and plain RGB headers, Corsair Commander and Lighting Node,
+                  Thermaltake Riing controllers and Lian Li Uni hubs are built
+                  in but not tried on real hardware yet. If the maker's own
+                  program is running (iCUE, TT RGB Plus, L-Connect, Synapse,
+                  NZXT CAM), it may fight RigControl over the same device.
+                  RigControl tells you when it sees one and never closes it.
+                </div>
+              </div>
             </div>
             {status!.devices.length === 0 ? (
               <div className="empty">

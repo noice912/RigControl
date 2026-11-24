@@ -31,6 +31,12 @@ public interface IOpenRgb : IDisposable
     void UpdateLeds(int device, IReadOnlyList<uint> colors);
     void UpdateZoneLeds(int device, int zone, IReadOnlyList<uint> colors);
 
+    /// <summary>
+    /// Tells OpenRGB how many lights hang on a header. Only on the user's own request. OpenRGB saves the number
+    /// itself; the device must be read again afterwards (its lights are numbered afresh).
+    /// </summary>
+    void ResizeZone(int device, int zone, int leds);
+
     /// <summary>True (once) if the server announced that its device list changed since the last call.</summary>
     bool DeviceListChanged();
 }
@@ -386,6 +392,8 @@ public sealed class OpenRgbServer : IOpenRgb
     public void UpdateLeds(int device, IReadOnlyList<uint> colors) => Send(OpenRgbProtocol.UpdateLedsPacket(device, colors));
 
     public void UpdateZoneLeds(int device, int zone, IReadOnlyList<uint> colors) => Send(OpenRgbProtocol.UpdateZoneLedsPacket(device, zone, colors));
+
+    public void ResizeZone(int device, int zone, int leds) => Send(OpenRgbProtocol.ResizeZonePacket(device, zone, leds));
 
     public bool DeviceListChanged()
     {

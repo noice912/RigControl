@@ -68,6 +68,7 @@ public class ConflictCatalogTests
     [InlineData("system.vpn")]
     [InlineData("cooling.nzxt-cam")]
     [InlineData("lighting.nzxt-cam")]
+    [InlineData("lighting.public-network")]
     public void Security_settings_VPNs_and_NZXT_CAM_are_explained_and_never_get_a_fix(string id)
     {
         var e = Get(id);
@@ -255,6 +256,10 @@ public class ConflictCatalogTests
     [InlineData("drivers.windows-update")]
     [InlineData("system.not-elevated")]
     [InlineData("system.other-session")]
+    // what gets in the way of lights on headers, hubs and the home network
+    [InlineData("lighting.tt-rgb-plus")]
+    [InlineData("lighting.l-connect")]
+    [InlineData("lighting.public-network")]
     public void The_catalog_covers(string id)
     {
         Assert.Contains(ConflictCatalog.All, e => e.Id == id);

@@ -17,6 +17,7 @@ import type {
   HealthFinding,
   HealthReport,
   LightingStatus,
+  NetworkLights,
   ModuleInfo,
   NvidiaOverclock,
   NvidiaPower,
@@ -256,6 +257,41 @@ export function createMockBackend() {
     conflicts: [],
   };
   const scenes: Scene[] = [];
+
+  // ---- lights on the network (example addresses only)
+  let netLights: NetworkLights = {
+    // The same words the real providers give (src/RigControl.Lighting/Network/Providers).
+    brands: [
+      {"brand": "nanoleaf", "name": "Nanoleaf", "tested": true, "notes": "Panels, Shapes and Lines. Every panel takes its own part of the picture. Tried on Nanoleaf Lines.", "steps": ["Press Search for lights and wait for your Nanoleaf to show up.", "Hold the Nanoleaf's power button for 5 to 7 seconds, until its lights flash.", "Press Pair within 30 seconds."], "returnsSecret": true, "manualAddress": true, "options": [], "nothingFound": "No Nanoleaf answered on this network. Check it's on the same Wi-Fi or router as this PC, then search again.", "maxFramesPerSecond": 10, "canSearch": true, "followsUnplaced": false},
+      {"brand": "hue", "name": "Philips Hue", "tested": false, "notes": "A Hue Bridge and its colour lights. Nothing is touched until you place the bridge on the layout. Then every colour light in the bridge's entertainment area follows and is switched on while it does (with no entertainment area: every colour light on the bridge, in every room). When the sync stops, each light goes back to how it was, on or off. Each light follows as one colour a few times a second. Gradient strips piece by piece and fast sync need Hue's Entertainment stream, which is not built yet. Built from open-source descriptions of the protocol; not yet tried on a real bridge.", "steps": ["Press Search for lights and wait for your Hue Bridge to show up (or type the bridge's address).", "Press the round button on top of the Hue Bridge.", "Press Pair within 30 seconds.", "In the Hue app, make an entertainment area with the lights that should follow (Settings > Entertainment areas). Without one, every colour light on the bridge follows.", "Turn Per LED on and place the bridge on the Layout. Until then no Hue light is touched. Lights that follow are switched on, and go back to how they were when the sync stops."], "returnsSecret": true, "manualAddress": true, "options": [], "nothingFound": "No Hue Bridge answered on this network. Check it's plugged into the same router as this PC, or type its address (the Hue app shows it in the bridge's details).", "maxFramesPerSecond": 5, "canSearch": true, "followsUnplaced": false},
+      {"brand": "wled", "name": "WLED", "tested": false, "notes": "Strips and matrices running WLED. Every LED takes its own part of the picture. Built from WLED's published protocol and not yet tried on a real device.", "steps": ["The WLED must be on the same network as this PC.", "Press Search for lights, or type the WLED's address.", "If nothing lights up, open the WLED's own page, go to Config, then Sync Interfaces, and check that \"Receive UDP realtime\" is ticked."], "returnsSecret": false, "manualAddress": true, "options": [], "nothingFound": "No WLED answered the search. A WLED with an empty mDNS name doesn't announce itself: type its address instead.", "maxFramesPerSecond": 30, "canSearch": true, "followsUnplaced": true},
+      {"brand": "govee", "name": "Govee", "tested": false, "notes": "Govee lights that have LAN Control in the Govee Home app. One colour for the whole light, or a colour per piece on lights that take Govee's Razer stream (not official; you choose the number of pieces when pairing). Built from the published protocol and open-source implementations; not yet tried on a real device. A scene or music mode that was running can't be seen over the network, so it is not put back when the sync stops: the light goes back to its last colour, brightness and on or off.", "steps": ["Set the light up in the Govee Home phone app, on the same network as this PC.", "In Govee Home open the light, tap the settings (gear) icon and switch on LAN Control. It can take a few minutes to show up after first setup. Lights without that switch can't be used.", "Do that for every Govee light you want here.", "Press Search for lights. If Windows asks, allow RigControl on private networks."], "returnsSecret": false, "manualAddress": true, "options": [{"key": "segments", "label": "How many separate colours along the light", "choices": [{"value": "1", "label": "One colour for the whole light"}, {"value": "5", "label": "5 colours along the light"}, {"value": "10", "label": "10 colours along the light"}, {"value": "15", "label": "15 colours along the light"}, {"value": "20", "label": "20 colours along the light"}, {"value": "30", "label": "30 colours along the light"}], "default": "1"}], "nothingFound": "No Govee light answered. Check LAN Control is switched on for it in the Govee Home app, and that no other program is using Govee's reply port (OpenRGB's Govee support, Razer Synapse, Home Assistant). Or type the light's address.", "maxFramesPerSecond": 2, "canSearch": true, "followsUnplaced": true},
+      {"brand": "yeelight", "name": "Yeelight", "tested": false, "notes": "One colour for the whole light, plus the background light on models that have one. Built from Yeelight's published specification; not yet tried on a real light. Lights set up through Mi Home and some newer models have no LAN Control switch and can't be used. Anyone on your network can control a light that has LAN Control on.", "steps": ["Set the light up in the Yeelight phone app, on the same network as this PC.", "Open the light in the app, open its settings and switch on \"LAN Control\" (older app versions call it \"Developer mode\"). It is a switch for each light. If the switch is missing, update the light's firmware.", "Press Search for lights, or type the light's address. If Windows asks, allow RigControl on private networks (the light connects back to this PC for fast updates)."], "returnsSecret": false, "manualAddress": true, "options": [], "nothingFound": "No Yeelight answered. Check LAN Control is switched on for the light in the Yeelight app and that it's on the same network as this PC, then search again.", "maxFramesPerSecond": 15, "canSearch": true, "followsUnplaced": true},
+      {"brand": "cololight", "name": "Cololight", "tested": false, "notes": "Cololight Hexagon (Pro), Strip and MIX. Not yet tried on a real light. The maker has no documentation for this: it is built from other people's recordings of what the phone app sends (pycololight, MIT). The whole light shows one colour. When the sync stops, what the light showed before is put back; some Strip effects may not come back exactly.", "steps": ["Set the light up once in the Cololight or LifeSmart phone app, so it joins your Wi-Fi.", "Find its address in your router's list of devices. Giving it a fixed address there is a good idea.", "Type the address here and choose which kind of Cololight it is."], "returnsSecret": false, "manualAddress": true, "options": [{"key": "type", "label": "Which Cololight", "choices": [{"value": "hexagon", "label": "Hexagon (Pro)"}, {"value": "strip", "label": "Strip"}, {"value": "mix", "label": "MIX"}], "default": "hexagon"}], "nothingFound": "Cololight lights can't be searched for. Type the light's address.", "maxFramesPerSecond": 2, "canSearch": false, "followsUnplaced": true},
+      {"brand": "leetdesk", "name": "LeetDesk Aura", "tested": false, "notes": "The light strip around a LeetDesk Aura desk, as one strip. Not yet tried on a real desk. How it is controlled comes from a third-party add-on last changed in 2024, not from LeetDesk, so current desks may behave differently.", "steps": ["Set the desk up once in the LeetDesk phone app, so it is on your Wi-Fi.", "This PC must be on the same network as the desk.", "Press Search for lights, or type the desk's address."], "returnsSecret": false, "manualAddress": true, "options": [], "nothingFound": "No LeetDesk Aura answered the search. Type the desk's address instead. For a desk that can't be found, LeetDesk suggests holding the small button on the Aura controller for 25 seconds.", "maxFramesPerSecond": 30, "canSearch": true, "followsUnplaced": true},
+    ],
+    paired: [
+      { id: "net|wled|a1b2c3d4e5f6", brand: "wled", brandName: "WLED", deviceId: "a1b2c3d4e5f6", name: "Desk strip", model: "WLED 0.15.0 (esp32)", address: "192.0.2.70", tested: false,
+        kind: "strip", points: 60, pointName: "LED", placed: false, streaming: true, problem: null, note: null },
+    ],
+    found: [],
+    scanning: false,
+    scanProblems: [],
+    scanStopped: false,
+    scanFinished: [],
+    notSupported: [
+      {"brand": "hue", "name": "Philips Hue: gradient strips piece by piece, and fast sync", "why": "Needs Hue's Entertainment stream, which is not built yet. Each Hue light follows as one colour, a few times a second. The key for it is already saved at pairing, so nothing has to be pressed again when it is added."},
+      {"brand": "hue", "name": "Philips Hue: choosing single lights or rooms here", "why": "Which Hue lights follow is chosen in the Hue app: the lights of the bridge's entertainment area (the screen one when there are several). A bridge without an entertainment area follows with every colour light it has, in every room."},
+      {"brand": "govee", "name": "Govee: lights without \"LAN Control\", and a colour per piece on every light", "why": "Only Govee lights that show a LAN Control switch in the Govee Home app can be driven locally. Govee's own local protocol sets one colour for the whole light. A colour per piece uses an unofficial stream that only some lights take, and a light doesn't say how many pieces it has: you choose the number when pairing."},
+      {"brand": "yeelight", "name": "Yeelight: lights without \"LAN Control\", and strips LED by LED", "why": "Some newer Yeelight lights, and ones set up through Mi Home, have no LAN Control switch. Those can only be driven through Yeelight's cloud, which RigControl doesn't use. Each Yeelight is one colour (two with a background light); strips and cubes can't be driven LED by LED."},
+      {"brand": "cololight", "name": "Cololight: a colour per panel, and searching", "why": "Nobody has worked out how to colour single Cololight panels over the network, so the whole light follows as one colour. There is no dependable way to search for one either: you type its address."},
+      {"brand": "leetdesk", "name": "LeetDesk Aura: anything beyond one plain strip", "why": "LeetDesk publishes nothing about how the Aura is controlled. RigControl follows a public add-on from 2024, so newer desks may behave differently. Where each light sits along the desk isn't known: place the strip on the layout and use Run backwards if it runs the wrong way."},
+      {"brand": "wled", "name": "WLED: very long strips in one go, and pairing by name", "why": "A strip longer than 489 LEDs is sent in several parts, so a very long strip can change part by part. A WLED is paired by its address, not by a name such as wled.local."},
+      {"brand": "openrgb", "name": "Fan hubs and light headers OpenRGB doesn't know", "why": "Corsair Commander and Lighting Node, Thermaltake Riing, Lian Li Uni hubs, Razer's light strip controller and motherboard headers come through OpenRGB, and you set how many lights hang on each header under the device on this page. Hubs OpenRGB 1.1 doesn't know (such as Lian Li Uni Fan TL) don't show up. NZXT channels count their own lights and can't be set by hand. Of these, only NZXT and Razer have been tried on real hardware."},
+      {"brand": "cloud", "name": "Lights that only work through an account (Tuya / Smart Life, Wiz cloud scenes, TP-Link cloud)", "why": "RigControl controls lights on your own network only. It never signs in to a cloud account."},
+    ],
+  };
+  const later = <T,>(v: T, ms: number) => new Promise<T>((r) => window.setTimeout(() => r(structuredClone(v)), ms));
 
   // ---- health and first-time setup
   let healthScannedAt = new Date().toISOString();
@@ -506,6 +542,7 @@ export function createMockBackend() {
               { key: "nanoleaf|Lines|S1", device: "Lines (Nanoleaf)", zone: -1, name: "Whole device", leds: 6, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true,
                 placed: { key: "nanoleaf|Lines|S1", zone: -1, x: 0.62, y: 0.15, w: 0.3, h: 0.4, reverse: false },
                 segments: [[0, 1, 0.25, 0.55], [0.25, 0.55, 0.5, 1], [0.5, 1, 0.75, 0.55], [0.75, 0.55, 1, 1], [0.25, 0.55, 0.5, 0.1], [0.5, 0.1, 0.75, 0.55]] },
+              ...netLights.paired.map((l) => ({ key: l.id, device: `${l.name} (${l.brandName})`, zone: -1, name: "Whole device", leds: Math.max(1, l.points), matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null })),
               { key: "gpu", device: "Gigabyte GeForce RTX 4070 Ti Eagle OC", zone: -1, name: "Whole device", leds: 5, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null },
               { key: "gpu", device: "Gigabyte GeForce RTX 4070 Ti Eagle OC", zone: 0, name: "GPU zone 1", leds: 1, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null },
               { key: "gpu", device: "Gigabyte GeForce RTX 4070 Ti Eagle OC", zone: 1, name: "GPU zone 2", leds: 1, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null },
@@ -559,13 +596,54 @@ export function createMockBackend() {
         case "lighting.takeOverGcc":
         case "lighting.giveBackGcc":
           return ok({ gcc: { installed: true, running: false, startsWithWindows: false, disabledByRigControl: method === "lighting.takeOverGcc" }, status: null });
-        case "lighting.getNanoleaf":
-        case "lighting.forgetNanoleaf":
-          return ok({ paired: false, ip: null, name: null, panels: 0, streaming: false, problem: null, found: null });
-        case "lighting.findNanoleaf":
-          return ok({ paired: false, ip: null, name: null, panels: 0, streaming: false, problem: null, found: ["192.0.2.61"] });
-        case "lighting.pairNanoleaf":
-          return ok({ paired: true, ip: "192.0.2.61", name: "Lines 5A3B", panels: 9, streaming: false, problem: null, found: null });
+        case "lighting.getNetworkLights":
+        case "lighting.cancelNetworkScan":
+          return ok(netLights);
+        case "lighting.scanNetworkLights": {
+          if (params?.brand && !netLights.brands.some((b) => b.brand === params.brand)) throw new RpcError("invalidArgs", "RigControl doesn't know that brand of light.");
+          const all: NetworkLights["found"] = [
+            { brand: "nanoleaf", brandName: "Nanoleaf", deviceId: "at 192.0.2.61", name: "Nanoleaf at 192.0.2.61", model: "", address: "192.0.2.61", paired: false },
+            { brand: "wled", brandName: "WLED", deviceId: "a1b2c3d4e5f6", name: "Desk strip", model: "WLED 0.15.0 (esp32)", address: "192.0.2.70", paired: false },
+            { brand: "hue", brandName: "Philips Hue", deviceId: "001788fffe123456", name: "Hue Bridge", model: "BSB002", address: "192.0.2.80", paired: false },
+          ];
+          const kept = params?.brand ? netLights.found.filter((f) => f.brand !== params.brand) : [];
+          netLights = {
+            ...netLights,
+            found: [...kept, ...all.filter((f) => !params?.brand || f.brand === params.brand)].map((f) => ({ ...f, paired: netLights.paired.some((l) => l.brand === f.brand && l.deviceId === f.deviceId) })),
+            scanProblems: params?.brand ? [] : ["Govee: Windows didn't let RigControl listen for answers. Allow RigControl on private networks, then search again."],
+            scanStopped: false,
+            scanFinished: netLights.brands.filter((b) => !params?.brand || b.brand === params.brand).map((b) => b.brand),
+          };
+          return later(netLights, 2500);
+        }
+        case "lighting.pairNetworkLight": {
+          const b = netLights.brands.find((x) => x.brand === params?.brand);
+          if (!b) throw new RpcError("invalidArgs", "RigControl doesn't know that brand of light.");
+          if (!/^192\.0\.2\.\d{1,3}$/.test(params.address ?? "")) throw new RpcError("invalidArgs", "That address isn't on your home network. Type the light's own address, for example the one your router shows for it.");
+          // Cololight can't be searched for: a typed address pairs in the sample data.
+          const f = netLights.found.find((x) => x.brand === b.brand && x.address === params.address)
+            ?? (b.brand === "cololight" ? { brand: b.brand, brandName: b.name, deviceId: "0a1b2c3d4e5f", name: "Cololight Hexagon", model: "Hexagon", address: params.address as string, paired: false } : undefined);
+          if (!f) {
+            await later(null, 1500);
+            throw new RpcError("unavailable", `It doesn't answer at ${params.address}. Check the light is switched on and on the same network as this PC.`);
+          }
+          const strip = b.brand === "wled";
+          netLights = {
+            ...netLights,
+            paired: [
+              ...netLights.paired.filter((l) => !(l.brand === b.brand && l.deviceId === f.deviceId)),
+              { id: b.brand === "nanoleaf" ? `nanoleaf|${f.name}|${f.deviceId}` : `net|${b.brand}|${f.deviceId}`, brand: b.brand, brandName: b.name, deviceId: f.deviceId, name: f.name, model: f.model, address: f.address, tested: b.tested,
+                kind: strip ? "strip" : b.brand === "nanoleaf" ? "points" : "single", points: strip ? 60 : b.brand === "nanoleaf" ? 9 : 1, pointName: strip ? "LED" : b.brand === "nanoleaf" ? "panel" : b.brand === "govee" ? "piece" : "light",
+                placed: false, streaming: false, problem: null, note: b.brand === "hue" ? "4 lights on this bridge follow together as one colour each." : null },
+            ],
+            found: netLights.found.map((x) => (x === f ? { ...x, paired: true } : x)),
+          };
+          return later(netLights, b.returnsSecret ? 3000 : 600);
+        }
+        case "lighting.forgetNetworkLight":
+          if (!netLights.paired.some((l) => l.id === params?.id)) throw new RpcError("invalidArgs", "That light isn't paired.");
+          netLights = { ...netLights, paired: netLights.paired.filter((l) => l.id !== params.id), found: netLights.found.map((f) => (`net|${f.brand}|${f.deviceId}` === params.id ? { ...f, paired: false } : f)) };
+          return ok(netLights);
         case "lighting.getSync":
         case "lighting.setSync":
         case "lighting.listSyncSources":
@@ -765,13 +843,30 @@ export function createMockBackend() {
             openRgb: { ...lighting.openRgb, running: true, connected: true },
             conflicts: ["Armoury Crate"],
             devices: [
-              { id: 0, name: "ASUS ROG STRIX Z790-A GAMING WIFI II", type: "Motherboard", vendor: "ASUS", ledCount: 12, zones: [{ id: 0, name: "Aura Mainboard", ledCount: 4 }, { id: 1, name: "Aura Addressable 1", ledCount: 8 }], modes: mockModes(), activeModeId: 1, color: "#00E5FF" },
-              { id: 1, name: "Team Group T-Force Delta RGB DDR5", type: "DRAM", vendor: "ENE", ledCount: 15, zones: [{ id: 0, name: "DRAM", ledCount: 15 }], modes: mockModes(), activeModeId: 1, color: "#9B4DFF" },
-              { id: 2, name: "NZXT Kraken Elite", type: "Cooler", vendor: "NZXT", ledCount: 24, zones: [{ id: 0, name: "Ring", ledCount: 24 }], modes: mockModes(), activeModeId: 1, color: "#00E5FF" },
-              { id: 3, name: "Razer BlackWidow V4 75%", type: "Keyboard", vendor: "Razer", ledCount: 84, zones: [{ id: 0, name: "Keys", ledCount: 84 }], modes: mockModes(), activeModeId: 2, color: "#FF3DCB" },
+              { id: 0, name: "ASUS ROG STRIX Z790-A GAMING WIFI II", type: "Motherboard", vendor: "ASUS", ledCount: 12, zones: [{ id: 0, name: "Aura Mainboard", ledCount: 4, ledsMin: 4, ledsMax: 4, resizable: false }, { id: 1, name: "Aura Addressable 1", ledCount: 8, ledsMin: 0, ledsMax: 120, resizable: true }], modes: mockModes(), activeModeId: 1, color: "#00E5FF" },
+              { id: 1, name: "Team Group T-Force Delta RGB DDR5", type: "DRAM", vendor: "ENE", ledCount: 15, zones: [{ id: 0, name: "DRAM", ledCount: 15, ledsMin: 15, ledsMax: 15, resizable: false }], modes: mockModes(), activeModeId: 1, color: "#9B4DFF" },
+              { id: 2, name: "NZXT Kraken Elite", type: "Cooler", vendor: "NZXT", ledCount: 24, zones: [{ id: 0, name: "Ring", ledCount: 24, ledsMin: 24, ledsMax: 24, resizable: false }], modes: mockModes(), activeModeId: 1, color: "#00E5FF" },
+              { id: 4, name: "Corsair Lighting Node Pro", type: "LED strip", vendor: "Corsair", ledCount: 0, zones: [{ id: 0, name: "Corsair RGB Header 1", ledCount: 0, ledsMin: 0, ledsMax: 204, resizable: true }], modes: mockModes(), activeModeId: 1, color: null },
+              { id: 3, name: "Razer BlackWidow V4 75%", type: "Keyboard", vendor: "Razer", ledCount: 84, zones: [{ id: 0, name: "Keys", ledCount: 84, ledsMin: 84, ledsMax: 84, resizable: false }], modes: mockModes(), activeModeId: 2, color: "#FF3DCB" },
             ],
           };
           return ok(lighting);
+        case "lighting.setZoneSize": {
+          const dev = lighting.devices.find((d) => d.id === params?.deviceId);
+          const zone = dev?.zones.find((z) => z.id === params?.zone);
+          if (!dev || !zone) throw new RpcError("invalidArgs", "That header isn't there any more.");
+          if (!zone.resizable) throw new RpcError("unavailable", `${zone.name} has a fixed number of lights.`);
+          if (!Number.isInteger(params.leds) || params.leds < zone.ledsMin || params.leds > zone.ledsMax) throw new RpcError("invalidArgs", `${zone.name} takes ${zone.ledsMin} to ${zone.ledsMax} lights.`);
+          lighting = {
+            ...lighting,
+            devices: lighting.devices.map((d) => {
+              if (d !== dev) return d;
+              const zones = d.zones.map((z) => (z === zone ? { ...z, ledCount: params.leds } : z));
+              return { ...d, zones, ledCount: zones.reduce((n, z) => n + z.ledCount, 0) };
+            }),
+          };
+          return ok(lighting);
+        }
         case "lighting.setColor":
         case "lighting.setZoneColor":
         case "lighting.setMode":
