@@ -150,8 +150,7 @@ folder is open to ordinary programs. See [SECURITY.md](SECURITY.md).
 1. Download `RigControl-<version>-win-x64.zip` from [Releases](../../releases) and unzip it straight into a folder
    only administrators can change, for example `C:\Program Files\RigControl`. Unzip it there directly: a folder that
    was unzipped somewhere else and then moved in still belongs to your own account, and RigControl then refuses to
-   put its helper programs next to it. If the Releases page is empty, no release has been published yet: build
-   RigControl from source as described below.
+   put its helper programs next to it. To check the download, see "Checking your download" in the release notes.
 2. Run `RigControl.exe`. **The exe is not code-signed**, so Windows SmartScreen shows "Windows protected your PC" the
    first time: choose "More info", then "Run anyway". Some antivirus programs also warn about an unsigned program
    that asks for administrator rights. Only run a copy you downloaded from this repository's Releases page.
