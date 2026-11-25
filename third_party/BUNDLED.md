@@ -19,8 +19,9 @@ FFmpeg is carried too, in a different way: see [ffmpeg/README.md](ffmpeg/README.
 The helpers are **required**. On a PC that has not used RigControl before, the first-time setup shows one step that
 lists all three with what each is and its licence, and one **Install and continue** button. Nothing is installed
 before the user has seen that step and pressed the button; in particular the kernel driver is never installed
-unseen. They cannot be declined one by one. Leaving the setup installs nothing, and the hardware features do not
-start.
+unseen. They cannot be declined one by one. Leaving the setup installs nothing: lights, motherboard
+sensors and fans, and the equaliser do not work until the button is pressed, and the setup comes back at the next
+start. (The other modules still start; closing the window leaves RigControl in the tray.)
 
 - Installing needs administrator rights. Without them the setup says so and installs nothing.
 - The yes is stored in `HKLM\SOFTWARE\RigControl\Bundled`, where only administrators can write. A "yes" in the

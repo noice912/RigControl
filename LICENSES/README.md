@@ -18,4 +18,7 @@ licence, GPL-3.0, is [LICENSE](../LICENSE) in the folder above.
 | `React-LICENSE.txt` | MIT, with React's copyright line | The `LICENSE` inside the `react` and `react-dom` packages (the same file) |
 | `Barlow-OFL-1.1.txt`, `Barlow-Condensed-OFL-1.1.txt` | SIL Open Font License 1.1, with the fonts' copyright lines | The `LICENSE` inside the `@fontsource/barlow` and `@fontsource/barlow-condensed` packages |
 
-FFmpeg's licence (GPL-3.0) travels with the FFmpeg files: `third_party/ffmpeg/COPYING.GPLv3.txt`.
+| `PawnIO-LICENSE.txt` | PawnIO's licence notice: GPL-2.0-or-later with its special exception | The README of the PawnIO repository, read 2026-11-24 |
+| `HIDAPI-LICENSE-bsd.txt` | BSD-3-Clause, with HIDAPI's copyright line | `LICENSE-bsd.txt` at the `hidapi-0.15.0` tag of the HIDAPI repository |
+| `DirectXShaderCompiler-LICENSE.txt` | The DirectX Shader Compiler's licence (University of Illinois / NCSA and the notices it lists) | `LICENSE.TXT` in the DirectX Shader Compiler repository, read 2026-11-24 |
+| `FFmpeg-COPYING.GPLv3.txt` | GNU General Public License, version 3, as shipped with the FFmpeg build | The same file as `third_party/ffmpeg/COPYING.GPLv3.txt` |

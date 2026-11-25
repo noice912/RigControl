@@ -4,19 +4,25 @@ RigControl is licensed under GPL-3.0 ([LICENSE](LICENSE)). It carries, links to 
 Each entry gives the name, the version this source tree refers to, the licence and where the source is. The licence
 texts are in [LICENSES/](LICENSES/).
 
-"To be confirmed" means the licence was not checked against the component's own licence file for exactly this
-version. Those entries name what the project's own pages say and must be checked before a release.
+### How the licences were checked
 
-### Still to do before the first release
+The carried programs come as official installers or packages without a licence file of their own, so their terms
+were read at the sources below on 2026-11-24. This was done by the author, who is not a lawyer.
 
-The carried files below come without a licence file of their own, so their terms were read on the projects' own
-repository pages (2026-11-24), not in the pinned files. Before a release is published:
-
-1. Compare each with the licence file at the exact version carried (PawnIO 2.2.0, the PawnIO modules and library as
-   shipped with OpenRGB 1.1, HIDAPI 0.15.0, the DirectX Shader Compiler files in OpenRGB's package).
-2. Add to [LICENSES/](LICENSES/): PawnIO's exception wording, HIDAPI's `LICENSE-bsd.txt` (it holds HIDAPI's
-   copyright lines) and the DirectX Shader Compiler's `LICENSE.TXT`.
-3. Find the terms `dxil.dll` may be passed on under. If none allow it, leave that file out.
+- **PawnIO 2.2.0:** the licence notice in the README of its repository: GPL-2.0-or-later with a special exception.
+  The notice is copied in full to [LICENSES/PawnIO-LICENSE.txt](LICENSES/PawnIO-LICENSE.txt). The setup file is the
+  official one (it carries its author's valid code signature); it holds no licence file to compare with.
+- **HIDAPI 0.15.0:** `LICENSE-bsd.txt` at the `hidapi-0.15.0` tag, copied to
+  [LICENSES/HIDAPI-LICENSE-bsd.txt](LICENSES/HIDAPI-LICENSE-bsd.txt).
+- **DirectX Shader Compiler (`dxcompiler.dll`, `dxil.dll`, version 10.0.19041):** both files carry Microsoft's
+  valid code signature and are part of OpenRGB's official package. `dxcompiler.dll` is built from the open-source
+  DirectX Shader Compiler; its licence is copied to
+  [LICENSES/DirectXShaderCompiler-LICENSE.txt](LICENSES/DirectXShaderCompiler-LICENSE.txt). `dxil.dll` has no
+  open-source licence. Microsoft ships both files in the Windows SDK's `Redist\D3D` folder, and the Windows SDK
+  licence allows the files in its redistributable folders to be passed on as part of a program ("Distributable
+  Code"). RigControl passes them on only inside OpenRGB's unchanged package, on that basis.
+- **Still marked "to be confirmed" in the tables:** the licence shown is what the project's own page or package
+  says; it was not compared with a licence file for exactly that version.
 
 ## 1. Separate programs carried inside `RigControl.exe`
 
@@ -26,9 +32,9 @@ them. How they get into a build: [third_party/BUNDLED.md](third_party/BUNDLED.md
 | Program | Version | Licence | Source |
 |---|---|---|---|
 | OpenRGB | 1.1 (build `8e16de2`, official Windows 64-bit MSI) | GPL-2.0-only ([text](LICENSES/GPL-2.0.txt)) | https://codeberg.org/OpenRGB/OpenRGB (downloads: https://openrgb.org/releases.html) |
-| PawnIO (driver setup, `PawnIO_setup.exe`) | 2.2.0 | GPL-2.0-or-later with a special exception for combining it with other free software, as its repository states ([GPL text](LICENSES/GPL-2.0.txt); the exception is in the project's README). Not yet compared with the files of the 2.2.0 setup. RigControl's first-run screen says the same. | https://github.com/namazso/PawnIO (downloads: https://pawnio.eu) |
+| PawnIO (driver setup, `PawnIO_setup.exe`) | 2.2.0 | GPL-2.0-or-later with a special exception for combining it with other free software ([notice with the exception](LICENSES/PawnIO-LICENSE.txt), [GPL text](LICENSES/GPL-2.0.txt)). RigControl's first-run screen says the same. | https://github.com/namazso/PawnIO (downloads: https://pawnio.eu) |
 | Equalizer APO | 1.4.2 (official 64-bit installer) | GPL-2.0, as stated on its project page ([text](LICENSES/GPL-2.0.txt)) | https://sourceforge.net/projects/equalizerapo/ |
-| FFmpeg (`ffmpeg.exe`, `ffprobe.exe`) | 9.0.2, "release essentials" build from gyan.dev | GPL-3.0 for this build ([text](third_party/ffmpeg/COPYING.GPLv3.txt)). The build includes other libraries under their own licences, listed by the build's maker. | https://ffmpeg.org (build and its source links: https://www.gyan.dev/ffmpeg/builds/) |
+| FFmpeg (`ffmpeg.exe`, `ffprobe.exe`) | 9.0.2, "release essentials" build from gyan.dev | GPL-3.0 for this build ([text](LICENSES/FFmpeg-COPYING.GPLv3.txt)). The build includes other libraries under their own licences, listed by the build's maker. | https://ffmpeg.org (build and its source links: https://www.gyan.dev/ffmpeg/builds/) |
 
 ### Files that come inside OpenRGB's official package
 
@@ -38,9 +44,9 @@ RigControl copies OpenRGB's program folder as it is. These files are part of tha
 |---|---|---|---|
 | Qt 6 (`Qt6Core`, `Qt6Core5Compat`, `Qt6Gui`, `Qt6OpenGL`, `Qt6Widgets`, and the `platforms`, `styles` and `imageformats` plug-ins) | 6.8.3 | LGPL-3.0 ([text](LICENSES/LGPL-3.0.txt)), as used by OpenRGB | https://www.qt.io / https://code.qt.io |
 | libusb (`libusb-1.0.dll`) | 1.0.27 | LGPL-2.1-or-later ([text](LICENSES/LGPL-2.1.txt)) | https://github.com/libusb/libusb |
-| HIDAPI, hotplug build (`hidapi-hotplug.dll`) | 0.15.0 | HIDAPI is offered under GPL-3.0, BSD-3-Clause or its original licence, at the user's choice (its `LICENSE.txt`). RigControl passes it on as part of OpenRGB's package under the BSD-3-Clause choice ([text](LICENSES/BSD-3-Clause.txt)). To be confirmed: HIDAPI's own copyright lines (`LICENSE-bsd.txt` at this version) are not in this repository yet. | https://github.com/libusb/hidapi |
+| HIDAPI, hotplug build (`hidapi-hotplug.dll`) | 0.15.0 | HIDAPI is offered under GPL-3.0, BSD-3-Clause or its original licence, at the user's choice (its `LICENSE.txt`). RigControl passes it on as part of OpenRGB's package under the BSD-3-Clause choice ([its text with HIDAPI's copyright line](LICENSES/HIDAPI-LICENSE-bsd.txt)). | https://github.com/libusb/hidapi |
 | PawnIO library and modules (`PawnIOLib.dll`, `LpcIO.bin`, `SmbusI801.bin`, `SmbusPIIX4.bin`, `SmbusNCT6793.bin`, `SmbusIntelSkylakeIMC.bin`, `LedsValve.bin`) | as shipped with OpenRGB 1.1 | The modules: LGPL-2.1, as the PawnIO.Modules repository states ([text](LICENSES/LGPL-2.1.txt)). `PawnIOLib.dll` is part of the PawnIO repository (see PawnIO above). To be confirmed against the versions OpenRGB 1.1 ships. | https://github.com/namazso/PawnIO, https://github.com/namazso/PawnIO.Modules |
-| DirectX Shader Compiler (`dxcompiler.dll`, `dxil.dll`) | 10.0.19041 | Microsoft files that Qt's Windows deployment adds. The compiler's repository states the University of Illinois Open Source License; its text is not in this repository yet. To be confirmed, `dxil.dll` in particular: its terms were not found. | https://github.com/microsoft/DirectXShaderCompiler |
+| DirectX Shader Compiler (`dxcompiler.dll`, `dxil.dll`) | 10.0.19041 | Microsoft files that Qt's Windows deployment adds, both signed by Microsoft. `dxcompiler.dll`: the DirectX Shader Compiler's licence ([text](LICENSES/DirectXShaderCompiler-LICENSE.txt)). `dxil.dll`: no open-source licence; passed on as a redistributable Windows SDK file inside OpenRGB's unchanged package (see "How the licences were checked"). | https://github.com/microsoft/DirectXShaderCompiler |
 
 The source code for the GPL and LGPL programs above is published by their projects at the links given, for the
 versions named.

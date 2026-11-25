@@ -77,7 +77,7 @@ colour per Cololight panel. The Lighting page lists these with the reason.
 If a search finds nothing: the light and the PC must be on the same network; Windows Firewall blocks most answers
 when your home network is set to Public in Windows (the Health page names the network if it is, and says how to
 change it if it is your own home network); a VPN can hide the home network; and Govee and Yeelight lights need LAN
-Control switched on in their own app. Only networks with a router are searched, never a VPN or a virtual
+Control switched on in their own app. Only networks with a router are searched, which leaves out most VPNs and a virtual
 machine's network. The first search may make Windows ask whether to allow RigControl on private networks.
 
 **Lights through OpenRGB (USB and motherboard).**
@@ -124,7 +124,9 @@ Reports from other hardware are welcome as GitHub issues.
 RigControl needs three open-source helper programs. The release build carries all three inside `RigControl.exe`.
 The first time you start it, one screen lists them, says what each is and what licence it has, and has one
 **Install and continue** button. Nothing is installed before you have seen that screen and pressed the button. If
-you leave the setup instead, nothing is installed and the hardware features do not start.
+you leave the setup instead, nothing is installed: lights, motherboard sensors and fans, and the equaliser do not
+work until you press **Install and continue**, and the setup screen comes back each time. Closing the window leaves
+RigControl in the tray; quit it from the tray icon.
 
 | Helper | What it is | Why RigControl needs it |
 |---|---|---|

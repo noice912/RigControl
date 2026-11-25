@@ -32,7 +32,8 @@ try {
         }
         finally { Pop-Location }
     }
-    dotnet publish 'src\RigControl.App\RigControl.App.csproj' -c Release -o $Output -nologo -v q
+    # ContinuousIntegrationBuild: source paths recorded inside the exe start at "/_/" instead of this PC's folder names.
+    dotnet publish 'src\RigControl.App\RigControl.App.csproj' -c Release -o $Output -nologo -v q -p:ContinuousIntegrationBuild=true
     if ($LASTEXITCODE -ne 0) { throw 'The build failed.' }
 }
 finally { Pop-Location }
