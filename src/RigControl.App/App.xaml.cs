@@ -31,6 +31,8 @@ public partial class App : System.Windows.Application
     private OverlayWindow? _overlay;
     private GamePanel? _panel;
     private CoolingModule? _cooling;
+    private Updates.GitHubServices? _github;
+    private Updates.UpdatesModule? _updates;
 
     /// <summary>Shows temperatures in °F (true) or °C everywhere outside the web pages: the cooler screen and the overlay.</summary>
     public void ApplyTemperatureUnit(string? unit)
@@ -70,6 +72,14 @@ public partial class App : System.Windows.Application
         {
             Interlocked.Exchange(ref _exitStarted, 1);
             Shutdown(exitCode);
+            return;
+        }
+
+        // Setup, "--update", "--uninstall", or RigControl itself? (Install\InstallEntry.cs; the release is one exe.)
+        if (Install.InstallEntry.Handle(e.Args, _log.For("install")) is { } installExit)
+        {
+            Interlocked.Exchange(ref _exitStarted, 1);
+            Shutdown(installExit);
             return;
         }
 
@@ -204,6 +214,17 @@ public partial class App : System.Windows.Application
 
         _services = new AppServices(env, settings, bus, dispatcher, host, _log);
         dispatcher.Register(new AppModule(_services, this));
+        // Updates, GitHub sign-in and reviews, and dev mode (Updates\). They only ever connect to GitHub.
+        _github = new Updates.GitHubServices(_services);
+        _updates = new Updates.UpdatesModule(_services, this, _github.Api);
+        dispatcher.Register(_updates);
+        var githubModule = new Updates.GitHubModule(_services, _github);
+        var devModule = new Updates.DeveloperModule(_services, _github, new Updates.WindowsHelloKey());
+        githubModule.DevModeClosed += devModule.Close;
+        dispatcher.Register(githubModule);
+        dispatcher.Register(devModule);
+        _updates.Start();
+        githubModule.Start();
         var panelModule = new GamePanelModule(_services, () => _panel);
         dispatcher.Register(panelModule);
         try
@@ -458,6 +479,8 @@ public partial class App : System.Windows.Application
         _log?.Info("Exit requested.");
         try { _lifetime.Cancel(); } catch { /* ignore */ }
         try { _tray?.Dispose(); } catch { /* ignore */ }
+        try { _updates?.Dispose(); } catch { /* ignore */ }
+        try { _github?.Dispose(); } catch { /* ignore */ }
 
         StopModules();
         StopAudio();

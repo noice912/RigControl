@@ -105,11 +105,15 @@ jobs:
             src/RigControl.Lighting \
             src/RigControl.Presence \
             src/RigControl.Desktop \
+            src/RigControl.Updates \
+            tools/UpdateSigner \
+            tools/DevEnroll \
             tests/RigControl.Core.Tests \
             tests/RigControl.Hosting.Tests \
             tests/RigControl.Lighting.Tests \
             tests/RigControl.Presence.Tests \
-            tests/RigControl.Desktop.Tests
+            tests/RigControl.Desktop.Tests \
+            tests/RigControl.Updates.Tests
           do
             echo "::group::build $project"
             dotnet build "$project" -c Debug -f net8.0 $STRICT
@@ -124,7 +128,8 @@ jobs:
             tests/RigControl.Hosting.Tests \
             tests/RigControl.Lighting.Tests \
             tests/RigControl.Presence.Tests \
-            tests/RigControl.Desktop.Tests
+            tests/RigControl.Desktop.Tests \
+            tests/RigControl.Updates.Tests
           do
             echo "::group::test $project"
             # A test that hangs is stopped after 3 minutes and named in the log, instead of using up the job.

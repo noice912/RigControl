@@ -520,6 +520,7 @@ public class HostAppModuleTests : IAsyncLifetime
     [InlineData("pickFolder")]
     [InlineData("getBundled")]
     [InlineData("uninstallOldApp")]
+    [InlineData("getLicences")]
     [InlineData("restartPc")]
     [InlineData("cancelRestartPc")]
     [InlineData("getFirstRun")]

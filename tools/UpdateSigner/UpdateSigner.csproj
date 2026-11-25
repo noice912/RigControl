@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Makes update.json, update.json.sig and SHA256SUMS.txt for a release made outside the app.
+    How to run it: see the top of Program.cs (dotnet run with the key, exe, version and out options).
+    Uses the same signing code as the app (src/RigControl.Updates). Platform-neutral.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
+    <RootNamespace>RigControl.UpdateSigner</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RigControl.Updates\RigControl.Updates.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -6,8 +6,8 @@ issue.
 
 ## The short version
 
-- **Nothing is sent to the author.** There is no account, no telemetry, no crash upload, no analytics and no update
-  check. The author has no server.
+- **Nothing is sent to the author.** There is no RigControl account, no telemetry, no crash upload and no analytics.
+  The author has no server. The update check asks GitHub, not the author, and sends nothing about you.
 - Everything RigControl stores stays on your PC.
 - It contacts the internet only for the look-ups listed below, each tied to a feature you can leave off or a button
   you press.
@@ -31,8 +31,12 @@ issue.
 | **Microsoft Windows Update** | When you press "Check" or install on the Drivers page | Windows' own update service does the search and download, the same as Windows Settings does |
 | **A web page you chose** | Only while the cooler screen is in "web page" mode | A hidden browser opens the address you typed and shows it on the cooler's screen. That site sees a normal browser visit. |
 | **Discord's web app** (`discord.com`, `discordapp.com`, `discord.gg`) | Only when you open Discord inside the in-game panel | See "The Discord window in the in-game panel" below |
+| **GitHub** (`api.github.com`, and GitHub's release download hosts) | The update check: 1 minute after RigControl starts and every 6 hours, while "Check for updates automatically" is on (Settings > Updates; on by default), and when you press "Check now" | A plain request for RigControl's latest release page. When you press "Update", the new version's setup file is downloaded. No account or id of yours is sent. |
+| **GitHub** (`github.com`, `api.github.com`) | Only if you sign in with GitHub (Settings > GitHub account), and while you stay signed in | Signing in uses GitHub's device sign-in: you confirm a short code on github.com in your normal browser. RigControl then holds a GitHub sign-in token for your account, **encrypted for your Windows user** (Windows DPAPI) in `settings.json`. It is used only to talk to GitHub: to post a review you write, and to check whether your account may change RigControl's own repository. Signing out deletes it. |
+| **GitHub issues** (`api.github.com`) | Only when you press "Send" on a review | Your star rating, the text you wrote and RigControl's version become a **public** issue on github.com/noice912/RigControl under your GitHub name. Nothing about your PC is added. |
 
-RigControl does **not** contact GitHub. There is no update check; you look at the Releases page yourself. Links in
+Apart from the GitHub rows above, RigControl contacts no other site. Every update is checked before it is used: its
+details carry a signature that only the author's update key can make, and the file must match them exactly. Links in
 the app (to a download page, a store, a help page) open in your normal browser when you press them.
 
 The requests RigControl makes itself carry no account, cookie or id of yours. Like any internet request, they show
@@ -129,7 +133,7 @@ Everything is on your PC. Nothing is synced.
 | `%LOCALAPPDATA%\RigControl\WebView2`, `WebView2-screen`, `discord-web` | Browser profiles: the app's own interface, the cooler screen's web page, and the Discord window |
 | `%LOCALAPPDATA%\RigControl\drivers` | Driver packages you downloaded |
 | `%LOCALAPPDATA%\RigControl\replay-buffer` | The last seconds of screen recording while instant replay is on. Deleted when it is switched off and when RigControl closes. |
-| `%LOCALAPPDATA%\RigControl\ffmpeg` | The FFmpeg tools, unpacked from the exe |
+| `%LOCALAPPDATA%\RigControl\ffmpeg` | The FFmpeg tools, unpacked from the exe (an installed RigControl unpacks them into `<install folder>\ffmpeg` instead) |
 | `%LOCALAPPDATA%\RigControl\bios-backups`, `nvidia-settings-before-rigcontrol.bin` | Copies of settings as they were before RigControl changed anything |
 | `%LOCALAPPDATA%\AudioController` | The Audio page's sound library, **encrypted** with a key protected for your Windows user (Windows DPAPI) |
 | `Videos\RigControl` (or the folder you chose) | Your recordings and saved replays |
@@ -138,8 +142,8 @@ Everything is on your PC. Nothing is synced.
 | Registry `HKCU\Software\RigControl` | Notes of what "Take over" changed (for example another app's start-up entry), so it can be put back |
 | A Windows scheduled task named `RigControl-<your user id>` | Only if "Start with Windows" is on |
 
-The first-time setup also installs PawnIO and Equalizer APO as normal Windows programs, and may point an existing
-OpenRGB service at RigControl's copy. See the README.
+The first-time setup (or the installer) also installs PawnIO and Equalizer APO as normal Windows programs, and may
+point an existing OpenRGB service at RigControl's copy. See the README and [TERMS-OF-USE.md](TERMS-OF-USE.md).
 
 ### On Linux and macOS
 
@@ -191,6 +195,14 @@ started it from, and delete the folders in the table above.
 
 ## Removing it
 
+An installed RigControl is removed from Windows' "Installed apps" (or with `RigControl.exe --uninstall`). The
+uninstaller closes RigControl and removes its program files, shortcuts, its entry in Installed apps and your
+"Start with Windows" task; ticking "Also delete my settings, logs and Discord sign-in" also deletes
+`%LOCALAPPDATA%\RigControl`. It leaves what steps 3 to 6 below cover apart from that folder: the sound library, the
+helper programs, RigControl's OpenRGB copy and the registry keys.
+
+By hand, or for a copy that was never installed:
+
 1. In Settings, switch off "Start with Windows" (this removes the scheduled task). If you used a "Take over"
    button, give control back first on the page where you pressed it.
 2. Quit RigControl from the tray and delete its exe.
@@ -200,8 +212,6 @@ started it from, and delete the folders in the table above.
 5. Delete `C:\Program Files\RigControl`. If an OpenRGB service existed before RigControl and was pointed at this
    copy, reinstall OpenRGB first so the service runs its own files again.
 6. Optional: delete the registry keys `HKLM\SOFTWARE\RigControl` and `HKCU\Software\RigControl`.
-
-There is no uninstaller yet.
 
 ## Children and sensitive data
 

@@ -127,12 +127,9 @@ Reports from other hardware are welcome as GitHub issues.
 
 ## What it installs and why it runs as administrator
 
-RigControl needs three open-source helper programs. The release build carries all three inside `RigControl.exe`.
-The first time you start it, one screen lists them, says what each is and what licence it has, and has one
-**Install and continue** button. Nothing is installed before you have seen that screen and pressed the button. If
-you leave the setup instead, nothing is installed: lights, motherboard sensors and fans, and the equaliser do not
-work until you press **Install and continue**, and the setup screen comes back each time. Closing the window leaves
-RigControl in the tray; quit it from the tray icon.
+RigControl needs three open-source helper programs. The release carries all three inside its one exe. They are
+required parts of RigControl: the installer puts them in without a separate screen, and you agree to them once, on
+its [terms of use](TERMS-OF-USE.md) page.
 
 | Helper | What it is | Why RigControl needs it |
 |---|---|---|
@@ -155,22 +152,30 @@ folder is open to ordinary programs. See [SECURITY.md](SECURITY.md).
 
 ## Installing
 
-1. Download `RigControl-<version>-win-x64.zip` from [Releases](../../releases) and unzip it straight into a folder
-   only administrators can change, for example `C:\Program Files\RigControl`. Unzip it there directly: a folder that
-   was unzipped somewhere else and then moved in still belongs to your own account, and RigControl then refuses to
-   put its helper programs next to it. To check the download, see "Checking your download" in the release notes.
-2. Run `RigControl.exe`. **The exe is not code-signed**, so Windows SmartScreen shows "Windows protected your PC" the
-   first time: choose "More info", then "Run anyway". Some antivirus programs also warn about an unsigned program
-   that asks for administrator rights. Only run a copy you downloaded from this repository's Releases page.
-3. Follow the first-time setup: it shows what was found on your PC, the helper programs it will install, anything
-   that gets in its way, and offers "Start with Windows".
-4. At the end it offers to restart the PC (**Restart now** or **Later**). A restart lets it start as administrator
-   with Windows and is needed once for the equaliser.
-5. If you use NZXT CAM, Armoury Crate or GIGABYTE Control Center, the Health page explains what clashes. "Take over"
+1. Download `RigControl-Setup-<version>.exe` from [Releases](../../releases). To check the download, see "Checking
+   your download" in the release notes.
+2. Run it. **It is not code-signed**, so Windows SmartScreen shows "Windows protected your PC" the first time: choose
+   "More info", then "Run anyway". Some antivirus programs also warn about an unsigned program that asks for
+   administrator rights. Only run a copy you downloaded from this repository's Releases page.
+3. The setup window shows the [terms of use](TERMS-OF-USE.md); accept them. Choose the folder (default
+   `C:\Program Files\RigControl`, which only administrators can change), whether you want a desktop shortcut, and
+   "Start with Windows". Windows asks once for administrator rights.
+4. Setup puts the program in `app\`, FFmpeg in `ffmpeg\` and the licence texts in `licenses\` inside that folder, adds
+   a Start menu shortcut and an entry in Windows' "Installed apps", and starts RigControl. The helper programs are
+   installed the first time RigControl runs; Windows needs one restart for the equaliser.
+5. If you used RigControl from another folder before, setup points "Start with Windows" at the installed copy and
+   keeps your settings (they live in your user folder). The old exe is left where it was; delete it yourself.
+6. If you use NZXT CAM, Armoury Crate or GIGABYTE Control Center, the Health page explains what clashes. "Take over"
    buttons are there for you to press; RigControl never closes another program by itself.
 
-There is no installer and no automatic update yet. To update, replace the exe with the new one. To remove RigControl,
-see "Removing it" in [PRIVACY.md](PRIVACY.md).
+**Updates.** RigControl checks GitHub for a new version (Settings > Updates, on by default). When one is there it
+says so; press **Update** and it downloads it, checks the author's signature and the file, closes, updates and starts
+again. Your settings are kept.
+
+**Removing it.** Use Windows' "Installed apps", or run `RigControl.exe --uninstall`. See "Removing it" in
+[PRIVACY.md](PRIVACY.md).
+
+**Running without installing.** `RigControl.exe --portable` runs it from where it is, as before, without updates.
 
 ## What each page does
 

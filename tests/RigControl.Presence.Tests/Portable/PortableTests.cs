@@ -362,41 +362,44 @@ internal sealed class SocketDiscord : IDisposable
             try { s = await _listener.AcceptAsync(_cts.Token); }
             catch { return; }
             lock (_open) _open.Add(s);
-            _ = Task.Run(() => Serve(s));
+            _ = Task.Run(() => ServeAsync(s));
         }
     }
 
-    private void Serve(Socket s)
+    // Reads are asynchronous and stop when the pretend Discord stops. A blocking read on one thread while another
+    // thread disposes the socket can leave the dispose waiting for good on macOS.
+    private async Task ServeAsync(Socket s)
     {
-        using var stream = new NetworkStream(s, ownsSocket: true);
+        await using var stream = new NetworkStream(s, ownsSocket: true);
+        var ct = _cts.Token;
         try
         {
-            while (true)
+            while (!ct.IsCancellationRequested)
             {
                 var head = new byte[8];
-                if (!Fill(stream, head)) return;
+                if (!await FillAsync(stream, head, ct)) return;
                 var body = new byte[BitConverter.ToInt32(head, 4)];
-                if (!Fill(stream, body)) return;
+                if (!await FillAsync(stream, body, ct)) return;
                 var op = BitConverter.ToInt32(head, 0);
                 var json = Encoding.UTF8.GetString(body);
                 lock (Received) Received.Add((op, json));
                 var answer = op == 0 ? Hello(json) : """{"cmd":"SET_ACTIVITY","evt":null,"data":{}}""";
                 if (answer is null) return;
                 var data = Encoding.UTF8.GetBytes(answer);
-                stream.Write(BitConverter.GetBytes(1));
-                stream.Write(BitConverter.GetBytes(data.Length));
-                stream.Write(data);
+                await stream.WriteAsync(BitConverter.GetBytes(1), ct);
+                await stream.WriteAsync(BitConverter.GetBytes(data.Length), ct);
+                await stream.WriteAsync(data, ct);
             }
         }
-        catch { /* the other end went away */ }
+        catch { /* the other end went away, or the pretend Discord stopped */ }
     }
 
-    private static bool Fill(Stream s, byte[] buf)
+    private static async Task<bool> FillAsync(Stream s, byte[] buf, CancellationToken ct)
     {
         var got = 0;
         while (got < buf.Length)
         {
-            var n = s.Read(buf, got, buf.Length - got);
+            var n = await s.ReadAsync(buf.AsMemory(got, buf.Length - got), ct);
             if (n <= 0) return false;
             got += n;
         }

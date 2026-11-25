@@ -51,7 +51,16 @@ public sealed class AudioHost : IDisposable
     /// The folder holding the bundled ffmpeg.exe (unpacked on first use), or null if it could not be unpacked.
     /// Used by RigControl's screen recorder, which shares this copy.
     /// </summary>
-    public static string? ExtractFfmpegDirectory() => FfmpegExtractor.TryExtract(AudioHostOptions.EmbeddedFfmpegFiles(), FfmpegExtractor.DefaultRoot);
+    public static string? ExtractFfmpegDirectory() => ExtractFfmpegDirectory(FfmpegRoot);
+
+    /// <summary>The same, into another folder (the installer unpacks it into the install folder).</summary>
+    public static string? ExtractFfmpegDirectory(string root) => FfmpegExtractor.TryExtract(AudioHostOptions.EmbeddedFfmpegFiles(), root);
+
+    /// <summary>
+    /// Where FFmpeg is unpacked. %LOCALAPPDATA%\RigControl\ffmpeg unless the host says otherwise: an installed
+    /// RigControl uses its own folder under Program Files, which only administrators can change. Set before Start.
+    /// </summary>
+    public static string FfmpegRoot { get; set; } = FfmpegExtractor.DefaultRoot;
 
     /// <summary>The same name as the standalone app, so the two never run the audio engine at the same time.</summary>
     internal const string SingleInstanceMutexName = @"Local\AudioController.SingleInstance.v1";
@@ -455,13 +464,13 @@ internal sealed class AudioHostOptions
     public TimeSpan UiShutdownWait { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// The embedded FFmpeg (extracted to %LOCALAPPDATA%\RigControl\ffmpeg on first use) is tried first, then every
+    /// The embedded FFmpeg (extracted to <see cref="AudioHost.FfmpegRoot"/> on first use) is tried first, then every
     /// location the standalone app searched; no FFmpeg anywhere disables import exactly as before.
     /// </summary>
     private static IAudioDecoder? CreateDefaultDecoder()
     {
         FfmpegLocator.SetEmbeddedDirectoryProvider(() =>
-            FfmpegExtractor.TryExtract(EmbeddedFfmpegFiles(), FfmpegExtractor.DefaultRoot));
+            FfmpegExtractor.TryExtract(EmbeddedFfmpegFiles(), AudioHost.FfmpegRoot));
 
         string? ffmpeg = FfmpegLocator.Find();
         if (ffmpeg is null) return null;

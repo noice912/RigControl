@@ -94,7 +94,7 @@ A module that has no version for this system is still listed by `app.getModules`
 `message` that starts with `Not available on this system`. Every call to it fails with `unavailable` and the same
 sentence. The UI hides such a page or shows one calm panel, and should not keep calling it. On Linux and macOS the
 `app` methods that only Windows has (`restartAsAdmin`, `pickFile`, `pickFolder`, `getBundled`, `uninstallOldApp`,
-`restartPc`, `cancelRestartPc`, `getFirstRun`, `installHelpers`, `completeFirstRun`) fail the same way;
+`restartPc`, `cancelRestartPc`, `getFirstRun`, `installHelpers`, `completeFirstRun`, `getLicences`) fail the same way;
 `setNativeView` answers `{ view: null }` and `getAudioStatus` answers `state: "unavailable"`. See docs/PORTING.md.
 
 The Linux and macOS app's `capabilities` hold `lighting`, `presence`, their parts that work there and, where it can
@@ -454,6 +454,7 @@ closes, changes or installs anything.
 - `app.completeFirstRun { autostart?: boolean }` -> `FirstRunInfo`. Changes "start with Windows" only when the value differs from now (may show a UAC prompt; error `cancelled` leaves the setup unfinished), then marks the setup as done (settings section `firstRun`). `restartSuggested` is true for one of two reasons, each with its own flag: `restartForAutostart` (start with Windows was just turned on, or it is on and RigControl is not running as administrator; never on a standard Windows account) and `restartForEqualiser` (Equalizer APO was installed during the setup). It never installs anything before the yes; the UI does not offer to finish or skip the setup while `helpers.needsYes` is true (it offers "Install and continue" or "Quit RigControl"). "Start with Windows" is one scheduled task per Windows user (`RigControl-<SID>`); the single task older versions made (`RigControl`) only counts for, and is only changed by, the user it was made for.
 - `app.restartPc { evenWithOtherUsers?: boolean }` -> `{ scheduled: true, seconds: 30 }`. Asks Windows to restart in 30 seconds (Windows shows its own notice). The UI asks "Restart your PC now?" first; nothing else calls it. While other Windows users are signed in it refuses (`unsafe`) unless `evenWithOtherUsers` is true: the UI sets that only after telling the user that their programs close too. `app.cancelRestartPc` -> `{ cancelled: boolean }` (false when no restart was counting down).
 - `app.getBundled` -> `{ status, helpers: Helpers | null, oldApps, elevated }`. `helpers` is the same object as in `FirstRunInfo` (null while RigControl is starting); it replaces the earlier `items` list. Settings > Built in shows each program's state and, while `helpers.pending` is true, one "Install the missing programs" button: it opens the setup step when `needsYes`, restarts as administrator when not elevated, and otherwise calls `app.installHelpers`.
+- `app.getLicences` -> `{ name, text }[]`. The terms of use, LICENSE, THIRD-PARTY-NOTICES.md, PRIVACY.md, SECURITY.md, README.md and every file in LICENSES/, carried inside the exe (`name` is the path under `<install>\licenses`, with `/`; the terms come first). Read-only. Settings > Licences and terms fetches them only when opened.
 
 ### presence on Linux and macOS
 Discord is reached through its Unix socket (`discord-ipc-0` to `-9`) in the user's private runtime folder; a socket

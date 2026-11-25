@@ -50,7 +50,7 @@ public sealed class HostAppModule : IRpcModule
             "setNativeView" => new { view = (string?)null },
             "getAudioStatus" => new { state = "unavailable", message = ModuleAvailability.Message("the Audio section works on Windows only.") },
             "restartAsAdmin" or "pickFile" or "pickFolder" or "getBundled" or "uninstallOldApp" or "restartPc" or "cancelRestartPc"
-                or "getFirstRun" or "installHelpers" or "completeFirstRun"
+                or "getFirstRun" or "installHelpers" or "completeFirstRun" or "getLicences"
                 => throw ModuleAvailability.Error(),
             _ => throw RpcException.UnknownMethod(Name, method),
         };

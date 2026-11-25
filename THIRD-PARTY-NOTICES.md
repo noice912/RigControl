@@ -50,10 +50,11 @@ RigControl copies OpenRGB's program folder as it is. These files are part of tha
 
 ### Where the source code is
 
-The source of the four carried programs, for the versions carried, is attached to each RigControl release on GitHub,
-next to the download:
+The source of the four carried programs, for the versions carried, is on RigControl's "Helper source code" release
+page on GitHub (https://github.com/noice912/RigControl/releases/tag/helper-sources). Each RigControl release's notes
+link to it:
 
-| File on the release page | What it is | Taken from |
+| File on that page | What it is | Taken from |
 |---|---|---|
 | `OpenRGB-1.1-8e16de2-source.tar.gz` | OpenRGB at commit `8e16de27858cf2be6af54a33ce003df74cb9fd3e`, the build carried | https://codeberg.org/OpenRGB/OpenRGB |
 | `EqualizerAPO-src-1.4.2.zip` | Equalizer APO 1.4.2, the project's own source archive | https://sourceforge.net/projects/equalizerapo/files/1.4.2/ |

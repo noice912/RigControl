@@ -65,10 +65,15 @@ internal sealed class AppModule : IRpcModule
             "uninstallOldApp" => UninstallOldApp(RpcArgs.Require<OldAppArgs>(args)),
             "restartPc" => RestartPc(RpcArgs.Optional<RestartPcArgs>(args)),
             "cancelRestartPc" => CancelRestartPc(),
+            "getLicences" => GetLicences(),
             _ => throw RpcException.UnknownMethod(Name, method),
         };
         return result;
     }
+
+    /// <summary>The licences, notices and terms carried inside the exe, to read in Settings. Read-only.</summary>
+    private static object GetLicences() =>
+        Install.LicenceFiles.All().Select(l => new { name = l.Name, text = l.Text }).ToArray();
 
     /// <summary>The helper programs RigControl needs, and the old apps it replaces (which can be uninstalled).</summary>
     private object GetBundled() => new

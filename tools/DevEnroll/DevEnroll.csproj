@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Turns a PC's registration request (RCREQ2..., shown in RigControl under Settings > Developer) into its dev token
+    (RCDEV2...), signed with the issuer key. How to run it: see the top of Program.cs. Platform-neutral.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
+    <RootNamespace>RigControl.DevEnroll</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RigControl.Updates\RigControl.Updates.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -648,6 +648,9 @@ export type BundledInfo = {
   elevated: boolean;
 };
 
+/** One licence, notice or terms text carried inside the app (`app.getLicences`). `name` is its path under licenses\. */
+export type LicenceText = { name: string; text: string };
+
 export type GccState = { installed: boolean; running: boolean; startsWithWindows: boolean; disabledByRigControl: boolean };
 
 // ---------- health and first run ----------
@@ -723,8 +726,71 @@ export type FirstRunInfo = {
   findings: HealthFinding[];
 };
 
+/** updates.getStatus and the "updates.status" event. */
+export type UpdateStatus = {
+  current: string;
+  autoCheck: boolean;
+  lastCheck: string | null;
+  checking: boolean;
+  latest: string | null;
+  note: string | null;
+  error: string | null;
+  available: { version: string; size: number; published: string; releaseUrl: string; notes: string | null } | null;
+  /** Only the installed copy updates itself; any other copy only says an update exists. */
+  canInstall: boolean;
+  elevated: boolean;
+  installing: string | null;
+  progress: number | null;
+};
+
+/** github.getStatus and the "github.status" event. Tokens never reach the page. */
+export type GitHubStatus = {
+  configured: boolean;
+  notSetUp: string | null;
+  login: string | null;
+  /** True only for an account that may push to RigControl's repository: dev mode exists only then. */
+  maintainer: boolean;
+  signingIn: boolean;
+  userCode: string | null;
+  verificationUri: string | null;
+  expiresAt: string | null;
+  problem: string | null;
+};
+
+/** dev.getStatus and the "dev.status" event (only ever answered for a maintainer account). */
+export type DevStatus = {
+  supported: boolean;
+  notSupported: string | null;
+  registered: boolean;
+  request: string | null;
+  pcName: string;
+  keyProblem: string | null;
+  hasToken: boolean;
+  tokenProblem: string | null;
+  enrolled: boolean;
+  subject: string | null;
+  unlocked: boolean;
+  locksAt: string | null;
+  defaultKeyPath: string;
+};
+
+export type ReviewItem = {
+  number: number;
+  url: string;
+  author: string | null;
+  stars: number;
+  version: string;
+  text: string;
+  createdAt: string | null;
+  state: string;
+};
+
 /** Every event the backend sends. */
 export interface EventMap {
+  "updates.status": UpdateStatus;
+  "github.status": GitHubStatus;
+  "dev.status": DevStatus;
+  "dev.publish": { step: string | null };
   "app.modulesChanged": ModuleInfo[];
   "sensors.snapshot": SensorSnapshot;
   "cooling.status": CoolingStatus;

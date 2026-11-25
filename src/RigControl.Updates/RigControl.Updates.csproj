@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Updates, dev keys and GitHub for RigControl, with no window toolkit: checking the signed update information,
+    downloading and checking an update, dev key checks, GitHub sign-in (device flow), reviews and publishing a release.
+    Platform-neutral so the same signing code is used by the app and by tools/UpdateSigner on any system.
+    Every network call goes through GitHubHttp, which only ever talks to GitHub's own hosts.
+  -->
+  <PropertyGroup>
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
+    <RootNamespace>RigControl.Updates</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RigControl.Core\RigControl.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.Updates.Tests" />
+  </ItemGroup>
+
+</Project>

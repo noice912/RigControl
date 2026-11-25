@@ -110,7 +110,8 @@ internal static class Autostart
     /// <summary>Reads the task of the user with this SID.</summary>
     public static State Query(string userSid) => Decide(userSid, Ask(TaskNameFor(userSid)), Ask(TaskName));
 
-    private static TaskAnswer Ask(string taskName)
+    /// <summary>What Windows says about the task with this name.</summary>
+    internal static TaskAnswer Ask(string taskName)
     {
         var (code, output, error) = RunSchtasks("/Query", "/TN", taskName, "/XML");
         if (code == 0) return new TaskAnswer(true, true, ReadTask(output));
@@ -207,12 +208,27 @@ internal static class Autostart
     /// </summary>
     public static string? Install(string exePath, string userSid)
     {
+        try
+        {
+            return WriteTask(exePath, userSid, TaskToWrite(userSid, Ask(TaskName)));
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Creates or replaces the task with this exact name for this user (the installer repoints the old shared task
+    /// under its own name). Must run elevated. Returns null on success, otherwise the reason.
+    /// </summary>
+    internal static string? WriteTask(string exePath, string userSid, string name)
+    {
         string? file = null;
         try
         {
             if (!File.Exists(exePath)) return "The program file was not found: " + exePath;
             var xml = BuildTaskXml(exePath, userSid);
-            var name = TaskToWrite(userSid, Ask(TaskName));
             file = Path.Combine(Path.GetTempPath(), "rigcontrol-task-" + Guid.NewGuid().ToString("N") + ".xml");
             File.WriteAllText(file, xml, Encoding.Unicode);
             var (code, output, error) = RunSchtasks("/Create", "/TN", name, "/XML", file, "/F");
@@ -252,7 +268,8 @@ internal static class Autostart
         }
     }
 
-    private static string? Delete(string taskName)
+    /// <summary>Removes the task with this name. Null on success, also when it was not there.</summary>
+    internal static string? Delete(string taskName)
     {
         var (code, output, error) = RunSchtasks("/Delete", "/TN", taskName, "/F");
         if (code == 0) return null;

@@ -196,7 +196,7 @@ internal sealed class FakeRgb : IOpenRgb
     public void UpdateMode(int device, int modeIndex, RgbMode mode)
     {
         if (FailWrites is not null) throw FailWrites;
-        Sent.Add($"mode {device} {modeIndex} cm={mode.ColorMode} speed={mode.Speed} bright={mode.Brightness} dir={mode.Direction} colors=[{string.Join(",", mode.Colors.Select(OpenRgbProtocol.ColorToHex))}]");
+        lock (Sent) Sent.Add($"mode {device} {modeIndex} cm={mode.ColorMode} speed={mode.Speed} bright={mode.Brightness} dir={mode.Direction} colors=[{string.Join(",", mode.Colors.Select(OpenRgbProtocol.ColorToHex))}]");
         var c = Devices[device];
         c.ActiveMode = modeIndex;
         c.Modes[modeIndex] = mode.Clone();
@@ -205,16 +205,16 @@ internal sealed class FakeRgb : IOpenRgb
     public void UpdateLeds(int device, IReadOnlyList<uint> colors)
     {
         if (FailWrites is not null) throw FailWrites;
-        Sent.Add($"leds {device} n={colors.Count} {OpenRgbProtocol.ColorToHex(colors[0])}");
+        lock (Sent) Sent.Add($"leds {device} n={colors.Count} {OpenRgbProtocol.ColorToHex(colors[0])}");
         Devices[device].Colors = colors.ToList();
     }
 
     public void UpdateZoneLeds(int device, int zone, IReadOnlyList<uint> colors)
-        => Sent.Add($"zone {device} {zone} n={colors.Count} {OpenRgbProtocol.ColorToHex(colors[0])}");
+        { lock (Sent) Sent.Add($"zone {device} {zone} n={colors.Count} {OpenRgbProtocol.ColorToHex(colors[0])}"); }
 
     public void ResizeZone(int device, int zone, int leds)
     {
-        Sent.Add($"resize {device} {zone} {leds}");
+        lock (Sent) Sent.Add($"resize {device} {zone} {leds}");
         // As OpenRGB does: the zone gets that many lights and the device's colour list is rebuilt.
         var c = Devices[device];
         c.Zones[zone].LedsCount = (uint)leds;

@@ -84,4 +84,9 @@ export const Icons = {
       <circle cx="10" cy="17" r="2" />
     </svg>
   ),
+  developer: () => (
+    <svg {...common}>
+      <path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14" />
+    </svg>
+  ),
 };

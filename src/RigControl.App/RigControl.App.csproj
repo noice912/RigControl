@@ -52,6 +52,8 @@
     <ProjectReference Include="..\RigControl.Health\RigControl.Health.csproj" />
     <!-- OpenRGB, the PawnIO setup and the Equalizer APO setup, carried inside the exe (third_party/BUNDLED.md). -->
     <ProjectReference Include="..\RigControl.Bundled\RigControl.Bundled.csproj" />
+    <!-- Auto-update, GitHub sign-in, reviews and dev mode's checks (only ever connects to GitHub). -->
+    <ProjectReference Include="..\RigControl.Updates\RigControl.Updates.csproj" />
     <!-- The merged Audio Controller (soundboard, virtual mic, EQ, "also play on"), hosted as the Audio section. -->
     <ProjectReference Include="..\Audio\AudioController.App\AudioController.App.csproj" />
   </ItemGroup>
@@ -59,6 +61,14 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="RigControl.App.Tests" />
+  </ItemGroup>
+
+  <!-- The licences, notices and terms travel inside the exe: the installer writes them to <install>\licenses and
+       Settings shows them (Install\LicenceFiles.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\LICENSE;$(MSBuildThisFileDirectory)..\..\THIRD-PARTY-NOTICES.md;$(MSBuildThisFileDirectory)..\..\TERMS-OF-USE.md;$(MSBuildThisFileDirectory)..\..\PRIVACY.md;$(MSBuildThisFileDirectory)..\..\SECURITY.md;$(MSBuildThisFileDirectory)..\..\README.md"
+                      LogicalName="licenses/%(Filename)%(Extension)" Visible="false" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\LICENSES\*" LogicalName="licenses/LICENSES/%(Filename)%(Extension)" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

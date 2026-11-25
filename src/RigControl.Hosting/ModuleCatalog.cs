@@ -122,11 +122,13 @@ public static class HostCapabilities
     public const string FirstRun = "host.firstRun";
     public const string Helpers = "host.helpers";
     public const string RestartPc = "host.restartPc";
+    /// <summary>The "updates", "github" and "dev" calls: auto-update, GitHub sign-in and reviews, dev mode.</summary>
+    public const string Updates = "host.updates";
 
     /// <summary>Everything the Windows app (WPF) offers besides its modules.</summary>
     public static readonly IReadOnlyList<string> WindowsHost = new[]
     {
-        Tray, Elevation, Autostart, Overlay, AudioSection, FilePicker, FirstRun, Helpers, RestartPc,
+        Tray, Elevation, Autostart, Overlay, AudioSection, FilePicker, FirstRun, Helpers, RestartPc, Updates,
     };
 
     /// <summary>

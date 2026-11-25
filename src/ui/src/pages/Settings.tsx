@@ -5,6 +5,10 @@ import { Switch, Segmented } from "../components/controls";
 import type { AppSettings, LogLine, ModuleState } from "../types";
 import { setTempUnit } from "../units";
 import { BuiltInApps } from "../components/BuiltInApps";
+import { Licences } from "../components/Licences";
+import { UpdatesPanel } from "../components/Updates";
+import { GitHubAccountPanel, ReviewPanel, useGitHub } from "../components/GitHubAccount";
+import { DeveloperSettings } from "../components/DeveloperSettings";
 
 const STATE: Record<ModuleState, { label: string; color: string }> = {
   ready: { label: "Working", color: "var(--ok)" },
@@ -27,6 +31,7 @@ export function Settings() {
   );
   const logs = useQuery<LogLine[]>("app.getLogs", { max: 200 });
   const { busy, run } = useAction();
+  const github = useGitHub();
 
   const change = async (patch: Partial<AppSettings>) => {
     // Turning "start with Windows" on or off can show a Windows permission prompt, so allow time for it.
@@ -179,8 +184,21 @@ export function Settings() {
       </section>
       )}
 
+      {/* Updates, the GitHub account and reviews (the Windows app). Developer only for an account that may push to RigControl. */}
+      {info && can("host.updates") && (
+        <>
+          <UpdatesPanel />
+          <GitHubAccountPanel />
+          <ReviewPanel />
+          {github.data?.maintainer && <DeveloperSettings key={github.data.login ?? ""} />}
+        </>
+      )}
+
       {/* Asked for only once the app has said it carries helper programs (the Windows app does). */}
       {info && can("host.helpers") && <BuiltInApps />}
+
+      {/* The texts travel inside the Windows app (app.getLicences). */}
+      {info && can("host.helpers") && <Licences />}
 
       <section className="panel">
         <h2>What's working</h2>

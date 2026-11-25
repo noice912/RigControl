@@ -16,8 +16,11 @@ import { Games } from "./pages/Games";
 import { Capture } from "./pages/Capture";
 import { Health } from "./pages/Health";
 import { Settings } from "./pages/Settings";
+import { Developer } from "./pages/Developer";
+import { UpdateBanner } from "./components/Updates";
+import { useGitHub } from "./components/GitHubAccount";
 
-type Route = "overview" | "cooling" | "graphics" | "capture" | "lighting" | "drivers" | "cpu" | "games" | "audio" | "health" | "settings";
+type Route = "overview" | "cooling" | "graphics" | "capture" | "lighting" | "drivers" | "cpu" | "games" | "audio" | "health" | "settings" | "developer";
 
 /**
  * `module` is the module whose state the entry shows. `needs` is what the page cannot do without, when that is not
@@ -35,6 +38,8 @@ const NAV: { route: Route; label: string; icon: () => ReactNode; module?: string
   { route: "audio", label: "Audio", icon: Icons.audio, needs: "host.audio" },
   { route: "health", label: "Health", icon: Icons.health, needs: "health" },
   { route: "settings", label: "Settings", icon: Icons.settings },
+  // Only for a GitHub account that may push to RigControl's repository (see `devHere` below).
+  { route: "developer", label: "Developer", icon: Icons.developer, needs: "host.updates" },
 ];
 
 const STORE_KEY = "rigcontrol.route";
@@ -89,7 +94,10 @@ export function App() {
     if (name.startsWith("host.")) return !can(name);
     return notOnThisSystem(modules.find((x) => x.name === name));
   };
-  const nav = NAV.filter((n) => !notForThisPc(n.module) && !notHere(n));
+  // The Developer page exists only for a signed-in GitHub account with push access; for anyone else there is no trace of it.
+  const github = useGitHub().data;
+  const devHere = !!info && can("host.updates") && !!github?.maintainer;
+  const nav = NAV.filter((n) => !notForThisPc(n.module) && !notHere(n) && (n.route !== "developer" || devHere));
   // Overview is the usual fallback. Where Overview itself has no version, the first page that does.
   const overviewHere = !notHere(NAV[0]!);
   const shownRoute: Route = nav.some((n) => n.route === route) ? route : overviewHere ? "overview" : (nav[0]?.route ?? "settings");
@@ -126,7 +134,8 @@ export function App() {
     shownRoute === "cpu" ? <Cpu /> :
     shownRoute === "games" ? <Games /> :
     shownRoute === "health" ? <Health /> :
-    shownRoute === "settings" ? <Settings /> : null;
+    shownRoute === "settings" ? <Settings /> :
+    shownRoute === "developer" ? <Developer /> : null;
 
   return (
     <div className={`shell ${shownRoute === "audio" ? "native" : ""}`}>
@@ -161,7 +170,12 @@ export function App() {
           </div>
         )}
       </nav>
-      {shownRoute !== "audio" && <main className="main">{page}</main>}
+      {shownRoute !== "audio" && (
+        <main className="main">
+          {info && can("host.updates") && <UpdateBanner onSettings={shownRoute === "settings"} />}
+          {page}
+        </main>
+      )}
       {/* The first-time setup is a Windows thing; where the app has none it is not asked for at all. */}
       {firstRunHere && <FirstRun onOpenChange={setSetupOpen} />}
     </div>

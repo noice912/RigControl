@@ -1114,8 +1114,59 @@ export function createMockBackend() {
   const ok = <T>(v: T) =>
     new Promise<T>((r) => window.setTimeout(() => r(structuredClone(v)), 120));
 
+  // Updates, GitHub and dev mode (made-up; nothing is ever sent anywhere).
+  let emitLater: (event: string, data: unknown) => void = () => {};
+  let updates = {
+    current: "1.1.2",
+    autoCheck: true,
+    lastCheck: new Date().toISOString(),
+    checking: false,
+    latest: "1.1.3",
+    note: null as string | null,
+    error: null as string | null,
+    available: {
+      version: "1.1.3",
+      size: 214958080,
+      published: new Date().toISOString(),
+      releaseUrl: "https://github.com/noice912/RigControl/releases",
+      notes: "Fixes and small improvements.",
+    } as null | { version: string; size: number; published: string; releaseUrl: string; notes: string | null },
+    canInstall: true,
+    elevated: true,
+    installing: null as string | null,
+    progress: null as number | null,
+  };
+  let github = {
+    configured: true,
+    notSetUp: null as string | null,
+    login: null as string | null,
+    maintainer: false,
+    signingIn: false,
+    userCode: null as string | null,
+    verificationUri: null as string | null,
+    expiresAt: null as string | null,
+    problem: null as string | null,
+  };
+  let dev = {
+    supported: true,
+    notSupported: null as string | null,
+    registered: false,
+    request: null as string | null,
+    pcName: "MY-PC",
+    keyProblem: null as string | null,
+    hasToken: false,
+    tokenProblem: null as string | null,
+    enrolled: false,
+    subject: null as string | null,
+    unlocked: false,
+    locksAt: null as string | null,
+    defaultKeyPath: "C:\\Users\\you\\.rigcontrol-keys\\update-signing.pem",
+  };
+  const notThere = (method: string) => new RpcError("unknownMethod", `Unknown method '${method}'.`);
+
   return {
     subscribe(emit: (event: string, data: unknown) => void) {
+      emitLater = emit;
       window.setInterval(() => {
         liquid = Math.round((liquid + (Math.random() - 0.5) * 0.2) * 10) / 10;
         emit("sensors.snapshot", snapshot());
@@ -1539,6 +1590,22 @@ export function createMockBackend() {
           });
         case "app.uninstallOldApp":
           return ok({ started: "GIGABYTE Control Center" });
+        case "app.getLicences":
+          return ok([
+            {
+              name: "TERMS-OF-USE.md",
+              text: "# RigControl terms of use\n\nBy installing RigControl you agree to these terms. (Preview text.)",
+            },
+            {
+              name: "LICENSE",
+              text: "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n\n(Preview text.)",
+            },
+            {
+              name: "THIRD-PARTY-NOTICES.md",
+              text: "# Third-party notices\n\n(Preview text.)",
+            },
+            { name: "LICENSES/MIT.txt", text: "MIT License\n\n(Preview text.)" },
+          ]);
         case "lighting.getGcc":
           return ok({
             installed: true,
@@ -2364,6 +2431,63 @@ export function createMockBackend() {
           return ok(captureStatus);
         case "app.pickFolder":
           return ok({ path: "D:\\Videos" });
+
+        case "updates.getStatus":
+          return ok(updates);
+        case "updates.check":
+          updates = { ...updates, lastCheck: new Date().toISOString() };
+          return ok(updates);
+        case "updates.setSettings":
+          updates = { ...updates, autoCheck: params?.autoCheck ?? updates.autoCheck };
+          return ok(updates);
+        case "updates.install":
+          throw new RpcError("unavailable", "The preview can't install anything.");
+
+        case "github.getStatus":
+          return ok(github);
+        case "github.startSignIn":
+          github = { ...github, signingIn: true, userCode: "ABCD-1234", verificationUri: "https://github.com/login/device", problem: null };
+          window.setTimeout(() => {
+            github = { ...github, signingIn: false, userCode: null, verificationUri: null, login: "octocat", maintainer: true };
+            emitLater("github.status", structuredClone(github));
+          }, 3000);
+          return ok(github);
+        case "github.cancelSignIn":
+          github = { ...github, signingIn: false, userCode: null, verificationUri: null };
+          return ok(github);
+        case "github.signOut":
+          github = { ...github, login: null, maintainer: false };
+          dev = { ...dev, unlocked: false };
+          return ok(github);
+        case "github.submitReview":
+          if (!github.login) throw new RpcError("unavailable", "Sign in with GitHub first.");
+          return ok({ url: "https://github.com/noice912/RigControl/issues/1", number: 1 });
+
+        case "dev.getStatus":
+        case "dev.registerPc":
+        case "dev.setToken":
+        case "dev.forget":
+        case "dev.unlock":
+        case "dev.lock":
+        case "dev.publishUpdate":
+        case "dev.listReviews":
+          // Like the app: nothing about dev mode answers unless the account may push to RigControl.
+          if (!github.maintainer) throw notThere(method);
+          if (method === "dev.registerPc") dev = { ...dev, registered: true, request: "RCREQ2.MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA-example" };
+          if (method === "dev.setToken") dev = { ...dev, hasToken: true, enrolled: true, subject: "octocat" };
+          if (method === "dev.forget") dev = { ...dev, registered: false, request: null, hasToken: false, enrolled: false, unlocked: false };
+          if (method === "dev.unlock") {
+            if (!dev.enrolled) throw new RpcError("unavailable", "This PC is not registered for dev mode (its Windows Hello key is missing). Register it again.");
+            dev = { ...dev, unlocked: true, locksAt: new Date(Date.now() + 15 * 60000).toISOString() };
+          }
+          if (method === "dev.lock") dev = { ...dev, unlocked: false, locksAt: null };
+          if (method === "dev.publishUpdate") throw new RpcError("unavailable", "The preview can't publish anything.");
+          if (method === "dev.listReviews")
+            return ok([
+              { number: 3, url: "https://github.com/noice912/RigControl/issues/3", author: "someone", stars: 5, version: "1.1.2", text: "Fans are finally quiet.", createdAt: new Date().toISOString(), state: "open" },
+              { number: 2, url: "https://github.com/noice912/RigControl/issues/2", author: "another", stars: 3, version: "1.1.1", text: "Good, but the lighting page is busy.", createdAt: new Date().toISOString(), state: "open" },
+            ]);
+          return ok(dev);
         case "nvidia.installDriver":
           return ok({ started: true, version: "621.24" });
         case "nvidia.checkDriverUpdate":

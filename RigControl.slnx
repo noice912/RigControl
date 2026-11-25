@@ -15,6 +15,11 @@
     <Project Path="src/RigControl.Lighting/RigControl.Lighting.csproj" />
     <Project Path="src/RigControl.Nvidia/RigControl.Nvidia.csproj" />
     <Project Path="src/RigControl.Sensors/RigControl.Sensors.csproj" />
+    <Project Path="src/RigControl.Updates/RigControl.Updates.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/DevEnroll/DevEnroll.csproj" />
+    <Project Path="tools/UpdateSigner/UpdateSigner.csproj" />
   </Folder>
   <Folder Name="/src/Audio/">
     <Project Path="src/Audio/AudioController.App/AudioController.App.csproj" />
@@ -39,6 +44,7 @@
     <Project Path="tests/RigControl.Lighting.Tests/RigControl.Lighting.Tests.csproj" />
     <Project Path="tests/RigControl.Nvidia.Tests/RigControl.Nvidia.Tests.csproj" />
     <Project Path="tests/RigControl.Sensors.Tests/RigControl.Sensors.Tests.csproj" />
+    <Project Path="tests/RigControl.Updates.Tests/RigControl.Updates.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Audio/">
     <Project Path="tests/Audio/AudioController.Tests/AudioController.Tests.csproj" />
