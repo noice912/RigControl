@@ -48,8 +48,22 @@ RigControl copies OpenRGB's program folder as it is. These files are part of tha
 | PawnIO library and modules (`PawnIOLib.dll`, `LpcIO.bin`, `SmbusI801.bin`, `SmbusPIIX4.bin`, `SmbusNCT6793.bin`, `SmbusIntelSkylakeIMC.bin`, `LedsValve.bin`) | as shipped with OpenRGB 1.1 | The modules: LGPL-2.1, as the PawnIO.Modules repository states ([text](LICENSES/LGPL-2.1.txt)). `PawnIOLib.dll` is part of the PawnIO repository (see PawnIO above). To be confirmed against the versions OpenRGB 1.1 ships. | https://github.com/namazso/PawnIO, https://github.com/namazso/PawnIO.Modules |
 | DirectX Shader Compiler (`dxcompiler.dll`, `dxil.dll`) | 10.0.19041 | Microsoft files that Qt's Windows deployment adds, both signed by Microsoft. `dxcompiler.dll`: the DirectX Shader Compiler's licence ([text](LICENSES/DirectXShaderCompiler-LICENSE.txt)). `dxil.dll`: no open-source licence; passed on as a redistributable Windows SDK file inside OpenRGB's unchanged package (see "How the licences were checked"). | https://github.com/microsoft/DirectXShaderCompiler |
 
-The source code for the GPL and LGPL programs above is published by their projects at the links given, for the
-versions named.
+### Where the source code is
+
+The source of the four carried programs, for the versions carried, is attached to each RigControl release on GitHub,
+next to the download:
+
+| File on the release page | What it is | Taken from |
+|---|---|---|
+| `OpenRGB-1.1-8e16de2-source.tar.gz` | OpenRGB at commit `8e16de27858cf2be6af54a33ce003df74cb9fd3e`, the build carried | https://codeberg.org/OpenRGB/OpenRGB |
+| `EqualizerAPO-src-1.4.2.zip` | Equalizer APO 1.4.2, the project's own source archive | https://sourceforge.net/projects/equalizerapo/files/1.4.2/ |
+| `PawnIO-2.2.0-source.tar.gz` | The PawnIO driver at its `2.2.0` tag | https://github.com/namazso/PawnIO |
+| `ffmpeg-9.0.2.tar.xz` | FFmpeg 9.0.2, the project's own release archive | https://ffmpeg.org/releases/ |
+
+Not attached, and where to get them: the libraries inside OpenRGB's package (Qt 6.8.3, libusb 1.0.27, HIDAPI
+0.15.0, the PawnIO modules) at the addresses in the table above; and the other libraries the gyan.dev FFmpeg build
+links in (for example x264 and x265), which that build's maker lists with their sources at
+https://www.gyan.dev/ffmpeg/builds/. If one of those addresses stops working, open an issue in this repository.
 
 ## 2. Libraries linked into `RigControl.exe` (NuGet)
 
