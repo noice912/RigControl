@@ -51,7 +51,7 @@ public static class ScheduledTaskXml
             if (node is not XElement { Name.LocalName: "Task" } task) continue;
             var uri = task.Elements().FirstOrDefault(e => e.Name.LocalName == "RegistrationInfo")?
                 .Elements().FirstOrDefault(e => e.Name.LocalName == "URI")?.Value.Trim();
-            var path = comment is { Length: > 1 } && comment[0] == Path.DirectorySeparatorChar ? comment : uri;
+            var path = comment is { Length: > 1 } && comment[0] == '\\' ? comment : uri; // Task Scheduler paths use a backslash on every system
             comment = null;
             if (string.IsNullOrEmpty(path) || result.Any(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase))) continue;
             result.Add((path, Enabled(task)));

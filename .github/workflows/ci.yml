@@ -116,7 +116,9 @@ jobs:
             echo "::endgroup::"
           done
       - name: Test
+        # Every project runs even when an earlier one fails, so one run shows every failure; the step fails at the end.
         run: |
+          failed=""
           for project in \
             tests/RigControl.Core.Tests \
             tests/RigControl.Hosting.Tests \
@@ -125,9 +127,13 @@ jobs:
             tests/RigControl.Desktop.Tests
           do
             echo "::group::test $project"
-            dotnet test "$project" -c Debug -f net8.0 --no-build
+            dotnet test "$project" -c Debug -f net8.0 --no-build || failed="$failed $project"
             echo "::endgroup::"
           done
+          if [ -n "$failed" ]; then
+            echo "::error::Tests failed in:$failed"
+            exit 1
+          fi
 
   # ------------------------------------------------------------------ 3. The Windows projects
   windows-app:
