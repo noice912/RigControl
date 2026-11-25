@@ -111,8 +111,8 @@ For bugs that are not security problems, open a normal issue.
 - **Lights without a key.** Govee, Yeelight, WLED, LeetDesk and Cololight lights have no key at all. Anyone on the
   same network can control such a light, with or without RigControl. That is how those lights work; keep them on a
   network you trust. The colour stream to a Nanoleaf is not encrypted either.
-- **Searching** only happens when you press Search for lights, and only on networks that have a router (never a
-  VPN adapter or a virtual switch). Answers from the network are treated as untrusted:
+- **Searching** only happens when you press Search for lights, and only on networks that have a router (which leaves out most VPN adapters and virtual
+  switches; a VPN that gives the PC a router address is searched too). Answers from the network are treated as untrusted:
   - A device speaks for itself only. A light that announces itself is asked what it is at the address its answer
     really came from, on that brand's usual port, and only when that address is on a searched network. An
     announcement cannot point RigControl at another address or port.

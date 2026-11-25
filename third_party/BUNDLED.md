@@ -6,7 +6,7 @@ be downloaded separately, the release build carries their official, unmodified f
 | Program | Version | What RigControl uses it for | How it is set up | Licence | Source code |
 |---|---|---|---|---|---|
 | OpenRGB | 1.1 (`8e16de2`) | Every RGB light | Unpacked to `C:\Program Files\RigControl\OpenRGB` and run hidden as RigControl's own copy. If an OpenRGB service already exists on the PC, the service is pointed at this copy and its `service_config` folder is copied over; the old files stay where they are. | GPL-2.0-only (its Qt files: LGPL-3.0) | https://codeberg.org/OpenRGB/OpenRGB |
-| PawnIO | setup 2.2.0 | The signed kernel driver that reads sensors and drives motherboard fans, and that OpenRGB uses for memory and motherboard lights | Its own installer is run silently if PawnIO is not installed | GPL-2.0-or-later with PawnIO's own exception, as its repository states (not yet compared with the 2.2.0 setup's files; see the notices) | https://github.com/namazso/PawnIO |
+| PawnIO | setup 2.2.0 | The signed kernel driver that reads sensors and drives motherboard fans, and that OpenRGB uses for memory and motherboard lights | Its own installer is run silently if PawnIO is not installed | GPL-2.0-or-later with PawnIO's own exception, as its repository states (the notice is in LICENSES/PawnIO-LICENSE.txt; see the notices) | https://github.com/namazso/PawnIO |
 | Equalizer APO | 1.4.2 | The audio equaliser | Its own installer is run silently if it is not installed. Windows needs one restart afterwards. | GPL-2.0 | https://sourceforge.net/projects/equalizerapo/ |
 
 They are separate programs that RigControl starts or installs. RigControl does not link to them. Licence texts and

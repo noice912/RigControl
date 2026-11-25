@@ -57,13 +57,23 @@ next to the download:
 |---|---|---|
 | `OpenRGB-1.1-8e16de2-source.tar.gz` | OpenRGB at commit `8e16de27858cf2be6af54a33ce003df74cb9fd3e`, the build carried | https://codeberg.org/OpenRGB/OpenRGB |
 | `EqualizerAPO-src-1.4.2.zip` | Equalizer APO 1.4.2, the project's own source archive | https://sourceforge.net/projects/equalizerapo/files/1.4.2/ |
-| `PawnIO-2.2.0-source.tar.gz` | The PawnIO driver at its `2.2.0` tag | https://github.com/namazso/PawnIO |
+| `PawnIO-2.2.0-source.tar.gz` | PawnIO at its `2.2.0` tag (commit `5cdf470831fdfff3f7f1d06363ca6b230f3bf35a`): the driver, its library and its utility, together with the PawnPP interpreter the driver is built with (commit `e64e4c37b2d8ba0d8ee57205faf8183aee12c438`, MPL-2.0, [text](LICENSES/MPL-2.0.txt)) | https://github.com/namazso/PawnIO and https://github.com/namazso/PawnPP |
 | `ffmpeg-9.0.2.tar.xz` | FFmpeg 9.0.2, the project's own release archive | https://ffmpeg.org/releases/ |
 
-Not attached, and where to get them: the libraries inside OpenRGB's package (Qt 6.8.3, libusb 1.0.27, HIDAPI
-0.15.0, the PawnIO modules) at the addresses in the table above; and the other libraries the gyan.dev FFmpeg build
-links in (for example x264 and x265), which that build's maker lists with their sources at
-https://www.gyan.dev/ffmpeg/builds/. If one of those addresses stops working, open an issue in this repository.
+Not attached, and where to get them:
+
+- **Inside OpenRGB's package:** Qt 6.8.3, libusb 1.0.27, HIDAPI 0.15.0 and the PawnIO modules, at the addresses in
+  the table above.
+- **Inside Equalizer APO's installer:** FFTW (`fftw3f.dll`, GPL-2.0-or-later, https://www.fftw.org), libsndfile
+  (`sndfile.dll`, LGPL-2.1-or-later, https://github.com/libsndfile/libsndfile), Qt 6 (LGPL-3.0,
+  https://code.qt.io) and Microsoft's Visual C++ runtime files. The attached Equalizer APO archive holds these as
+  ready-built files in its `Setup` folder, as the project publishes them, not as source.
+- **Inside the FFmpeg build:** the other libraries the gyan.dev build links in (for example x264 and x265), which
+  that build's maker lists with their sources at https://www.gyan.dev/ffmpeg/builds/.
+- **PawnIO's installer:** the project publishes the finished setup file only (https://github.com/namazso/PawnIO.Setup);
+  the scripts that pack it are not published. What it installs is built from the attached PawnIO source.
+
+If one of those addresses stops working, open an issue in this repository.
 
 ## 2. Libraries linked into `RigControl.exe` (NuGet)
 
