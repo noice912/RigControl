@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { call, errorMessage } from "../bridge";
 import { useQuery } from "../hooks";
-import { useConfirm } from "./controls";
+import { Slider, Switch, useConfirm } from "./controls";
 import { useToast } from "./Toast";
 import type {
   FoundLight,
+  LightAbility,
   NetworkBrand,
   NetworkLight,
   NetworkLights,
@@ -24,6 +25,170 @@ function TestedBadge({ tested }: { tested: boolean }) {
     <span className="badge ok">Tried on real hardware</span>
   ) : (
     <span className="badge warn">{UNTESTED}</span>
+  );
+}
+
+/** The plain reason a control can't be used, or undefined when it can. */
+function whyNot(a: LightAbility | undefined): string | undefined {
+  if (!a) return "This version of RigControl can't control this kind of light.";
+  return a.can ? undefined : (a.why ?? "This light can't do that from here.");
+}
+
+/** "Right now: On, 60% bright, colour #FF8800." from what the light last said; null when it said nothing. */
+function nowShowing(l: NetworkLight): string | null {
+  const parts: string[] = [];
+  if (l.on !== null) parts.push(l.on ? "on" : "off");
+  if (l.on !== false && l.brightness !== null) parts.push(`${l.brightness}% bright`);
+  if (l.on !== false && l.color) parts.push(`colour ${l.color}`);
+  return parts.length > 0 ? `Right now: ${parts.join(", ")}.` : null;
+}
+
+/**
+ * A paired light's own controls: on/off, brightness, one colour, and Give back. A control the brand can't do is
+ * disabled, with its reason shown under it. The slider sends when it is let go, the colour once it settles.
+ */
+function LightControlsRow(props: {
+  light: NetworkLight;
+  disabled: boolean;
+  onData: (r: NetworkLights) => void;
+}) {
+  const l = props.light;
+  const c = l.controls;
+  const toast = useToast();
+  const [sending, setSending] = useState(false);
+  const [colour, setColour] = useState(l.color ?? "#FFFFFF");
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    if (l.color) setColour(l.color);
+  }, [l.color]);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const run = async (method: string, args: object, done: string) => {
+    setSending(true);
+    try {
+      props.onData(
+        await call<NetworkLights>(method, { id: l.id, ...args }, 30000),
+      );
+      toast.show(done, "ok");
+    } catch (err) {
+      toast.show(errorMessage(err), "error");
+    } finally {
+      setSending(false);
+    }
+  };
+  const send = (
+    change: { on?: boolean; brightness?: number; color?: string },
+    done: string,
+  ) => run("lighting.setNetworkLight", change, done);
+
+  const off = props.disabled || sending;
+  const reasons = (
+    [
+      ["Switch", whyNot(c?.power)],
+      ["Brightness", whyNot(c?.brightness)],
+      ["Colour", whyNot(c?.colour)],
+      ["What it shows now", whyNot(c?.readBack)],
+      ["Give back", whyNot(c?.giveBack)],
+    ] as [string, string | undefined][]
+  ).filter((r): r is [string, string] => r[1] !== undefined);
+  const showing = nowShowing(l);
+
+  return (
+    <div className="netlight-controls" aria-label={`Controls for ${l.name}`}>
+      <div
+        className="row"
+        style={{ gap: 16, flexWrap: "wrap", alignItems: "center" }}
+      >
+        <Switch
+          checked={l.on ?? false}
+          disabled={off || !c?.power.can}
+          label={l.on === null ? "On or off" : l.on ? "On" : "Off"}
+          onChange={(v) =>
+            void send(
+              { on: v },
+              v ? `${l.name} switched on` : `${l.name} switched off`,
+            )
+          }
+        />
+        <div style={{ minWidth: 180, flex: "1 1 180px" }}>
+          <Slider
+            label={`Brightness of ${l.name}`}
+            min={1}
+            max={100}
+            value={l.brightness ?? 100}
+            format={(v) => `${v}%`}
+            disabled={off || !c?.brightness.can}
+            onCommit={(v) =>
+              void send({ brightness: v }, `${l.name} set to ${v}%`)
+            }
+          />
+        </div>
+        <label className="color-well" style={{ background: colour }}>
+          <input
+            type="color"
+            value={colour.toLowerCase()}
+            aria-label={`Colour of ${l.name}`}
+            disabled={off || !c?.colour.can}
+            onChange={(e) => {
+              const v = e.target.value.toUpperCase();
+              setColour(v);
+              if (timer.current !== null) window.clearTimeout(timer.current);
+              timer.current = window.setTimeout(() => {
+                timer.current = null;
+                void send({ color: v }, `${l.name} set to ${v}`);
+              }, 500);
+            }}
+          />
+          <span>{colour}</span>
+        </label>
+        <button
+          className="btn small"
+          disabled={off || !c?.giveBack.can || !l.takenOver}
+          title={
+            c?.giveBack.can && !l.takenOver
+              ? "RigControl hasn't changed this light, so there is nothing to give back."
+              : undefined
+          }
+          onClick={() =>
+            void run(
+              "lighting.giveBackNetworkLight",
+              {},
+              `${l.name} given back`,
+            )
+          }
+        >
+          {sending ? "Sending…" : "Give back"}
+        </button>
+      </div>
+      {showing && <div className="sub">{showing}</div>}
+      {l.takenOver && c?.giveBack.can && (
+        <div className="sub">
+          RigControl has taken this light over. Give back puts it back to what
+          it was doing before.
+        </div>
+      )}
+      {reasons.length > 0 && (
+        <ul className="netlight-list sub">
+          {reasons.map(([what, why]) => (
+            <li key={what}>
+              <strong>{what}:</strong> {why}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!l.joinsEverything && (
+        <div className="sub">
+          Everything at once and Turn all lights off leave this one alone,
+          because it can run the lights of a whole house. Use its own controls
+          here.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -197,6 +362,13 @@ export function NetworkLightsPanel(props: {
             for lights, and it only looks for lights when you press Search for
             lights.
           </div>
+          <div className="sub">
+            Switch each light, dim it or pick its colour below. An effect drives
+            a light only while it plays, and changing a light by hand stops the
+            effect. To give each panel or LED its own part of an effect, turn
+            Per LED on and place the light on the Layout. Scenes only hold the
+            PC's own lights.
+          </div>
         </div>
         {isSearching ? (
           <button className="btn small" onClick={() => void stop()}>
@@ -240,12 +412,12 @@ export function NetworkLightsPanel(props: {
                 {l.note && <div className="sub">{l.note}</div>}
                 {!l.placed && (
                   <div className="sub">
-                    {n.brands.find((b) => b.brand === l.brand)
-                      ?.followsUnplaced === false
-                      ? `Not on the layout yet. RigControl leaves it alone until you place it: turn Per LED on and place it on the Layout, and each ${l.pointName} takes its own part of the picture.`
-                      : "Not on the layout yet. Turn Per LED on and place it on the Layout to give it its own part of the picture; until then it follows the one overall colour."}
+                    {!l.followsUnplaced
+                      ? `Not on the layout yet. Effects leave it alone until you place it: turn Per LED on, open the Layout and drag it onto the picture. Then each ${l.pointName} takes its own part of the effect.`
+                      : `Not on the layout yet. While an effect plays, it shows the one overall colour. Turn Per LED on and place it on the Layout to give each ${l.pointName} its own part of the picture.`}
                   </div>
                 )}
+                <LightControlsRow light={l} disabled={busy} onData={setData} />
               </div>
               <button
                 className="btn small ghost"

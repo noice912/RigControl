@@ -179,6 +179,8 @@ internal sealed class FakeRgb : IOpenRgb
     }
 
     public bool OwnsServer => Started;
+    /// <summary>False = as on Linux and macOS: OpenRGB is never looked for or started, only connected to.</summary>
+    public bool CanStartServer { get; set; } = true;
     public bool Connected { get; private set; }
 
     public void Connect()
@@ -604,7 +606,13 @@ public class LightSyncTests : IDisposable
     {
         await using var m = await Start();
         var e = await Assert.ThrowsAsync<RpcException>(() => Call(m, "setSync", new { source = "nope" }));
+#if WINDOWS
         Assert.Equal("invalidArgs", e.Code);
+#else
+        // No capture cards in the flavour for Linux and macOS: any capture device is refused as not available.
+        Assert.Equal("unavailable", e.Code);
+        Assert.StartsWith(ModuleAvailability.NotOnThisSystem, e.Message);
+#endif
         e = await Assert.ThrowsAsync<RpcException>(() => Call(m, "setSync", new { brightness = 0 }));
         Assert.Equal("invalidArgs", e.Code);
     }
@@ -860,6 +868,7 @@ public class LedLayoutTests : IDisposable
     }
 }
 
+#if WINDOWS // OBS stands in for a capture card, which only the Windows flavour has.
 public class ObsSourceTests
 {
     [Fact]
@@ -889,9 +898,11 @@ public class ObsSourceTests
         Assert.Null(ObsSource.ParseBmp(bmp, 3, 2));
     }
 }
+#endif
 
 public class BassFollowerTests
 {
+#if WINDOWS // The band filters listen to the PC's sound, which only the Windows flavour does.
     private static float[] Sine(double hz, int rate, double seconds, float amp)
     {
         var n = (int)(rate * seconds);
@@ -941,6 +952,19 @@ public class BassFollowerTests
     }
 
     [Fact]
+    public void Treble_hears_hi_hats_not_bass()
+    {
+        var hats = BandFollower.Treble(48000);
+        hats.Add(Sine(8000, 48000, 0.5, 0.3f));
+        Assert.True(hats.Level > 0.6f, $"8 kHz level {hats.Level}");
+        var kick = BandFollower.Treble(48000);
+        kick.Add(Sine(8000, 48000, 0.5, 0.3f));
+        kick.Add(Sine(60, 48000, 0.5, 0.5f));
+        Assert.True(kick.Level < 0.1f, $"60 Hz on the treble {kick.Level}");
+    }
+#endif
+
+    [Fact]
     public void Mids_turn_the_hue_and_keep_the_brightness()
     {
         var c = ColorMath.RotateHue((255, 0, 0), 120);
@@ -951,18 +975,6 @@ public class BassFollowerTests
         Assert.Equal(255, full.R, 3);
         Assert.Equal(255, full.G, 3);
         Assert.Equal((255.0, 0.0, 0.0), BassFollower.Shift((255, 0, 0), 0f, 100));
-    }
-
-    [Fact]
-    public void Treble_hears_hi_hats_not_bass()
-    {
-        var hats = BandFollower.Treble(48000);
-        hats.Add(Sine(8000, 48000, 0.5, 0.3f));
-        Assert.True(hats.Level > 0.6f, $"8 kHz level {hats.Level}");
-        var kick = BandFollower.Treble(48000);
-        kick.Add(Sine(8000, 48000, 0.5, 0.3f));
-        kick.Add(Sine(60, 48000, 0.5, 0.5f));
-        Assert.True(kick.Level < 0.1f, $"60 Hz on the treble {kick.Level}");
     }
 
     [Fact]

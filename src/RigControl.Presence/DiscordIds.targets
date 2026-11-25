@@ -17,10 +17,10 @@
     to false.
   -->
   <PropertyGroup>
-    <DiscordIdsFile Condition="'$(DiscordIdsFile)' == ''">$(MSBuildThisFileDirectory)..\..\private\discord-ids.json</DiscordIdsFile>
+    <DiscordIdsFile Condition="'$(DiscordIdsFile)' == ''">$(MSBuildThisFileDirectory)../../private/discord-ids.json</DiscordIdsFile>
   </PropertyGroup>
 
-  <UsingTask TaskName="SealDiscordIds" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+  <UsingTask TaskName="SealDiscordIds" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
       <Source ParameterType="System.String" Required="true" />
       <Output ParameterType="System.String" Required="true" />

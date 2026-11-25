@@ -17,15 +17,6 @@ using RigControl.Sensors;
 
 namespace RigControl.App;
 
-/// <summary>Everything the window, tray icon and "app" RPC module share.</summary>
-public sealed record AppServices(
-    AppEnvironment Environment,
-    SettingsStore Settings,
-    EventBus Events,
-    RpcDispatcher Dispatcher,
-    ModuleHost Host,
-    FileLog Log);
-
 public partial class App : System.Windows.Application
 {
     /// <summary>Command-line switch: wait for this process id to exit before starting (used by restart-as-administrator).</summary>
@@ -209,13 +200,7 @@ public partial class App : System.Windows.Application
                 StartsAsAdminFromOpenFolder = () => settings.Get<AppSettings>(AppSettings.Section).AutostartRegistered && programFolderOpen.Value,
             },
         };
-        // Add-ons that only some builds carry join here: their modules, and what they follow on the lights and overlay.
-        AddExtras(modules, bus, lighting);
-        foreach (var m in modules)
-        {
-            host.Add(m);
-            dispatcher.Register(m);
-        }
+        HostModules.Register(modules, host, dispatcher);
 
         _services = new AppServices(env, settings, bus, dispatcher, host, _log);
         dispatcher.Register(new AppModule(_services, this));
@@ -306,13 +291,6 @@ public partial class App : System.Windows.Application
     public RigControl.Bundled.BundledApps? Bundled { get; private set; }
 
     /// <summary>
-    /// Where an add-on that only some builds carry joins the app: it may add modules to the list and follow the
-    /// event bus and the lights. A build without add-ons has no body for this, and the call compiles away.
-    /// </summary>
-    partial void AddExtras(List<IAppModule> modules, EventBus bus, LightingModule lighting);
-
-    /// <summary>An add-on's last step when Windows shuts down or restarts. It must return within two seconds.</summary>
-    partial void ExtrasOnSessionEnding();
 
     /// <summary>
     /// After "restart as administrator" the new copy starts while the old one is still shutting down (saving the audio
@@ -433,21 +411,8 @@ public partial class App : System.Windows.Application
         return (state, _audio.Message);
     }
 
-    private async Task StartModulesAsync(ModuleHost host, AppEnvironment env, SettingsStore settings, EventBus bus)
-    {
-        try
-        {
-            await host.StartAllAsync(
-                m => new ModuleContext(bus, _log!.For(m.Name), settings, env),
-                TimeSpan.FromSeconds(20),
-                _lifetime.Token);
-        }
-        catch (Exception ex)
-        {
-            _log?.Error("Module startup failed unexpectedly.", ex);
-        }
-        bus.Publish("app.modulesChanged", host.Describe());
-    }
+    private Task StartModulesAsync(ModuleHost host, AppEnvironment env, SettingsStore settings, EventBus bus)
+        => HostModules.StartAllAsync(host, env, settings, bus, _log!, _lifetime.Token);
 
     public void ShowMainWindow()
     {
@@ -544,10 +509,6 @@ public partial class App : System.Windows.Application
         }) { IsBackground = true, Name = "RigControl shutdown deadline" };
         deadline.Start();
 
-        // An add-on's quick last step (it has under two seconds), before the slower closing work below.
-        try { ExtrasOnSessionEnding(); }
-        catch (Exception ex) { _log?.Warn("An add-on's shutdown step failed: " + ex.Message); }
-
         try
         {
             _audio?.OnSessionEnding();
@@ -589,23 +550,4 @@ public partial class App : System.Windows.Application
         }
         base.OnExit(e);
     }
-}
-
-/// <summary>App-level preferences stored in settings.json under "app".</summary>
-public sealed class AppSettings
-{
-    public const string Section = "app";
-
-    /// <summary>Closing the window hides it to the tray instead of exiting (so software fan curves keep running).</summary>
-    public bool MinimizeToTray { get; set; } = true;
-
-    public bool StartMinimized { get; set; }
-
-    public bool CloseNoticeShown { get; set; }
-
-    /// <summary>True once the "start with Windows as administrator" scheduled task was registered by RigControl.</summary>
-    public bool AutostartRegistered { get; set; }
-
-    /// <summary>"F" or "C": how temperatures are shown. Sensors, curves and devices always work in °C inside.</summary>
-    public string TemperatureUnit { get; set; } = "F";
 }

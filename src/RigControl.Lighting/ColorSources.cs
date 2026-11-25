@@ -1,3 +1,4 @@
+#if WINDOWS
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.Win32;
@@ -8,6 +9,7 @@ using Windows.Media.MediaProperties;
 using Windows.Graphics.Imaging;
 using System.Text.RegularExpressions;
 using WinRT;
+#endif
 
 namespace RigControl.Lighting;
 
@@ -202,8 +204,9 @@ public static class ColorMath
     public static string Hex(int rgb) => "#" + (rgb & 0xFFFFFF).ToString("X6");
 }
 
+#if WINDOWS // The screen and capture cards are read with Windows' own calls; the other flavour has no picture to follow.
 /// <summary>The main screen, shrunk to 48x27 with GDI (StretchBlt), about 15 times a second. Exclusive full screen and some HDR output read as black.</summary>
-public sealed class ScreenSource : IDisposable
+public sealed class ScreenSource : IScreenPicture
 {
     private const int W = ColorMath.GridW, H = ColorMath.GridH;
     private readonly byte[] _buf = new byte[W * H * 4];
@@ -263,7 +266,7 @@ public sealed class ScreenSource : IDisposable
 /// already showing the picture keeps it), else on its own; the device switched to its smallest uncompressed format
 /// (MJPG/H264 can't be turned into pixels here), frames asked for as BGRA8 and averaged about 14 times a second.
 /// </summary>
-public sealed class CaptureSource : IDisposable
+public sealed class CaptureSource : ICapturePicture
 {
     private MediaCapture? _capture;
     private MediaFrameReader? _reader;
@@ -456,3 +459,4 @@ public sealed class CaptureSource : IDisposable
         _capture = null;
     }
 }
+#endif

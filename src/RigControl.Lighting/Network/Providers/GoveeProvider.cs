@@ -184,6 +184,40 @@ public sealed class GoveeProvider : INetworkLightProvider
         }
     }
 
+    // ---- direct control: the official LAN commands "turn", "brightness" and "colorwc" to port 4003. They are not
+    // answered, so nothing here waits for (or needs) Govee's reply port.
+
+    internal const string NoReadBack =
+        "A Govee light only answers on a fixed port of this PC, and RigControl doesn't wait for those answers when you change a light. So it can't show what the light shows now.";
+    internal const string NoGiveBack =
+        "Without the light's answer RigControl can't know what it showed before, so it can't put that back. Pick a scene in the Govee Home app instead.";
+
+    public LightControls Controls(PairedLight light) =>
+        new(LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.No(NoReadBack), LightAbility.No(NoGiveBack));
+
+    public async Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct)
+    {
+        // Commands leave from a port of their own; the light's answers (if any) go to 4002 and are not waited for.
+        using var port = net.OpenUdp();
+        void Send(string json) => port.Send(Encoding.UTF8.GetBytes(json), light.Address, ControlPort);
+        if (change.TurnsOff)
+        {
+            Send(TurnJson(false));
+            return;
+        }
+        Send(TurnJson(true));
+        if (change.Brightness is { } b)
+        {
+            await Task.Delay(_gap, ct).ConfigureAwait(false);
+            Send(BrightnessJson(b));
+        }
+        if (change.Colour is { } c)
+        {
+            await Task.Delay(_gap, ct).ConfigureAwait(false);
+            Send(ColourJson(c & 0xFFFFFF));
+        }
+    }
+
     private async Task<GoveeState> AskStateAsync(ReplyPort.Lease port, string address, CancellationToken ct)
     {
         port.Send(StateJson, address, ControlPort);

@@ -10,6 +10,7 @@ import "./styles.css";
 import { App } from "./App";
 import { Overlay } from "./pages/Overlay";
 import { AppProvider } from "./appContext";
+import { hostKind } from "./bridge";
 import { ToastProvider } from "./components/Toast";
 
 // Block the browser's own context menu and file drops in the packaged app.
@@ -25,12 +26,30 @@ for (const el of [document.documentElement, document.body]) {
   });
 }
 
+/** A packaged build that found no app to talk to. It says so; it never shows made-up data. */
+function NoHost() {
+  return (
+    <div className="page" style={{ maxWidth: 640, margin: "80px auto" }}>
+      <h1>RigControl's window did not connect</h1>
+      <p>
+        This page is RigControl's interface, but it could not reach the RigControl app behind it, so there is nothing
+        to show.
+      </p>
+      <p className="sub">Close this window and start RigControl again. If it keeps happening, the log folder says why.</p>
+    </div>
+  );
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ToastProvider>
-      <AppProvider>
-        {window.location.hash === "#overlay" ? <Overlay /> : <App />}
-      </AppProvider>
-    </ToastProvider>
+    {hostKind === "none" ? (
+      <NoHost />
+    ) : (
+      <ToastProvider>
+        <AppProvider>
+          {window.location.hash === "#overlay" ? <Overlay /> : <App />}
+        </AppProvider>
+      </ToastProvider>
+    )}
   </StrictMode>,
 );

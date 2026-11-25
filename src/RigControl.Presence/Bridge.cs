@@ -58,6 +58,7 @@ public static class ExtensionLink
         $"const RP_TOKEN = '{(token is not null && Token.IsMatch(token) ? token : "")}';\n";
 }
 
+#if WINDOWS
 /// <summary>
 /// The local link the browser extension posts to (RichPresence's protocol): http://127.0.0.1:47610-47619,
 /// POST /watching and GET /status. Only this PC can reach it, and only browser-extension requests are accepted: a
@@ -73,7 +74,7 @@ public static class ExtensionLink
 /// user's secret (<see cref="ExtensionLink"/>), asks "/status" to prove it knows it, and only reports to a listener
 /// that does. A copy of the extension without the secret (loaded from the source folder) cannot check and says so.
 /// </summary>
-public sealed class ExtensionBridge : IDisposable
+public sealed class ExtensionBridge : IExtensionBridge
 {
     /// <summary>The first of the ports tried, and how many are tried (47610-47619). The extension knows the same range.</summary>
     public const int FirstPort = 47610;
@@ -387,3 +388,4 @@ public sealed class ExtensionBridge : IDisposable
         try { _listener?.Stop(); } catch { /* ignore */ }
     }
 }
+#endif

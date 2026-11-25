@@ -17,6 +17,7 @@ public interface IPresenceInputs
     IReadOnlyList<string> BrowserTitles();
 }
 
+#if WINDOWS
 public sealed class PcInputs : IPresenceInputs
 {
     /// <summary>Only this Windows session's processes: another signed-in user's game must never show on this user's card.</summary>
@@ -27,6 +28,7 @@ public sealed class PcInputs : IPresenceInputs
     public Task<IReadOnlyList<MediaSession>> SessionsAsync() => Watching.SessionsAsync();
     public IReadOnlyList<string> BrowserTitles() => Watching.BrowserTitles();
 }
+#endif
 
 /// <summary>What the engine is showing right now (for the Games page and, later, the overlay).</summary>
 public sealed record PresenceNow(string Status, string? Playing, IReadOnlyList<string> RunningIds, MusicNow? Music, string? LyricLine, string? App,

@@ -53,8 +53,9 @@ public interface IDiscordPipe : IDisposable
 }
 
 /// <summary>
-/// Where Discord's local IPC lives. On Windows these are the named pipes discord-ipc-0..9; on Linux and macOS they
-/// are Unix sockets with the same names (not built yet: add another implementation of this).
+/// Where Discord's local IPC lives. On Windows these are the named pipes discord-ipc-0..9
+/// (<c>WindowsPipeTransport</c>); on Linux and macOS they are Unix sockets with the same names
+/// (<see cref="UnixSocketTransport"/>).
 /// </summary>
 public interface IDiscordTransport
 {
@@ -64,6 +65,7 @@ public interface IDiscordTransport
     IDiscordPipe? Open(int index);
 }
 
+#if WINDOWS
 /// <summary>Windows: \\.\pipe\discord-ipc-N. The pipe namespace is shared by every signed-in user, so each pipe's owner is checked.</summary>
 public sealed class WindowsPipeTransport : IDiscordTransport
 {
@@ -125,6 +127,7 @@ public sealed class WindowsPipeTransport : IDiscordTransport
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetNamedPipeServerProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint serverPid);
 }
+#endif
 
 /// <summary>
 /// Discord's local IPC (the same link the official Rich Presence libraries use): frames of
@@ -146,7 +149,12 @@ public sealed class DiscordClient : IDiscordClient
     private int _live;
     private bool _noAnswer;
 
+#if WINDOWS
     public DiscordClient() : this(new WindowsPipeTransport()) { }
+#else
+    /// <summary>Linux and macOS: Discord's Unix sockets, and only the ones that are provably this user's.</summary>
+    public DiscordClient() : this(new UnixSocketTransport()) { }
+#endif
 
     public DiscordClient(IDiscordTransport transport, Func<DateTime>? now = null)
     {
@@ -283,7 +291,8 @@ internal sealed class DiscordConnection : IDiscordConnection
     }
 
     public string ClientId { get; }
-    public bool Connected => _pipe is { } p && p.Stream.CanWrite && (p.Stream is not PipeStream ps || ps.IsConnected);
+    public bool Connected => _pipe is { } p && p.Stream.CanWrite && (p.Stream is not PipeStream ps || ps.IsConnected)
+                             && (p.Stream is not System.Net.Sockets.NetworkStream ns || ns.Socket.Connected);
     public DiscordUser? User { get; private set; }
     /// <summary>Discord's reason when it refused the id at the handshake.</summary>
     public string? Refused { get; private set; }

@@ -6,8 +6,10 @@
     <Project Path="src/RigControl.Bundled/RigControl.Bundled.csproj" />
     <Project Path="src/RigControl.Capture/RigControl.Capture.csproj" />
     <Project Path="src/RigControl.Cooling/RigControl.Cooling.csproj" />
+    <Project Path="src/RigControl.Desktop/RigControl.Desktop.csproj" />
     <Project Path="src/RigControl.Drivers/RigControl.Drivers.csproj" />
     <Project Path="src/RigControl.Health/RigControl.Health.csproj" />
+    <Project Path="src/RigControl.Hosting/RigControl.Hosting.csproj" />
     <Project Path="src/RigControl.Core/RigControl.Core.csproj" />
     <Project Path="src/RigControl.Cpu/RigControl.Cpu.csproj" />
     <Project Path="src/RigControl.Lighting/RigControl.Lighting.csproj" />
@@ -28,8 +30,10 @@
     <Project Path="tests/RigControl.Presence.Tests/RigControl.Presence.Tests.csproj" />
     <Project Path="tests/RigControl.Capture.Tests/RigControl.Capture.Tests.csproj" />
     <Project Path="tests/RigControl.Cooling.Tests/RigControl.Cooling.Tests.csproj" />
+    <Project Path="tests/RigControl.Desktop.Tests/RigControl.Desktop.Tests.csproj" />
     <Project Path="tests/RigControl.Drivers.Tests/RigControl.Drivers.Tests.csproj" />
     <Project Path="tests/RigControl.Health.Tests/RigControl.Health.Tests.csproj" />
+    <Project Path="tests/RigControl.Hosting.Tests/RigControl.Hosting.Tests.csproj" />
     <Project Path="tests/RigControl.Core.Tests/RigControl.Core.Tests.csproj" />
     <Project Path="tests/RigControl.Cpu.Tests/RigControl.Cpu.Tests.csproj" />
     <Project Path="tests/RigControl.Lighting.Tests/RigControl.Lighting.Tests.csproj" />

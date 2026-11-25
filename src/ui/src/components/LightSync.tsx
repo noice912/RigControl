@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { call } from "../bridge";
 import { useAction, useLive } from "../hooks";
+import { useApp } from "../appContext";
 import { Slider, Switch } from "./controls";
 import { LedLayoutPanel } from "./LedLayout";
 import { EffectLibrary } from "./EffectLibrary";
@@ -14,6 +15,8 @@ export function LightSyncPanel(props: {
 }) {
   const { data: s, setData } = useLive("lighting.sync", "lighting.getSync");
   const { busy, run } = useAction();
+  // Following the PC's sound is a Windows part; the Linux and macOS app leaves these controls out.
+  const hasSound = useApp().can("lighting.audio");
   // Changes when a network light is paired, forgotten or read, so the layout lists it straight away.
   const [netLights, setNetLights] = useState("");
   useEffect(() => {
@@ -125,6 +128,8 @@ export function LightSyncPanel(props: {
             </div>
           </>
         )}
+        {hasSound && (
+        <>
         <div className="fx-group-name" style={{ marginTop: 14 }}>
           Sound on top of any effect
         </div>
@@ -261,6 +266,8 @@ export function LightSyncPanel(props: {
               />
             </div>
           </div>
+        )}
+        </>
         )}
         <div className="field">
           <div className="field-label">Effect brightness</div>

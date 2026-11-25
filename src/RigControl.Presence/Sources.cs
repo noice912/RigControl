@@ -5,7 +5,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+#if WINDOWS
 using Windows.Media.Control;
+#endif
 
 namespace RigControl.Presence;
 
@@ -15,6 +17,7 @@ public sealed record ForegroundApp(string Proc, string Label, string Title, stri
 
 public sealed record LyricLine(double T, string Text);
 
+#if WINDOWS
 /// <summary>What is playing in Apple Music or Spotify, from Windows' media controls (GSMTC).</summary>
 public static class MusicSource
 {
@@ -63,6 +66,7 @@ public static class MusicSource
         return new MusicNow(pick.Player, title, artist, album, isPlaying, position, duration);
     }
 }
+#endif
 
 /// <summary>Album art (iTunes search) and synced lyrics (lrclib.net), cached per track.</summary>
 public sealed class MusicExtras
@@ -140,6 +144,7 @@ public sealed class MusicExtras
 /// <summary>The app in front (for the "current app" card).</summary>
 public static class ForegroundSource
 {
+#if WINDOWS
     private static readonly HashSet<string> Ignore = new(StringComparer.OrdinalIgnoreCase)
     {
         "discord", "lockapp", "searchhost", "shellexperiencehost", "startmenuexperiencehost", "textinputhost",
@@ -163,9 +168,11 @@ public static class ForegroundSource
         ["photoshop"] = "adobe.com", ["blender"] = "blender.org", ["winword"] = "microsoft.com", ["excel"] = "microsoft.com",
     };
 
+#endif
     /// <summary>Browser tab titles end in " - Google Chrome" etc.</summary>
     public static readonly Regex BrowserSuffix = new(@"(?i)\s[‒–—―-]\s(Google Chrome|Mozilla Firefox|Brave|Opera|Vivaldi|Microsoft\W{0,3}Edge)$");
 
+#if WINDOWS
     public static ForegroundApp? Get(IReadOnlySet<string> gameExes)
     {
         var h = GetForegroundWindow();
@@ -204,6 +211,7 @@ public static class ForegroundSource
     [DllImport("user32.dll")] private static extern int GetWindowThreadProcessId(IntPtr h, out int pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr h);
+#endif
 }
 
 public sealed record GenshinInfo(string Nickname, int Level, int WorldLevel);

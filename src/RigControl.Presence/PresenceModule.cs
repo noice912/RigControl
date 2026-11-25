@@ -49,7 +49,7 @@ public sealed record PresenceStatusDto(bool Enabled, bool DiscordRunning, string
 ///    Discord's stored login is never read. Another signed-in user's Discord, games or browser never count.
 ///  - Games are started through Windows' desktop shell, so they don't inherit RigControl's administrator rights.
 /// </summary>
-public sealed class PresenceModule : IAppModule
+public sealed class PresenceModule : IAppModule, IModuleCapabilities
 {
     private readonly IDiscordClient _discord;
     private readonly IPresenceInputs _inputs;
@@ -72,12 +72,17 @@ public sealed class PresenceModule : IAppModule
     private DiscordLook? _lookLogged;
     private DateTime _probedAt = DateTime.MinValue;
     private string? _lastPublished;
-    private ExtensionBridge? _bridge;
+    private IExtensionBridge? _bridge;
     /// <summary>The ids in use: the built-in ones with the user's own laid over them.</summary>
     private volatile AppIds _ids = AppIds.Empty;
     private IReadOnlyList<string> _ownIds = Array.Empty<string>();
 
+#if WINDOWS
     public PresenceModule() : this(new DiscordClient(), new PcInputs(), DefaultHttp(), IsRichPresenceRunning) { }
+#else
+    /// <summary>Linux and macOS: Discord's Unix socket, and the names of this user's running programs.</summary>
+    public PresenceModule() : this(new DiscordClient(), new PortableInputs(), DefaultHttp(), () => false) { }
+#endif
 
     public PresenceModule(IDiscordClient discord, IPresenceInputs inputs, HttpClient http, Func<bool> richPresenceRunning)
     {
@@ -100,6 +105,12 @@ public sealed class PresenceModule : IAppModule
     /// <summary>The ids this build carries. Tests pass their own; left alone it is what the build embedded.</summary>
     public AppIds? BuiltInIds { get; init; }
 
+    /// <summary>The parts that are not the same on every system (game list, launcher, browser extension link).</summary>
+    public PresenceParts Parts { get; init; } = PresenceParts.ForThisBuild();
+
+    /// <summary>What works here: "presence.custom" and "presence.apps" everywhere, the rest on Windows.</summary>
+    public IReadOnlyCollection<string> Capabilities => Parts.Capabilities;
+
     /// <summary>What the Games page says when the status can't show anything of its own.</summary>
     public const string NotSetUpNote = PresenceEngine.NotSetUp + ". If you built RigControl yourself, add your own Discord application ids in settings.json (presence > appIds) and start RigControl again.";
 
@@ -110,8 +121,10 @@ public sealed class PresenceModule : IAppModule
         return h;
     }
 
+#if WINDOWS
     /// <summary>True when the standalone RichPresence runs for this Windows user (another user's copy doesn't count).</summary>
     public static bool IsRichPresenceRunning() => WinSession.PidsByName(new[] { "RichPresence" }).Count > 0;
+#endif
 
     private string DataDir => Path.Combine(_ctx!.Environment.DataDirectory, "presence");
     private string LibraryPath => Path.Combine(DataDir, "library.json");
@@ -120,10 +133,14 @@ public sealed class PresenceModule : IAppModule
     {
         _ctx = context;
         _log = context.Log;
+        // Linux and macOS: the running programs come from RigControl's own list (this user's programs only), and a
+        // Discord link that was found but can't be shown to be this user's is named in the log once.
+        if (_inputs is PortableInputs portable) portable.Query ??= context.Platform.Processes;
+        if (_discord is DiscordClient { Transport: UnixSocketTransport sockets }) sockets.Note ??= m => _log.Warn(m);
         lock (_gate)
         {
             _settings = context.Settings.Get<PresenceSettings>(PresenceSettings.Section);
-            if (_settings.ImportedFromRichPresence is null)
+            if (Parts.ImportFromRichPresence && _settings.ImportedFromRichPresence is null)
             {
                 try
                 {
@@ -140,7 +157,7 @@ public sealed class PresenceModule : IAppModule
             }
             try
             {
-                if (File.Exists(LibraryPath))
+                if (Parts.Library is not null && File.Exists(LibraryPath))
                 {
                     _library = JsonSerializer.Deserialize<List<Game>>(File.ReadAllText(LibraryPath)) ?? new();
                     _scannedAt = File.GetLastWriteTimeUtc(LibraryPath);
@@ -150,7 +167,7 @@ public sealed class PresenceModule : IAppModule
             {
                 _log.Warn("The saved game library is unreadable; scanning again. " + ex.Message);
             }
-            _bridge = StartBridge ? new ExtensionBridge(_log, context.Environment.Version, linkToken: LinkToken) : null;
+            _bridge = StartBridge ? Parts.Bridge?.Invoke(_log, context.Environment.Version, LinkToken) : null;
             _bridge?.Start();
             var bridge = _bridge;
             var own = AppIds.From(_settings.AppIds, out var refused);
@@ -164,7 +181,7 @@ public sealed class PresenceModule : IAppModule
         }
         _status = new ModuleStatus(ModuleState.Ready);
         var token = _cts.Token;
-        if (_library.Count == 0 || _scannedAt is null || DateTimeOffset.UtcNow - _scannedAt > TimeSpan.FromDays(1)) StartScan();
+        if (Parts.Library is not null && (_library.Count == 0 || _scannedAt is null || DateTimeOffset.UtcNow - _scannedAt > TimeSpan.FromDays(1))) StartScan();
         _loop = Task.Run(() => LoopAsync(token), token);
         return Task.CompletedTask;
     }
@@ -221,6 +238,7 @@ public sealed class PresenceModule : IAppModule
 
     private void StartScan()
     {
+        var library = Parts.Library ?? throw PresenceParts.NoGames();
         lock (_gate)
         {
             if (_scanning || _cts is null) return;
@@ -238,8 +256,7 @@ public sealed class PresenceModule : IAppModule
                     folders = _settings.ExtraFolders.ToList();
                     custom = _settings.CustomGames.ToList();
                 }
-                var scanner = new LibraryScanner(DataDir, _log, _http);
-                var games = await scanner.ScanAsync(folders, custom, token).ConfigureAwait(false);
+                var games = await library.ScanAsync(DataDir, _log, _http, folders, custom, token).ConfigureAwait(false);
                 Directory.CreateDirectory(DataDir);
                 File.WriteAllText(LibraryPath, JsonSerializer.Serialize(games, new JsonSerializerOptions { WriteIndented = true }));
                 lock (_gate)
@@ -438,6 +455,7 @@ public sealed class PresenceModule : IAppModule
 
     private PresenceStatusDto SetGameEnabled(GameArgs a)
     {
+        if (Parts.Library is null) throw PresenceParts.NoGames();
         lock (_gate)
         {
             if (_library.All(g => g.Id != a.Id)) throw RpcException.InvalidArgs("Unknown game.");
@@ -514,12 +532,13 @@ public sealed class PresenceModule : IAppModule
 
     private object Play(GameArgs a)
     {
+        var launcher = Parts.Launcher ?? throw PresenceParts.NoGames();
         Game g;
         lock (_gate) g = _library.FirstOrDefault(x => x.Id == a.Id) ?? throw RpcException.InvalidArgs("Unknown game.");
         if (string.IsNullOrEmpty(g.Launch)) throw RpcException.Unavailable($"RigControl doesn't know how to start {g.Name}.");
         try
         {
-            Launcher.Start(g.Launch);
+            launcher.Start(g.Launch);
         }
         catch (Exception ex)
         {
@@ -531,6 +550,7 @@ public sealed class PresenceModule : IAppModule
 
     private object? GetArt(GameArgs a)
     {
+        if (Parts.Library is null) throw PresenceParts.NoGames();
         Game? g;
         lock (_gate) g = _library.FirstOrDefault(x => x.Id == a.Id);
         if (g?.Art is null || !File.Exists(g.Art)) return null;
@@ -560,6 +580,7 @@ public sealed class PresenceModule : IAppModule
     /// </summary>
     private object GetExtension()
     {
+        if (Parts.Bridge is null) throw PresenceParts.NoExtension();
         var asm = typeof(PresenceModule).Assembly;
         var files = asm.GetManifestResourceNames().Where(n => n.StartsWith(ExtensionPrefix, StringComparison.Ordinal)).ToList();
         if (files.Count == 0) throw RpcException.Unavailable("This copy of RigControl doesn't include the browser extension.");
@@ -581,7 +602,7 @@ public sealed class PresenceModule : IAppModule
         File.WriteAllText(Path.Combine(dir, ExtensionLink.TokenFile), ExtensionLink.TokenScript(token));
         if (token is null) _log.Warn("The browser extension copy could not be tied to your RigControl, so it reports to whichever RigControl answers first on this PC.");
         _log.Info("Browser extension copied to " + dir);
-        try { Launcher.StartFolder(dir); }
+        try { Parts.Launcher?.OpenFolder(dir); }
         catch (Exception ex) { _log.Warn("Couldn't open the extension folder: " + ex.Message); }
         return new { path = dir };
     }

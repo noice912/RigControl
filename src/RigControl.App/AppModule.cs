@@ -211,8 +211,9 @@ internal sealed class AppModule : IRpcModule
 
     private object GetInfo()
     {
-        var env = _services.Environment;
-        return new AppInfoDto(env.Version, env.IsElevated, env.DataDirectory, env.LogDirectory, Environment.MachineName);
+        // The same answer as always, plus which system this is and what works on it (docs/API.md).
+        return AppInfo.From(_services.Environment, RigControl.Core.Platform.HostPlatform.Windows, _services.Host.Modules,
+            HostCapabilities.WindowsHost);
     }
 
     private AppSettingsDto GetSettings()
@@ -368,8 +369,6 @@ internal sealed class AppModule : IRpcModule
         _app.RequestExit();
         return new { quitting = true };
     }
-
-    private sealed record AppInfoDto(string Version, bool IsElevated, string DataDirectory, string LogDirectory, string MachineName);
 
     private sealed record LogEntryDto(string Time, string Level, string Source, string Message);
 

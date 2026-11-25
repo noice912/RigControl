@@ -45,6 +45,48 @@ internal sealed class FakeProvider : INetworkLightProvider
     public int Starts, Stops, Disposes;
     public PairedLight? Started { get; private set; }
 
+    // ---- direct control
+    public LightControls Can { get; set; } = new(LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes);
+    public bool JoinsEverything { get; set; } = true;
+    public ConcurrentQueue<LightChange> Changes { get; } = new();
+    public ConcurrentQueue<string> GivenBack { get; } = new();
+    public string SavedText { get; set; } = "was: effect Aurora";
+    public LightReading ReadResult { get; set; } = new(true, 40, 0x00FF00);
+    public Exception? SetError { get; set; }
+    public int Saves, Reads;
+    /// <summary>The number of session stops seen when each change arrived (to check the effect let go first).</summary>
+    public ConcurrentQueue<int> StopsAtChange { get; } = new();
+
+    public LightControls Controls(PairedLight light) => Can;
+    public bool JoinsEverythingAtOnce => JoinsEverything;
+    public TimeSpan ControlGap => TimeSpan.Zero;
+
+    public Task<LightReading> ReadAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        Interlocked.Increment(ref Reads);
+        return Task.FromResult(ReadResult);
+    }
+
+    public Task<string> SaveAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        Interlocked.Increment(ref Saves);
+        return Task.FromResult(SavedText);
+    }
+
+    public Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct)
+    {
+        if (SetError is not null) return Task.FromException(SetError);
+        StopsAtChange.Enqueue(Volatile.Read(ref Stops));
+        Changes.Enqueue(change);
+        return Task.CompletedTask;
+    }
+
+    public Task GiveBackAsync(ILightNetwork net, PairedLight light, string saved, CancellationToken ct)
+    {
+        GivenBack.Enqueue(saved);
+        return Task.CompletedTask;
+    }
+
     public async Task<IReadOnlyList<FoundLight>> DiscoverAsync(ILightNetwork net, CancellationToken ct)
     {
         Interlocked.Increment(ref Discoveries);
@@ -153,7 +195,8 @@ public class NetworkLightStoreTests
     [Fact]
     public void Real_windows_protection_round_trips_and_is_tied_to_its_purpose()
     {
-        var p = new DpapiProtector();
+        if (!OperatingSystem.IsWindows()) return; // Windows' own protection; the key file used elsewhere is tried in PortableLightingTests
+        var p = new PlatformProtector(new RigControl.Core.Platform.DpapiSecretProtector());
         var stored = p.Protect("tok-1", "RigControl.NetworkLight.hue.token");
         Assert.DoesNotContain("tok-1", stored);
         Assert.Equal("tok-1", p.Unprotect(stored, "RigControl.NetworkLight.hue.token"));
@@ -182,7 +225,7 @@ public class NetworkLightStoreTests
     public void A_nanoleaf_paired_before_keeps_its_settings_format_and_its_layout_key()
     {
         var old = new NanoleafSettings { Ip = "172.16.0.70", Name = "Lines", Serial = "S1" };
-        old.SetToken("nl-token");
+        old.SetToken("nl-token", new FakeProtector());
         _settings.Nanoleaf = old;
         var light = Assert.Single(Store().All());
         Assert.Equal(("nanoleaf", "S1", "Lines", "172.16.0.70"), (light.Brand, light.Id, light.Name, light.Address));
@@ -194,7 +237,7 @@ public class NetworkLightStoreTests
         var again = store.Save("nanoleaf", new PairResult("S2", "Shapes", "", "172.16.0.71") { Secrets = new Dictionary<string, string> { ["token"] = "t2" } });
         Assert.Empty(_settings.NetworkLights);
         Assert.Equal(("172.16.0.71", "Shapes", "S2"), (_settings.Nanoleaf!.Ip, _settings.Nanoleaf.Name, _settings.Nanoleaf.Serial));
-        Assert.Equal("t2", _settings.Nanoleaf.Token());
+        Assert.Equal("t2", _settings.Nanoleaf.Token(new FakeProtector()));
         Assert.Equal("nanoleaf|Shapes|S2", again.LayoutKey);
         Assert.True(store.Forget(again.LayoutKey));
         Assert.Null(_settings.Nanoleaf);

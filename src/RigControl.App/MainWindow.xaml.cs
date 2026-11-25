@@ -157,7 +157,7 @@ public partial class MainWindow : Window
         string json;
         try
         {
-            json = JsonDefaults.Serialize(new UiEvent(topic, payload));
+            json = UiMessages.Event(topic, payload);
         }
         catch (Exception ex)
         {
@@ -176,8 +176,6 @@ public partial class MainWindow : Window
             }
         });
     }
-
-    private sealed record UiEvent(string Event, object? Data);
 
     protected override void OnClosing(CancelEventArgs e)
     {

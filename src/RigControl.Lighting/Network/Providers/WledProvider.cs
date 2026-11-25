@@ -90,6 +90,40 @@ public sealed class WledProvider : INetworkLightProvider
         });
     }
 
+    // ---- direct control: WLED's JSON API (kno.wled.ge/interfaces/json-api), POST /json/state
+
+    public LightControls Controls(PairedLight light) =>
+        new(LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes);
+
+    private static string StateUrl(PairedLight light) => WledWire.Url(light.Address, WledWire.PortOf(light.Data), Dialect.StatePath);
+
+    private static async Task<JsonElement> RequireStateAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        var reply = (await net.HttpAsync(HttpAsk.Get(StateUrl(light)), ct).ConfigureAwait(false)).EnsureOk();
+        return WledWire.Object(reply.Body) ?? throw new IOException("its answer couldn't be read");
+    }
+
+    public async Task<LightReading> ReadAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        var state = await RequireStateAsync(net, light, ct).ConfigureAwait(false);
+        return WledWire.Reading(state, withColour: true);
+    }
+
+    public async Task<string> SaveAsync(ILightNetwork net, PairedLight light, CancellationToken ct) =>
+        WledWire.Saved(await RequireStateAsync(net, light, ct).ConfigureAwait(false));
+
+    public async Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct) =>
+        (await net.HttpAsync(HttpAsk.Post(StateUrl(light), WledWire.ChangeBody(change, withColour: true)), ct).ConfigureAwait(false)).EnsureOk();
+
+    public async Task GiveBackAsync(ILightNetwork net, PairedLight light, string saved, CancellationToken ct)
+    {
+        var (state, playlist) = WledWire.ParseSaved(saved);
+        (await net.HttpAsync(HttpAsk.Post(StateUrl(light), state), ct).ConfigureAwait(false)).EnsureOk();
+        // A playlist that was running is started again (a playlist is loaded like a preset; nothing is saved on the WLED).
+        if (playlist > 0)
+            (await net.HttpAsync(HttpAsk.Post(StateUrl(light), $"{{\"ps\":{playlist}}}"), ct).ConfigureAwait(false)).EnsureOk();
+    }
+
     /// <summary>The state, or null when it can't be read (it only adds a note and the main segment's length).</summary>
     private static async Task<JsonElement?> ReadStateAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
     {
@@ -291,6 +325,105 @@ internal static class WledWire
 
     /// <summary>A "DRGB" packet with timeout 0 and one dark LED: tells WLED the realtime colours are over now.</summary>
     public static byte[] HandBack() => new byte[] { 2, 0, 0, 0, 0 };
+
+    // ---- direct control through the JSON API's state
+
+    /// <summary>A brightness of 0-100% as WLED's "bri" (1-255; WLED's docs advise "on":false rather than 0).</summary>
+    public static int Bri(int percent) => Math.Clamp((int)Math.Round(Math.Clamp(percent, 0, 100) * 255 / 100.0), 1, 255);
+
+    /// <summary>
+    /// The body of one POST to the state: {"on":...,"bri":...,"seg":{"fx":0,"col":[[r,g,b]]}}. "seg" as an object
+    /// (no id) goes to the segments selected in WLED (the main one when none is), and effect 0 is Solid.
+    /// </summary>
+    public static string ChangeBody(LightChange change, bool withColour)
+    {
+        if (change.TurnsOff) return "{\"on\":false}";
+        var parts = new List<string> { "\"on\":true" };
+        if (change.Brightness is { } b) parts.Add($"\"bri\":{Bri(b)}");
+        if (withColour && change.Colour is { } c)
+            parts.Add($"\"seg\":{{\"fx\":0,\"col\":[[{(c >> 16) & 255},{(c >> 8) & 255},{c & 255}]]}}");
+        return "{" + string.Join(",", parts) + "}";
+    }
+
+    /// <summary>On, brightness and (for a plain Solid colour) the colour of the main segment, from a state answer.</summary>
+    public static LightReading Reading(JsonElement state, bool withColour)
+    {
+        bool? on = state.TryGetProperty("on", out var o) && o.ValueKind is JsonValueKind.True or JsonValueKind.False ? o.GetBoolean() : null;
+        int? bri = state.TryGetProperty("bri", out var b) && b.ValueKind == JsonValueKind.Number && b.TryGetInt32(out var v)
+            ? (int)Math.Round(Math.Clamp(v, 0, 255) * 100 / 255.0) : null;
+        int? colour = null;
+        if (withColour && MainSegment(state) is { } seg && Int(seg, "fx", -1) == 0
+            && seg.TryGetProperty("col", out var cols) && cols.ValueKind == JsonValueKind.Array && cols.GetArrayLength() > 0
+            && cols[0] is { ValueKind: JsonValueKind.Array } first && first.GetArrayLength() >= 3
+            && first[0].TryGetInt32(out var r) && first[1].TryGetInt32(out var g) && first[2].TryGetInt32(out var bl))
+            colour = LightColour.Full((Math.Clamp(r, 0, 255) << 16) | (Math.Clamp(g, 0, 255) << 8) | Math.Clamp(bl, 0, 255));
+        return new LightReading(on, bri, colour);
+    }
+
+    private static JsonElement? MainSegment(JsonElement state)
+    {
+        if (!state.TryGetProperty("seg", out var segs) || segs.ValueKind != JsonValueKind.Array) return null;
+        var main = Int(state, "mainseg", 0);
+        JsonElement? first = null;
+        var index = 0;
+        foreach (var seg in segs.EnumerateArray())
+        {
+            if (seg.ValueKind != JsonValueKind.Object) continue;
+            first ??= seg;
+            if (Int(seg, "id", index) == main) return seg;
+            index++;
+        }
+        return first;
+    }
+
+    /// <summary>What a segment looks like (never where it is: start, stop, grouping and the like are not touched).</summary>
+    private static readonly string[] Look = { "id", "on", "bri", "col", "fx", "sx", "ix", "pal", "c1", "c2", "c3", "o1", "o2", "o3", "cct" };
+
+    /// <summary>
+    /// The state to give back later: on, brightness and each segment's look (effect, speed, intensity, palette,
+    /// colours), plus the playlist that was running. Segment sizes are left out, so giving back never moves one.
+    /// </summary>
+    public static string Saved(JsonElement state)
+    {
+        using var stream = new MemoryStream();
+        using (var w = new Utf8JsonWriter(stream))
+        {
+            w.WriteStartObject();
+            w.WritePropertyName("state");
+            w.WriteStartObject();
+            foreach (var name in new[] { "on", "bri" })
+                if (state.TryGetProperty(name, out var v)) { w.WritePropertyName(name); v.WriteTo(w); }
+            if (state.TryGetProperty("seg", out var segs) && segs.ValueKind == JsonValueKind.Array)
+            {
+                w.WritePropertyName("seg");
+                w.WriteStartArray();
+                var index = 0;
+                foreach (var seg in segs.EnumerateArray())
+                {
+                    if (seg.ValueKind != JsonValueKind.Object) continue;
+                    w.WriteStartObject();
+                    if (!seg.TryGetProperty("id", out _)) w.WriteNumber("id", index);
+                    foreach (var name in Look)
+                        if (seg.TryGetProperty(name, out var v)) { w.WritePropertyName(name); v.WriteTo(w); }
+                    w.WriteEndObject();
+                    index++;
+                }
+                w.WriteEndArray();
+            }
+            w.WriteEndObject();
+            w.WriteNumber("pl", Int(state, "pl", -1));
+            w.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    public static (string State, int Playlist) ParseSaved(string saved)
+    {
+        var root = Object(saved) ?? throw new InvalidOperationException("What the light showed before couldn't be read.");
+        if (!root.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("What the light showed before couldn't be read.");
+        return (state.GetRawText(), Int(root, "pl", -1));
+    }
 }
 
 /// <summary>Colours going to one WLED-based light over its realtime UDP port. No web requests are made per frame.</summary>

@@ -38,6 +38,7 @@ public sealed class CustomGame
 /// </summary>
 public sealed class LibraryScanner
 {
+#if WINDOWS
     private static readonly Regex ExcludeExe = new(
         @"^(unins.*|.*setup.*|vc_?redist.*|vcredist.*|dxwebsetup|dotnet.*|.*crash.*|.*report.*|.*prereq.*|.*install.*|.*updater?|.*helper|.*cefsubprocess.*|.*bootstrap.*|.*anticheat.*|beservice.*|.*benchmark.*|.*launcher.*|elevate|.*browser|.*editor.*|.*redist.*|.*webview.*|.*service)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -57,9 +58,11 @@ public sealed class LibraryScanner
         _log = log;
         _http = http;
     }
+#endif
 
     public static string Norm(string? n) => Regex.Replace((n ?? "").ToLowerInvariant(), "[^a-z0-9]", "");
 
+#if WINDOWS
     public async Task<List<Game>> ScanAsync(IReadOnlyList<string> extraFolders, IReadOnlyList<CustomGame> customGames, CancellationToken ct)
     {
         _games.Clear();
@@ -314,4 +317,5 @@ public sealed class LibraryScanner
             if (g.Store is "Folder" or "Added") g.Name = hit.Name;
         }
     }
+#endif
 }

@@ -1,6 +1,6 @@
 import { call } from "../bridge";
 import { useAction, useQuery } from "../hooks";
-import { useApp } from "../appContext";
+import { NOT_ON_THIS_SYSTEM, notOnThisSystem, useApp } from "../appContext";
 import { Switch, Segmented } from "../components/controls";
 import type { AppSettings, LogLine, ModuleState } from "../types";
 import { setTempUnit } from "../units";
@@ -16,7 +16,11 @@ const STATE: Record<ModuleState, { label: string; color: string }> = {
 };
 
 export function Settings() {
-  const { info, modules, restartAsAdmin } = useApp();
+  const { info, modules, restartAsAdmin, can, notWindows } = useApp();
+  // What the Windows app has and the Linux and macOS app does not. Nothing is hidden before the app has said.
+  const hasTray = can("host.tray");
+  const audioNotHere = (audio: { message: string | null } | null) =>
+    !!audio?.message?.startsWith(NOT_ON_THIS_SYSTEM);
   const settings = useQuery<AppSettings>("app.getSettings");
   const audio = useQuery<{ state: string; message: string | null }>(
     "app.getAudioStatus",
@@ -45,6 +49,7 @@ export function Settings() {
       <section className="panel">
         <h2>Starting and closing</h2>
         <div>
+          {hasTray && (
           <div className="field">
             <div className="field-label">
               <span>Keep running in the tray when I close the window</span>
@@ -61,7 +66,18 @@ export function Settings() {
               />
             </div>
           </div>
+          )}
+          {can("host.autostart") && (
           <div className="field">
+            {notWindows ? (
+              <div className="field-label">
+                <span>Start when I sign in</span>
+                <span className="sub">
+                  RigControl opens its window when you sign in to this
+                  computer.
+                </span>
+              </div>
+            ) : (
             <div className="field-label">
               <span>Start with Windows, as administrator</span>
               <span className="sub">
@@ -70,6 +86,7 @@ export function Settings() {
                 once, when you switch this on or off.
               </span>
             </div>
+            )}
             <div className="field-control">
               <Switch
                 checked={s?.startWithWindows ?? false}
@@ -78,6 +95,8 @@ export function Settings() {
               />
             </div>
           </div>
+          )}
+          {hasTray && (
           <div className="field">
             <div className="field-label">
               <span>Start hidden in the tray</span>
@@ -93,6 +112,7 @@ export function Settings() {
               />
             </div>
           </div>
+          )}
           <div className="field">
             <div className="field-label">
               <span>Temperatures</span>
@@ -122,8 +142,9 @@ export function Settings() {
           <div>
             <h2>Quit RigControl</h2>
             <div className="sub">
-              Closing the window only hides RigControl in the tray. This closes
-              it fully: a recording is finished, fans are handed back.
+              {hasTray
+                ? "Closing the window only hides RigControl in the tray. This closes it fully: a recording is finished, fans are handed back."
+                : "Closes RigControl, the same as closing its window. Lighting effects stop and your lights are put back as they were."}
             </div>
           </div>
           <button
@@ -135,6 +156,7 @@ export function Settings() {
         </div>
       </section>
 
+      {can("host.elevation") && (
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -155,8 +177,10 @@ export function Settings() {
           )}
         </div>
       </section>
+      )}
 
-      <BuiltInApps />
+      {/* Asked for only once the app has said it carries helper programs (the Windows app does). */}
+      {info && can("host.helpers") && <BuiltInApps />}
 
       <section className="panel">
         <h2>What's working</h2>
@@ -170,9 +194,17 @@ export function Settings() {
               <div className="field-control">
                 <span
                   className="status-dot"
-                  style={{ background: STATE[m.state].color }}
+                  style={{
+                    background: notOnThisSystem(m)
+                      ? "var(--faint)"
+                      : STATE[m.state].color,
+                  }}
                 />
-                <span>{STATE[m.state].label}</span>
+                <span>
+                  {notOnThisSystem(m)
+                    ? "Not on this system"
+                    : STATE[m.state].label}
+                </span>
               </div>
             </div>
           ))}
@@ -191,11 +223,17 @@ export function Settings() {
                     background:
                       audio.data.state === "running"
                         ? "var(--ok)"
-                        : "var(--warm)",
+                        : audioNotHere(audio.data)
+                          ? "var(--faint)"
+                          : "var(--warm)",
                   }}
                 />
                 <span>
-                  {audio.data.state === "running" ? "Working" : "Not available"}
+                  {audio.data.state === "running"
+                    ? "Working"
+                    : audioNotHere(audio.data)
+                      ? "Not on this system"
+                      : "Not available"}
                 </span>
               </div>
             </div>

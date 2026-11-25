@@ -1,5 +1,6 @@
 using System.Security.Principal;
 using RigControl.Core.Logging;
+using RigControl.Core.Platform;
 using RigControl.Core.Rpc;
 using RigControl.Core.Settings;
 
@@ -54,9 +55,17 @@ public sealed record AppEnvironment(
     string Version,
     string ExecutablePath)
 {
-    /// <summary>True when the current process token is a member of the Administrators group (i.e. elevated).</summary>
+    /// <summary>
+    /// Windows: true when the current process token is a member of the Administrators group (i.e. elevated).
+    /// Linux and macOS: true only when running as root, which RigControl never asks for.
+    /// </summary>
     public static bool DetectElevated()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            try { return System.Environment.IsPrivilegedProcess; }
+            catch { return false; }
+        }
         try
         {
             using var identity = WindowsIdentity.GetCurrent();
@@ -70,7 +79,14 @@ public sealed record AppEnvironment(
 }
 
 /// <summary>Everything a module receives when it starts.</summary>
-public sealed record ModuleContext(IEventBus Events, ILog Log, SettingsStore Settings, AppEnvironment Environment);
+public sealed record ModuleContext(IEventBus Events, ILog Log, SettingsStore Settings, AppEnvironment Environment)
+{
+    /// <summary>
+    /// What the system offers: keeping secrets, the user's running programs, opening links, starting at sign-in.
+    /// The standard set for this system unless the host (or a test) gives another one.
+    /// </summary>
+    public IPlatformServices Platform { get; init; } = PlatformServices.Create(Environment.DataDirectory, Environment.IsElevated);
+}
 
 /// <summary>
 /// One independent feature area (sensors, nvidia, cooling, lighting...). Modules must not depend on each other:

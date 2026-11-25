@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RigControl for Linux and macOS: one window (the system's own web view, through Photino.NET) showing the same
+    interface as the Windows app, with settings, Discord status and lighting. See docs/PORTING.md.
+    It builds on Windows too, so the solution stays one build, but it refuses to run there:
+    the Windows app is RigControl.App.
+  -->
+  <PropertyGroup>
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>RigControl</AssemblyName>
+    <RootNamespace>RigControl.Desktop</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- A plain build on Windows makes no RigControl.exe here, so it cannot be mistaken for the Windows app. -->
+    <UseAppHost Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">false</UseAppHost>
+  </PropertyGroup>
+
+  <!--
+    Publishing:  dotnet publish src/RigControl.Desktop -c Release -r linux-x64   (or osx-arm64, osx-x64)
+    The result is a folder with its own .NET runtime (nothing to install first, apart from the system web view).
+    It is a folder and not one file on purpose: the window library is a native file that must sit next to the
+    program, and a single file would unpack it into a temporary folder at every start.
+  -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RigControl.Hosting\RigControl.Hosting.csproj" />
+    <ProjectReference Include="..\RigControl.Lighting\RigControl.Lighting.csproj" />
+    <ProjectReference Include="..\RigControl.Presence\RigControl.Presence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.Desktop.Tests" />
+  </ItemGroup>
+
+</Project>

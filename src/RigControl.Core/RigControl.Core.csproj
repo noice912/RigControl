@@ -1,8 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Platform-neutral: builds and runs on Windows, Linux and macOS (docs/PORTING.md). -->
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
     <RootNamespace>RigControl.Core</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Windows' per-user protection (DPAPI) for small secrets; only ever called on Windows (Platform/Secrets.cs). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="RigControl.Core.Tests" />

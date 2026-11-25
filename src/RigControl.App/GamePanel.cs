@@ -38,7 +38,7 @@ public sealed class GamePanelSettings
 /// </summary>
 public sealed class GamePanel
 {
-    public const int BaseWidth = 1172, WideWidth = 1568, PanelHeight = 700, TopBar = 56;
+    public const int BaseWidth = 1172, WideWidth = 1568, PanelHeight = 700, MaxPanelHeight = 1000, TopBar = 56;
 
     private readonly AppServices _services;
     private readonly ILog _log;
@@ -214,21 +214,19 @@ public sealed class GamePanel
         var s = _services.Settings.Get<GamePanelSettings>(GamePanelSettings.Section);
         if (!s.Enabled) return;
         _previous = GetForegroundWindow();
-        // On the screen the mouse is on.
-        var screen = Screen.FromPoint(Control.MousePosition);
-        var dpi = VisualTreeHelper.GetDpi(_dim);
-        double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
-        var area = new Rect(screen.Bounds.Left / sx, screen.Bounds.Top / sy, screen.Bounds.Width / sx, screen.Bounds.Height / sy);
-        _dim.Left = area.Left; _dim.Top = area.Top; _dim.Width = area.Width; _dim.Height = area.Height;
-        double width = area.Width >= 1600 ? WideWidth : BaseWidth;
-        width = Math.Min(width, area.Width - 16);
-        var height = Math.Min(PanelHeight, area.Height - 16);
-        _panel.Width = width;
-        _panel.Height = height;
-        _panel.Left = area.Left + (area.Width - width) / 2;
-        _panel.Top = area.Top + (area.Height - height) / 2;
+        // On the screen the mouse is on, sized from that screen's own pixels and scale (see PanelPlacement).
+        var (screen, scale) = PanelPlacement.MonitorUnderMouse();
+        var place = PanelPlacement.For(screen, scale, BaseWidth, WideWidth, PanelHeight, MaxPanelHeight);
+        var width = place.PanelWidthDip;
+        // A first guess in WPF units (avoids a flash at the old place); the pixel placement below is what counts.
+        _dim.Left = screen.X / scale; _dim.Top = screen.Y / scale; _dim.Width = screen.Width / scale; _dim.Height = screen.Height / scale;
+        _panel.Left = place.Panel.X / scale; _panel.Top = place.Panel.Y / scale;
+        _panel.Width = place.PanelWidthDip; _panel.Height = place.PanelHeightDip;
         _dim.Show();
         _panel.Show();
+        // Placed in pixels once both windows exist, so the result doesn't depend on which screen WPF thought they were on.
+        PanelPlacement.Apply(new WindowInteropHelper(_dim).Handle, place.Screen);
+        PanelPlacement.Apply(new WindowInteropHelper(_panel).Handle, place.Panel);
         BringToFront(new WindowInteropHelper(_panel).Handle);
         _panel.Activate();
         _view.Focus();

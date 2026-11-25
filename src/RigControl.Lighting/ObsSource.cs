@@ -12,7 +12,7 @@ namespace RigControl.Lighting;
 /// connection details are read from OBS's settings on this PC (the password is never logged or shown); only
 /// read-only requests are sent (input list and settings, source screenshots).
 /// </summary>
-public sealed class ObsSource : IDisposable
+public sealed class ObsSource : IObsPicture
 {
     private ClientWebSocket? _ws;
     private string? _sourceName;

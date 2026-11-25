@@ -18,6 +18,14 @@ Backend → UI (`PostWebMessageAsJson`), reply:
 { "id": 12, "ok": false, "error": { "code": "unsafe", "message": "Pump duty must be at least 60%." } }
 ```
 
+The Linux and macOS app (Photino) carries the same messages as JSON text instead of objects:
+`window.external.sendMessage(JSON.stringify(request))` and `window.external.receiveMessage(text => JSON.parse(text))`.
+`src/ui/src/bridge.ts` picks the channel once at start: `window.chrome.webview` if it is there (the Windows app),
+else `window.external.sendMessage` (the Linux and macOS app), else the made-up data of the developer preview, which
+is only ever built into `npm run dev` or a build made with `VITE_RIGCONTROL_MOCK=1`. A packaged build that finds no
+app shows "RigControl's window did not connect" and every call fails with the code `noHost`; it never shows made-up
+data. A request longer than 4 million characters is dropped unread by the Linux and macOS app.
+
 Backend → UI, push event (no id):
 
 ```json
@@ -49,7 +57,7 @@ device's allowed range, duty never decreasing as temperature rises, every duty w
 
 | Method | Params | Result |
 |---|---|---|
-| `app.getInfo` | – | `{ version, isElevated, dataDirectory, logDirectory, machineName }` |
+| `app.getInfo` | – | `{ version, isElevated, dataDirectory, logDirectory, machineName, platform, capabilities }` (see below) |
 | `app.getModules` | – | `ModuleInfo[]` |
 | `app.getSettings` | – | `AppSettings` |
 | `app.setSettings` | `Partial<AppSettings>` | `AppSettings` |
@@ -74,6 +82,35 @@ the native Audio view in the rest of the window; `setNativeView({view:null})` gi
 While a native view is shown the web UI must render only the rail.
 
 Event `app.modulesChanged` → `ModuleInfo[]`.
+
+`platform` is `"windows"`, `"linux"`, `"macos"` or `"other"`. `capabilities` is a sorted `string[]` of what works in
+this run: one name per module that is really there (`"lighting"`), its parts (`"lighting.effects"`,
+`"lighting.screen"`, `"presence.custom"`, `"presence.media"`, ...) and what the app itself can do (`"host.tray"`,
+`"host.elevation"`, `"host.autostart"`, `"host.overlay"`, `"host.audio"`, `"host.filePicker"`, `"host.firstRun"`,
+`"host.helpers"`, `"host.restartPc"`). On Windows everything is listed. The full list of names is in
+`src/RigControl.Hosting/ModuleCatalog.cs`.
+
+A module that has no version for this system is still listed by `app.getModules`, with `state: "failed"` and a
+`message` that starts with `Not available on this system`. Every call to it fails with `unavailable` and the same
+sentence. The UI hides such a page or shows one calm panel, and should not keep calling it. On Linux and macOS the
+`app` methods that only Windows has (`restartAsAdmin`, `pickFile`, `pickFolder`, `getBundled`, `uninstallOldApp`,
+`restartPc`, `cancelRestartPc`, `getFirstRun`, `installHelpers`, `completeFirstRun`) fail the same way;
+`setNativeView` answers `{ view: null }` and `getAudioStatus` answers `state: "unavailable"`. See docs/PORTING.md.
+
+The Linux and macOS app's `capabilities` hold `lighting`, `presence`, their parts that work there and, where it can
+be set up, `host.autostart`; no other `host.*` name. There `app.getSettings` always answers `minimizeToTray: false`
+and `startMinimized: false` (there is no tray), `startWithWindows` means "start when I sign in" (one file in the
+user's own autostart folder, no prompt), and `app.setSettings` changes only `temperatureUnit` and `startWithWindows`.
+
+What the UI does with this (`src/ui/src/appContext.tsx`: `can(name)`, `notWindows`, `notOnThisSystem(module)`):
+a page whose module is such a stand-in is left out of the menu and never drawn, so it asks for nothing; the Audio
+entry needs `host.audio`; "Restart as administrator" needs `host.elevation`; the tray settings need `host.tray`;
+the helper programs need `host.helpers` and the first-time setup `host.firstRun` (without them `app.getBundled` and
+`app.getFirstRun` are not called); the in-game panel settings need `host.overlay` (`overlay.getState` is not
+called); the GIGABYTE Control Center box needs `lighting.gcc`; the sound controls need `lighting.audio`; the music,
+watching, extension and game parts of the Games page need `presence.media`, `presence.watching`,
+`presence.extension` and `presence.games`. `can` answers true until `app.getInfo` has answered and for an app that
+sends no list, so on Windows nothing is ever hidden by it.
 
 ---
 
@@ -227,15 +264,24 @@ Event `cooling.status` → `CoolingStatus`, about once per second.
 | `lighting.getStatus` | – | `LightingStatus` |
 | `lighting.startOpenRgb` | – | `LightingStatus` (starts the installed OpenRGB as a hidden server and connects). RigControl also does this by itself at startup when OpenRGB is installed. |
 | `lighting.installOpenRgb` | – | `{ started: boolean, message }`. Opens OpenRGB's own download page in the browser (winget has no current package, and RigControl never installs programs itself). |
-| `lighting.setColor` | `{ deviceIds?: number[], color }` (omit ids = every device) | `LightingStatus` |
+| `lighting.setColor` | `{ deviceIds?: number[], color }` (omit ids = every device) | `LightingStatus`. Without `deviceIds` ("Everything at once") the colour also goes to every paired network light whose brand takes part (`joinsEverything`) and can take a colour; black switches them off. Then it works without OpenRGB too, as long as a network light is paired. A network light that fails shows a `problem` on its row; the call only fails (`unavailable`, naming them) when OpenRGB isn't connected and every network light it tried failed. |
 | `lighting.setZoneColor` | `{ deviceId, zoneId, color }` | `LightingStatus` |
 | `lighting.setZoneSize` | `{ deviceId, zone, leds }` | `LightingStatus`. Sets how many lights hang on a header (a strip, or daisy-chained fans). Only for zones with `resizable: true`, within `ledsMin`..`ledsMax`; Lian Li fan hubs take multiples of 16 only. Call it only when the user asks: OpenRGB saves the number itself and keeps it after a restart. Errors: `invalidArgs` (unknown device/zone, size outside the limits), `unavailable` (fixed zone, device left to its own program, OpenRGB not running). |
 | `lighting.setMode` | `{ deviceId, modeId, colors?: string[], speed?: number, brightness?: number }` | `LightingStatus` |
-| `lighting.off` | `{ deviceIds?: number[] }` | `LightingStatus` |
+| `lighting.off` | `{ deviceIds?: number[] }` | `LightingStatus`. Without `deviceIds` it also switches off every paired network light whose brand takes part (`joinsEverything`), as `setColor` above. |
 | `lighting.listScenes` | – | `{ name, savedAt }[]` |
 | `lighting.saveScene` | `{ name }` | `{ name, savedAt }[]` |
-| `lighting.applyScene` | `{ name }` | `LightingStatus` |
+| `lighting.applyScene` | `{ name }` | `LightingStatus`. Scenes hold the PC's own lights (through OpenRGB) only: network lights are not saved in them, because several brands can't say what they show (Govee) or show an effect a scene couldn't rebuild. Applying one is still a change by hand, so it stops the effects. |
 | `lighting.deleteScene` | `{ name }` | `{ name, savedAt }[]` |
+
+On Linux and macOS (no `lighting.openrgbServer`): OpenRGB is never looked for or started. `openRgb.installed` and
+`openRgb.path` say nothing useful there; `startOpenRgb` only connects to an OpenRGB the user started (and RigControl
+looks every 10 seconds by itself); `installOpenRgb` opens openrgb.org. `getSync` and `listSyncSources` list 8
+effects (no `screen`, no sound effects) and no capture sources, and a saved effect that is not offered reports and
+plays as `solid`. `setSync` with `effect` `screen`, `visualizer`, `ripple` or `audiocolor`, with `bass`, `mid` or
+`treble` true, or with a capture source fails with `unavailable` and a message that starts with
+`Not available on this system`, and changes nothing; so do `takeOverGcc` and `giveBackGcc`. `getGcc` answers
+`installed: false`.
 
 ```ts
 type LightingStatus = {
@@ -273,6 +319,8 @@ are only ever sent to the address they were paired with. Nothing is searched for
 | `lighting.cancelNetworkScan` | – | `NetworkLights`. Stops a running search. What the brands that were already done had found is kept; a brand that was still searching keeps what it had found earlier. The stopped `scanNetworkLights` call then returns with `scanStopped: true`. |
 | `lighting.pairNetworkLight` | `{ brand, address, options?: { [key]: value } }` | `NetworkLights`. `address` is a private IPv4 address (a found light's, or typed by the user when the brand's `manualAddress` is true). `options` answers the brand's `options`. Some brands wait for a button press: allow 50 s. Errors: `invalidArgs` (unknown brand, address not on the home network, bad option), `unavailable` (the light refused or didn't answer; the message says what to do, and starts with "Not paired:" when the device paired but has nothing RigControl can colour). A light that paired but couldn't be read straight away is still saved: it comes back in `paired` with a `problem`, and is read again in the background. |
 | `lighting.forgetNetworkLight` | `{ id }` (a paired light's `id`) | `NetworkLights`. The light is put back as it was if it was following; its box stays on the layout as "not connected", so pairing it again puts it back in place. Error: `invalidArgs` (not paired). |
+| `lighting.setNetworkLight` | `{ id, on?: boolean, brightness?: number, color?: "#RRGGBB" }` (at least one) | `NetworkLights`. Changes one paired light by hand, without an effect. `brightness` is 0-100 (a brand without 0 takes its lowest). A colour or a brightness without `on` also switches the light on; black switches it off. The first change remembers what the light was doing (kept with the pairing, so it survives a restart) and the row shows `takenOver: true`. A change by hand stops the light sync (`lighting.getSync` → `enabled: false`), as a change on the PC's own lights does; a light the effect was driving is first put back as it was. Changes to one light go one at a time, at most as often as its brand allows (Yeelight: every 2.5 s; Hue: every second). Errors: `invalidArgs` (not paired, nothing to change, brightness outside 0-100, colour not `#RRGGBB`), `unavailable` (the brand can't do that: the message is the reason from `controls`; or the light refused or didn't answer, in plain words, also shown as the row's `problem`). |
+| `lighting.giveBackNetworkLight` | `{ id }` | `NetworkLights`. Puts a light RigControl took over back to what it was doing before the first change by hand (its own effect, scene or colour, brightness and on or off, as far as its brand allows), then forgets that it took it over. Also stops the light sync. Errors: `invalidArgs` (not paired, or not taken over), `unavailable` (the brand can't give back, with the reason, or the light didn't answer). |
 
 ```ts
 type NetworkLights = {
@@ -298,7 +346,7 @@ type NetworkBrand = {
   nothingFound: string | null;       // what to check when a search finds none of this brand
   maxFramesPerSecond: number;
   canSearch: boolean;                // false = can't be searched for (Cololight): show the address box only, no search button
-  followsUnplaced: boolean;          // false = a paired light is left alone until it is placed on the layout (Nanoleaf, Philips Hue)
+  followsUnplaced: boolean;          // false = a paired light is left alone until it is placed on the layout (Philips Hue)
 };
 
 type NetworkLight = {
@@ -314,7 +362,17 @@ type NetworkLight = {
   streaming: boolean;                // takes colours from RigControl right now
   problem: string | null;            // plain sentence when it doesn't answer
   note: string | null;
+  controls: NetworkLightControls | null;  // what it can be told directly; null for a brand this version doesn't know
+  on: boolean | null;                // as last read from the light (null = not known, or the brand can't say)
+  brightness: number | null;         // 0-100, as last read
+  color: string | null;              // "#RRGGBB" at full strength, as last read; null for an effect or a white
+  takenOver: boolean;                // RigControl changed it by hand and remembers what it did before
+  joinsEverything: boolean;          // false = left out of "Everything at once" and "off" (a Hue Bridge: it can be a whole house)
+  followsUnplaced: boolean;          // false = the effects leave it alone until it is placed (a Hue Bridge)
 };
+
+type LightAbility = { can: boolean; why: string | null };   // why = a plain sentence when it can't
+type NetworkLightControls = { power: LightAbility; brightness: LightAbility; colour: LightAbility; readBack: LightAbility; giveBack: LightAbility };
 
 type FoundLight = { brand: string; brandName: string; deviceId: string; name: string; model: string; address: string; paired: boolean };
 ```
@@ -323,10 +381,25 @@ Layout: every paired light is one zone in `lighting.getLayout` with `key` = its 
 `lighting.setLayout` like any other zone. A `strip` is cut into equal slices along the longer side of its box
 (`reverse` turns it round); `points` take the picture under their own place inside the box; a `single` light takes
 its whole box. While an effect or the screen sync runs, a placed light follows its part of the picture; a paired
-light that is not placed follows the one overall colour, unless its brand has `followsUnplaced: false` (a Nanoleaf
-and a Philips Hue Bridge are left alone until they are placed). A placed Hue Bridge drives the colour lights of its
+light that is not placed follows the one overall colour, unless its brand has `followsUnplaced: false` (a Philips
+Hue Bridge is left alone until it is placed, because one bridge can drive a whole house). A placed Hue Bridge drives the colour lights of its
 entertainment area only (every colour light when the bridge has no such area). When the sync stops, or the light
 leaves the layout, it is put back as it was; the log says so only when that worked.
+
+What each brand can be told directly (`controls`), as built:
+
+| Brand | On/off | Brightness | Colour | Read back | Give back |
+|---|---|---|---|---|---|
+| Nanoleaf | yes | yes | yes | on, brightness, colour (when a plain colour) | its effect (or colour), brightness, on/off |
+| WLED | yes | yes | yes (Solid, on the segments selected in WLED) | on, brightness, colour (when Solid) | each segment's effect, speed, palette and colours, brightness, on/off, and a running playlist |
+| LeetDesk Aura | yes | yes | no (nothing published about it) | on, brightness | brightness and on/off |
+| Philips Hue | yes | yes | yes | on, brightness, colour (when they agree) | each light's colour or white, brightness, on/off |
+| Govee | yes | yes | yes | no (answers only reach a fixed port RigControl doesn't wait on for this) | no (nothing to put back without reading it) |
+| Yeelight | yes | yes | yes | on, brightness, colour | its colour, white or hue, brightness, on/off (a colour flow comes back as its plain colour) |
+| Cololight | yes | yes | yes | on, brightness, colour (when a plain colour) | the effect or colour it showed, brightness, on/off |
+
+The list reads each light that can say what it shows at most every 15 seconds while the page asks for
+`getNetworkLights`, never while an effect drives it.
 
 Lights on the network do not need OpenRGB. With at least one paired, the effects (`lighting.setSync { enabled: true }`)
 can be switched on and keep playing on them while OpenRGB is not connected; the sync's `status` then ends in
@@ -381,6 +454,14 @@ closes, changes or installs anything.
 - `app.completeFirstRun { autostart?: boolean }` -> `FirstRunInfo`. Changes "start with Windows" only when the value differs from now (may show a UAC prompt; error `cancelled` leaves the setup unfinished), then marks the setup as done (settings section `firstRun`). `restartSuggested` is true for one of two reasons, each with its own flag: `restartForAutostart` (start with Windows was just turned on, or it is on and RigControl is not running as administrator; never on a standard Windows account) and `restartForEqualiser` (Equalizer APO was installed during the setup). It never installs anything before the yes; the UI does not offer to finish or skip the setup while `helpers.needsYes` is true (it offers "Install and continue" or "Quit RigControl"). "Start with Windows" is one scheduled task per Windows user (`RigControl-<SID>`); the single task older versions made (`RigControl`) only counts for, and is only changed by, the user it was made for.
 - `app.restartPc { evenWithOtherUsers?: boolean }` -> `{ scheduled: true, seconds: 30 }`. Asks Windows to restart in 30 seconds (Windows shows its own notice). The UI asks "Restart your PC now?" first; nothing else calls it. While other Windows users are signed in it refuses (`unsafe`) unless `evenWithOtherUsers` is true: the UI sets that only after telling the user that their programs close too. `app.cancelRestartPc` -> `{ cancelled: boolean }` (false when no restart was counting down).
 - `app.getBundled` -> `{ status, helpers: Helpers | null, oldApps, elevated }`. `helpers` is the same object as in `FirstRunInfo` (null while RigControl is starting); it replaces the earlier `items` list. Settings > Built in shows each program's state and, while `helpers.pending` is true, one "Install the missing programs" button: it opens the setup step when `needsYes`, restarts as administrator when not elevated, and otherwise calls `app.installHelpers`.
+
+### presence on Linux and macOS
+Discord is reached through its Unix socket (`discord-ipc-0` to `-9`) in the user's private runtime folder; a socket
+in a folder that others can open (always `/tmp`) is never used. Capabilities: `presence.custom` and `presence.apps`.
+The app card names a well-known running program from a short fixed list (process names only, no window title).
+`presence.rescan`, `presence.play`, `presence.getArt`, `presence.setGameEnabled` and `presence.getExtension` fail with
+`unavailable` and a message that starts with `Not available on this system`. There is no game list, no music or
+watching card and no browser extension link there.
 
 ### presence (Discord attach)
 The status card attaches to the Discord desktop app of the Windows user RigControl runs for; another user's or

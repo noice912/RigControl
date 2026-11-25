@@ -1,8 +1,10 @@
+#if WINDOWS
 using System.Diagnostics;
 using System.Text;
 using System.Xml.Linq;
 using Microsoft.Win32;
 using RigControl.Core.Util;
+#endif
 
 namespace RigControl.Lighting;
 
@@ -27,6 +29,7 @@ public interface IGigabyteControlCenter
     void Start();
 }
 
+#if WINDOWS // GCC is a Windows program; the other flavour only has NoGigabyteControlCenter below.
 public sealed class GigabyteControlCenter : IGigabyteControlCenter
 {
     private const string Task = @"\GCC";
@@ -124,7 +127,9 @@ public sealed class GigabyteControlCenter : IGigabyteControlCenter
     }
 }
 
-/// <summary>Tests and other PCs without GCC: nothing is looked at or touched.</summary>
+#endif
+
+/// <summary>Tests, other PCs without GCC, and Linux and macOS: nothing is looked at or touched.</summary>
 public sealed class NoGigabyteControlCenter : IGigabyteControlCenter
 {
     public GccState GetState() => new(false, false, false, false);

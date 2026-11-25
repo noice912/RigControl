@@ -1,36 +1,32 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using RigControl.Lighting.Network;
 
 namespace RigControl.Lighting;
 
-/// <summary>A Nanoleaf paired with RigControl (its own local API, port 16021). The token is kept DPAPI-protected.</summary>
+/// <summary>
+/// A Nanoleaf paired with RigControl (its own local API, port 16021). The token is kept protected by the system's
+/// own means (<see cref="ISecretProtector"/>): on Windows that is DPAPI for the signed-in user, as it always was.
+/// </summary>
 public sealed class NanoleafSettings
 {
     public string Ip { get; set; } = "";
     public string Name { get; set; } = "";
     public string Serial { get; set; } = "";
-    /// <summary>The auth token, protected for this Windows user (base64).</summary>
+    /// <summary>The auth token, protected for this user (base64).</summary>
     public string ProtectedToken { get; set; } = "";
+    /// <summary>What it was doing before RigControl first changed it by hand (for "Give back"); null when it hasn't.</summary>
+    public string? Before { get; set; }
 
-    internal string? Token()
-    {
-        if (ProtectedToken == "") return null;
-        try
-        {
-            return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(ProtectedToken), Entropy, DataProtectionScope.CurrentUser));
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    /// <summary>
+    /// What the token is protected for. Its UTF-8 bytes are the extra bytes DPAPI was always given for it, so a token
+    /// saved by an older version still reads.
+    /// </summary>
+    internal const string TokenPurpose = "RigControl.Nanoleaf";
 
-    internal void SetToken(string token) =>
-        ProtectedToken = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(token), Entropy, DataProtectionScope.CurrentUser));
+    /// <summary>The token, or null when there is none or it can't be read (another account, another PC, damaged).</summary>
+    internal string? Token(ISecretProtector protector) => ProtectedToken == "" ? null : protector.Unprotect(ProtectedToken, TokenPurpose);
 
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("RigControl.Nanoleaf");
+    internal void SetToken(string token, ISecretProtector protector) => ProtectedToken = protector.Protect(token, TokenPurpose);
 }
 
 /// <summary>
@@ -200,6 +196,19 @@ public sealed class NanoleafClient : IDisposable
     {
         await PutAsync("effects", new { select = name }, ct).ConfigureAwait(false);
     }
+
+    // ---------------------------------------------------------------- direct control (Nanoleaf's documented OpenAPI)
+
+    /// <summary>Everything the Nanoleaf says about itself in one answer (GET /api/v1/{token}/): its state and selected effect among it.</summary>
+    public Task<string> AllInfoAsync(CancellationToken ct) => GetAsync("", ct);
+
+    /// <summary>PUT /state with a body such as {"on":{"value":true}} or {"hue":{"value":120},"sat":{"value":100}}.</summary>
+    public async Task SetStateAsync(string json, CancellationToken ct) =>
+        (await _net.HttpAsync(HttpAsk.Put(Api("state"), json) with { Secret = _token }, ct).ConfigureAwait(false)).EnsureOk();
+
+    /// <summary>PUT /effects {"select": name}, checked.</summary>
+    public async Task SelectEffectCheckedAsync(string name, CancellationToken ct) =>
+        (await PutAsync("effects", new { select = name }, ct).ConfigureAwait(false)).EnsureOk();
 
     // ---------------------------------------------------------------- streaming
 

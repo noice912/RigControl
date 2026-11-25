@@ -1462,6 +1462,30 @@ p {
   gap: 3px;
   min-width: 0;
 }
+.netlight-main {
+  flex: 1 1 auto;
+}
+.netlight-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.netlight-controls .color-well {
+  width: 120px;
+  height: 36px;
+  flex: none;
+}
+.netlight-controls .color-well span {
+  left: 10px;
+  bottom: 8px;
+  font-size: 13px;
+}
+.netlight-controls input:disabled {
+  cursor: not-allowed;
+}
 .netlight-problem {
   color: #fbbf24;
   font-size: 13px;

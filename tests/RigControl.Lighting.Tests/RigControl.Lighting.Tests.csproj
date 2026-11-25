@@ -3,7 +3,9 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <!-- Both flavours of RigControl.Lighting are tested: the Windows one as before, and the neutral one (Linux, macOS). -->
+    <TargetFramework Condition="'$(TargetFramework)' == '$(RigWindowsDefaultTfm)'"></TargetFramework>
+    <TargetFrameworks>$(RigDualTfms)</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +16,11 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Tests of what only the Windows flavour has. Inside shared test files the same is done with "#if WINDOWS". -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'windows'">
+    <Compile Remove="OpenRgbServerTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

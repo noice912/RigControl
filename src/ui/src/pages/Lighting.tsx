@@ -1,4 +1,3 @@
-import { ExtraPanels, extraScenes } from "../extras";
 import { LightSyncPanel } from "../components/LightSync";
 import { GccTakeOver } from "../components/GccTakeOver";
 import { useToast } from "../components/Toast";
@@ -7,8 +6,14 @@ import { call, errorMessage } from "../bridge";
 import { useAction, useLive, useQuery } from "../hooks";
 import { Notice, Slider, useConfirm } from "../components/controls";
 import { ModuleProblem } from "../components/ModuleProblem";
+import { useApp } from "../appContext";
 import { HealthNotice } from "../components/HealthFindings";
-import type { LightDevice, LightingStatus, Scene } from "../types";
+import type {
+  LightDevice,
+  LightingStatus,
+  NetworkLights,
+  Scene,
+} from "../types";
 
 /** The Health finding for each program this page already names in its own "also controlling lights" notice. */
 const LIGHT_FINDINGS: Record<string, string> = {
@@ -97,7 +102,8 @@ function ColorChooser(props: {
 type LightZone = LightDevice["zones"][number];
 
 /** Lian Li fan hubs count 16 lights for each fan, whatever the fan really has. */
-const isLianLiHub = (name: string) => /lian li/i.test(name) && /hub/i.test(name);
+const isLianLiHub = (name: string) =>
+  /lian li/i.test(name) && /hub/i.test(name);
 
 /**
  * How many lights hang on a header. Only sent when the user presses Set: OpenRGB keeps the number, and a wrong one
@@ -128,10 +134,7 @@ function HeaderSize(props: {
         20000,
       );
       props.onStatus(r);
-      toast.show(
-        `${z.name}: ${leds} light${leds === 1 ? "" : "s"}`,
-        "ok",
-      );
+      toast.show(`${z.name}: ${leds} light${leds === 1 ? "" : "s"}`, "ok");
     } catch (err) {
       setProblem(errorMessage(err));
     } finally {
@@ -385,7 +388,6 @@ function Scenes(props: {
   const { busy, run } = useAction();
   const [name, setName] = useState("");
   const { confirm, element } = useConfirm();
-  const toast = useToast();
 
   return (
     <section className="panel">
@@ -394,7 +396,8 @@ function Scenes(props: {
           <h2>Scenes</h2>
           <div className="sub">
             Save how every device looks right now, and bring it back in one
-            click.
+            click. Scenes hold the PC's own lights only; lights on your network
+            aren't saved in them.
           </div>
         </div>
       </div>
@@ -416,7 +419,6 @@ function Scenes(props: {
               () => call<Scene[]>("lighting.saveScene", { name: name.trim() }),
               `Saved "${name.trim()}"`,
             ).then((r) => {
-              if (r) extraScenes.saved(name.trim());
               if (r) {
                 scenes.setData(r);
                 setName("");
@@ -445,17 +447,10 @@ function Scenes(props: {
                 onClick={() =>
                   void run(
                     "apply",
-                    async () => {
-                      const r = await call<LightingStatus>(
-                        "lighting.applyScene",
-                        { name: s.name },
-                      );
-                      // What an add-on saved with this scene, if anything. Its trouble must not spoil the PC lighting.
-                      await extraScenes
-                        .apply(s.name)
-                        .catch((err) => toast.show(errorMessage(err), "error"));
-                      return r;
-                    },
+                    () =>
+                      call<LightingStatus>("lighting.applyScene", {
+                        name: s.name,
+                      }),
                     `"${s.name}" applied`,
                   ).then((r) => r && props.onStatus(r))
                 }
@@ -478,7 +473,6 @@ function Scenes(props: {
                       call<Scene[]>("lighting.deleteScene", { name: s.name }),
                     );
                     if (r) scenes.setData(r);
-                    if (r) extraScenes.deleted(s.name);
                   }
                 }}
               >
@@ -501,8 +495,18 @@ export function Lighting() {
   } = useLive("lighting.changed", "lighting.getStatus");
   const { busy, run } = useAction();
   const [color, setColor] = useState("#00E5FF");
+  // On Windows RigControl finds and starts OpenRGB itself. The Linux and macOS app only connects to an OpenRGB
+  // the user has started, and has no GIGABYTE Control Center to deal with.
+  const { info, can } = useApp();
+  const startsOpenRgb = can("lighting.openrgbServer");
+  const hasGcc = !!info && can("lighting.gcc");
 
   const o = status?.openRgb;
+  // Lights on the network take "Everything at once" too, with or without OpenRGB.
+  const net = useQuery<NetworkLights>("lighting.getNetworkLights");
+  const netCount =
+    net.data?.paired.filter((l) => l.joinsEverything).length ?? 0;
+  const nothingToColour = (status?.devices.length ?? 0) === 0 && netCount === 0;
 
   const install = async () => {
     const r = await run("install", () =>
@@ -534,7 +538,9 @@ export function Lighting() {
       <HealthNotice
         modules={["lighting"]}
         exclude={[
-          ...(status?.conflicts ?? []).map((c) => LIGHT_FINDINGS[c]).filter((id): id is string => !!id),
+          ...(status?.conflicts ?? [])
+            .map((c) => LIGHT_FINDINGS[c])
+            .filter((id): id is string => !!id),
           ...(o?.connected ? ["lighting.gcc"] : []),
         ]}
       />
@@ -544,7 +550,7 @@ export function Lighting() {
         </Notice>
       )}
 
-      {o && !o.installed && (
+      {o && !o.installed && startsOpenRgb && (
         <Notice
           title="Lighting needs OpenRGB"
           actions={
@@ -579,7 +585,7 @@ export function Lighting() {
           it.
         </Notice>
       )}
-      {o && o.installed && !o.connected && (
+      {o && (o.installed || !startsOpenRgb) && !o.connected && (
         <Notice
           tone={o.message ? "warn" : "info"}
           title={
@@ -599,15 +605,23 @@ export function Lighting() {
                 )
               }
             >
-              {busy === "start" ? "Starting…" : "Start OpenRGB"}
+              {startsOpenRgb
+                ? busy === "start"
+                  ? "Starting…"
+                  : "Start OpenRGB"
+                : busy === "start"
+                  ? "Connecting…"
+                  : "Connect to OpenRGB"}
             </button>
           }
         >
-          {o.message ??
-            "RigControl normally starts it by itself, hidden. Press Start if it is not running."}
+          {startsOpenRgb
+            ? (o.message ??
+              "RigControl normally starts it by itself, hidden. Press Start if it is not running.")
+            : "Open OpenRGB yourself and turn on its SDK server (port 6742). RigControl then connects by itself within a few seconds, or press Connect. OpenRGB is a separate free program from openrgb.org."}
         </Notice>
       )}
-      {o?.connected && (
+      {o?.connected && hasGcc && (
         <GccTakeOver
           onStatus={setData}
           cardLeftOut={status?.devices.some((d) => d.leftOut) ?? false}
@@ -625,7 +639,7 @@ export function Lighting() {
           </Notice>
         )}
 
-      {o?.connected && (
+      {(o?.connected || netCount > 0) && (
         <>
           <section className="panel">
             <div className="panel-head">
@@ -633,7 +647,9 @@ export function Lighting() {
                 <h2>Everything at once</h2>
                 <div className="sub">
                   Pick a colour, then send it to every device or just the ones
-                  you choose below.
+                  you choose below. It also reaches your lights on the network
+                  that can take a colour (a Hue Bridge is left out: use its own
+                  controls).
                 </div>
               </div>
             </div>
@@ -647,7 +663,7 @@ export function Lighting() {
               <div className="stack" style={{ justifyContent: "flex-end" }}>
                 <button
                   className="btn primary"
-                  disabled={busy !== null || status!.devices.length === 0}
+                  disabled={busy !== null || nothingToColour}
                   onClick={() =>
                     void run(
                       "all",
@@ -661,7 +677,7 @@ export function Lighting() {
                 </button>
                 <button
                   className="btn"
-                  disabled={busy !== null || status!.devices.length === 0}
+                  disabled={busy !== null || nothingToColour}
                   onClick={() =>
                     void run(
                       "off",
@@ -675,7 +691,6 @@ export function Lighting() {
               </div>
             </div>
           </section>
-
         </>
       )}
 
@@ -702,8 +717,9 @@ export function Lighting() {
             </div>
             {status!.devices.length === 0 ? (
               <div className="empty">
-                OpenRGB did not find any devices. Some motherboard and RAM
-                lighting only shows up when OpenRGB runs as administrator.
+                {startsOpenRgb
+                  ? "OpenRGB did not find any devices. Some motherboard and RAM lighting only shows up when OpenRGB runs as administrator."
+                  : "OpenRGB did not find any devices. Check its own window: a device it does not list there cannot be shown here."}
               </div>
             ) : (
               <div>
@@ -721,7 +737,6 @@ export function Lighting() {
         </>
       )}
 
-      <ExtraPanels slot="lighting" />
       {o?.installed && <Scenes disabled={!o.connected} onStatus={setData} />}
     </div>
   );

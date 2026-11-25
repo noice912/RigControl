@@ -2,7 +2,6 @@
 // It is never used inside RigControl.exe. Values imitate this PC so layouts can be judged honestly.
 import { RpcError } from "./bridge";
 import { evaluateCurve, presetCurve } from "./curve";
-import { extrasMock } from "./extras";
 import type {
   AppSettings,
   CoolingDevice,
@@ -17,6 +16,8 @@ import type {
   HealthFinding,
   HealthReport,
   LightingStatus,
+  NetworkLight,
+  NetworkLightControls,
   NetworkLights,
   ModuleInfo,
   NvidiaOverclock,
@@ -25,7 +26,8 @@ import type {
   SensorSnapshot,
 } from "./types";
 
-const jitter = (base: number, spread: number) => Math.round((base + (Math.random() - 0.5) * spread) * 10) / 10;
+const jitter = (base: number, spread: number) =>
+  Math.round((base + (Math.random() - 0.5) * spread) * 10) / 10;
 
 let driversChecked = false;
 let captureStatus: any = {
@@ -54,7 +56,12 @@ let captureStatus: any = {
 };
 
 export function createMockBackend() {
-  let settings: AppSettings = { minimizeToTray: true, startMinimized: false, startWithWindows: false, temperatureUnit: "F" };
+  let settings: AppSettings = {
+    minimizeToTray: true,
+    startMinimized: false,
+    startWithWindows: false,
+    temperatureUnit: "F",
+  };
   const blockedBy: string[] = ["NZXT CAM"];
   let camAutoStart = true;
   let liquid = 31.4;
@@ -140,30 +147,93 @@ export function createMockBackend() {
       curve: null,
     })),
     lcd: null,
-    notes: ["Runs fixed speeds. The two NZXT RGB Controllers (lighting only) are on the Lighting page."],
+    notes: [
+      "Runs fixed speeds. The two NZXT RGB Controllers (lighting only) are on the Lighting page.",
+    ],
   };
 
   const coolingStatus = (): CoolingStatus => ({
     blockedBy: [...blockedBy],
-    cam: { appRunning: blockedBy.length > 0, serviceRunning: blockedBy.length > 0, startsWithWindows: camAutoStart },
+    cam: {
+      appRunning: blockedBy.length > 0,
+      serviceRunning: blockedBy.length > 0,
+      startsWithWindows: camAutoStart,
+    },
     devices: [kraken, controller].map((d) => ({
       ...d,
-      liquidTempC: d.id === "kraken-1" ? (blockedBy.length ? null : liquid) : null,
-      channels: d.channels.map((c) => ({ ...c, rpm: c.rpm === 0 ? 0 : c.rpm !== null ? Math.round(c.rpm + (Math.random() - 0.5) * 30) : null })),
+      liquidTempC:
+        d.id === "kraken-1" ? (blockedBy.length ? null : liquid) : null,
+      channels: d.channels.map((c) => ({
+        ...c,
+        rpm:
+          c.rpm === 0
+            ? 0
+            : c.rpm !== null
+              ? Math.round(c.rpm + (Math.random() - 0.5) * 30)
+              : null,
+      })),
     })),
   });
 
   const fanControls: FanControl[] = [
-    { id: "lpc/0", name: "CPU fan", rpmSensorId: "fan/0", mode: "auto", dutyPercent: null, curve: null, minDutyPercent: 20, canControl: true, reason: null },
-    { id: "lpc/1", name: "Chassis fan 1", rpmSensorId: "fan/1", mode: "auto", dutyPercent: null, curve: null, minDutyPercent: 20, canControl: true, reason: null },
-    { id: "lpc/2", name: "Chassis fan 2", rpmSensorId: "fan/2", mode: "auto", dutyPercent: null, curve: null, minDutyPercent: 20, canControl: true, reason: null },
-    { id: "lpc/4", name: "AIO pump", rpmSensorId: "fan/4", mode: "auto", dutyPercent: null, curve: null, minDutyPercent: 100, canControl: false, reason: "Pump headers are never controlled from software, so the pump can't be slowed by mistake." },
+    {
+      id: "lpc/0",
+      name: "CPU fan",
+      rpmSensorId: "fan/0",
+      mode: "auto",
+      dutyPercent: null,
+      curve: null,
+      minDutyPercent: 20,
+      canControl: true,
+      reason: null,
+    },
+    {
+      id: "lpc/1",
+      name: "Chassis fan 1",
+      rpmSensorId: "fan/1",
+      mode: "auto",
+      dutyPercent: null,
+      curve: null,
+      minDutyPercent: 20,
+      canControl: true,
+      reason: null,
+    },
+    {
+      id: "lpc/2",
+      name: "Chassis fan 2",
+      rpmSensorId: "fan/2",
+      mode: "auto",
+      dutyPercent: null,
+      curve: null,
+      minDutyPercent: 20,
+      canControl: true,
+      reason: null,
+    },
+    {
+      id: "lpc/4",
+      name: "AIO pump",
+      rpmSensorId: "fan/4",
+      mode: "auto",
+      dutyPercent: null,
+      curve: null,
+      minDutyPercent: 100,
+      canControl: false,
+      reason:
+        "Pump headers are never controlled from software, so the pump can't be slowed by mistake.",
+    },
   ];
 
   const snapshot = (): SensorSnapshot => ({
     time: new Date().toISOString(),
     elevated: false,
-    cpu: { name: "13th Gen Intel Core i9-13900KF", packageTempC: jitter(47, 6), coreMaxTempC: jitter(52, 8), loadPercent: jitter(9, 8), powerW: jitter(41, 10), clockMHz: jitter(4900, 300) },
+    cpu: {
+      name: "13th Gen Intel Core i9-13900KF",
+      packageTempC: jitter(47, 6),
+      coreMaxTempC: jitter(52, 8),
+      loadPercent: jitter(9, 8),
+      powerW: jitter(41, 10),
+      clockMHz: jitter(4900, 300),
+    },
     gpu: {
       name: "NVIDIA GeForce RTX 4070 Ti",
       tempC: jitter(41, 2),
@@ -178,38 +248,133 @@ export function createMockBackend() {
       vramTotalMB: 12282,
     },
     memory: { usedGB: jitter(17.6, 0.4), totalGB: 63.8, loadPercent: 27.6 },
-    board: { name: "ASUS ROG STRIX Z790-A GAMING WIFI II", superIo: "Nuvoton NCT6798D" },
+    board: {
+      name: "ASUS ROG STRIX Z790-A GAMING WIFI II",
+      superIo: "Nuvoton NCT6798D",
+    },
     temperatures: [
-      { id: "cpu/pkg", name: "CPU package", hardware: "Processor", value: jitter(47, 6) },
-      { id: "gpu/core", name: "GPU core", hardware: "Graphics", value: jitter(41, 2) },
-      { id: "lpc/t1", name: "Motherboard", hardware: "Motherboard", value: jitter(33, 1) },
+      {
+        id: "cpu/pkg",
+        name: "CPU package",
+        hardware: "Processor",
+        value: jitter(47, 6),
+      },
+      {
+        id: "gpu/core",
+        name: "GPU core",
+        hardware: "Graphics",
+        value: jitter(41, 2),
+      },
+      {
+        id: "lpc/t1",
+        name: "Motherboard",
+        hardware: "Motherboard",
+        value: jitter(33, 1),
+      },
     ],
     fans: [
-      { id: "fan/0", name: "CPU fan", hardware: "Motherboard", rpm: 0, controlId: "lpc/0" },
-      { id: "fan/1", name: "Chassis fan 1", hardware: "Motherboard", rpm: Math.round(jitter(760, 20)), controlId: "lpc/1" },
-      { id: "fan/2", name: "Chassis fan 2", hardware: "Motherboard", rpm: 0, controlId: "lpc/2" },
-      { id: "fan/4", name: "AIO pump", hardware: "Motherboard", rpm: Math.round(jitter(2380, 20)), controlId: "lpc/4" },
+      {
+        id: "fan/0",
+        name: "CPU fan",
+        hardware: "Motherboard",
+        rpm: 0,
+        controlId: "lpc/0",
+      },
+      {
+        id: "fan/1",
+        name: "Chassis fan 1",
+        hardware: "Motherboard",
+        rpm: Math.round(jitter(760, 20)),
+        controlId: "lpc/1",
+      },
+      {
+        id: "fan/2",
+        name: "Chassis fan 2",
+        hardware: "Motherboard",
+        rpm: 0,
+        controlId: "lpc/2",
+      },
+      {
+        id: "fan/4",
+        name: "AIO pump",
+        hardware: "Motherboard",
+        rpm: Math.round(jitter(2380, 20)),
+        controlId: "lpc/4",
+      },
     ],
-    notes: ["Run RigControl as administrator to read processor temperatures and motherboard fans. The values shown are estimates from Windows."],
+    notes: [
+      "Run RigControl as administrator to read processor temperatures and motherboard fans. The values shown are estimates from Windows.",
+    ],
   });
 
   const modules: ModuleInfo[] = [
-    { name: "sensors", displayName: "Sensors and motherboard fans", state: "degraded", message: "Running without administrator rights: processor temperatures and motherboard fans need it." },
-    { name: "nvidia", displayName: "NVIDIA graphics", state: "ready", message: null },
-    { name: "cooling", displayName: "NZXT cooling", state: "degraded", message: "NZXT CAM is running, so cooling is read-only." },
-    { name: "lighting", displayName: "Lighting (OpenRGB)", state: "degraded", message: "OpenRGB is not installed." },
+    {
+      name: "sensors",
+      displayName: "Sensors and motherboard fans",
+      state: "degraded",
+      message:
+        "Running without administrator rights: processor temperatures and motherboard fans need it.",
+    },
+    {
+      name: "nvidia",
+      displayName: "NVIDIA graphics",
+      state: "ready",
+      message: null,
+    },
+    {
+      name: "cooling",
+      displayName: "NZXT cooling",
+      state: "degraded",
+      message: "NZXT CAM is running, so cooling is read-only.",
+    },
+    {
+      name: "lighting",
+      displayName: "Lighting (OpenRGB)",
+      state: "degraded",
+      message: "OpenRGB is not installed.",
+    },
     { name: "cpu", displayName: "Processor", state: "ready", message: null },
   ];
 
-  const cpuSetting = (key: CpuPowerSetting["key"], value: number, min: number, max: number, unit: string): CpuPowerSetting => ({
-    key, available: true, ac: value, dc: value, min, max, zeroMeansNoLimit: key === "maxFrequencyMHz", unit,
-    options: key === "boostMode"
-      ? ["Off", "On", "Aggressive", "Efficient", "Efficient aggressive", "Aggressive at guaranteed", "Efficient aggressive at guaranteed"].map((label, i) => ({ value: i, label }))
-      : null,
-    coreTypesDiffer: false, originalAc: null, originalDc: null,
+  const cpuSetting = (
+    key: CpuPowerSetting["key"],
+    value: number,
+    min: number,
+    max: number,
+    unit: string,
+  ): CpuPowerSetting => ({
+    key,
+    available: true,
+    ac: value,
+    dc: value,
+    min,
+    max,
+    zeroMeansNoLimit: key === "maxFrequencyMHz",
+    unit,
+    options:
+      key === "boostMode"
+        ? [
+            "Off",
+            "On",
+            "Aggressive",
+            "Efficient",
+            "Efficient aggressive",
+            "Aggressive at guaranteed",
+            "Efficient aggressive at guaranteed",
+          ].map((label, i) => ({ value: i, label }))
+        : null,
+    coreTypesDiffer: false,
+    originalAc: null,
+    originalDc: null,
   });
   const cpuPowerStock = (): CpuPower => ({
-    available: true, problem: null, planId: "381b4222-f694-41f0-9685-ff5bb260df2e", planName: "Balanced", hasBattery: false, changed: false, changedPlans: [],
+    available: true,
+    problem: null,
+    planId: "381b4222-f694-41f0-9685-ff5bb260df2e",
+    planName: "Balanced",
+    hasBattery: false,
+    changed: false,
+    changedPlans: [],
     settings: [
       cpuSetting("boostMode", 2, 0, 6, "choice"),
       cpuSetting("maxStatePercent", 100, 30, 100, "%"),
@@ -221,19 +386,139 @@ export function createMockBackend() {
   let cpuPower = cpuPowerStock();
 
   const driverSettings: DriverSetting[] = [
-    { key: "lowLatency", name: "Low latency mode", group: "Responsiveness", description: "Cuts input lag by limiting frames queued by the CPU. Ultra submits frames just in time.", kind: "enum", value: 0, defaultValue: 0, isDefault: true, options: [{ value: 0, label: "Off" }, { value: 1, label: "On" }, { value: 2, label: "Ultra" }], min: null, max: null, unit: null },
-    { key: "vsync", name: "Vertical sync", group: "Responsiveness", description: "Stops tearing by waiting for the display. Adds latency.", kind: "enum", value: 0x60925292, defaultValue: 0x60925292, isDefault: true, options: [{ value: 0x60925292, label: "Let the game decide" }, { value: 0x08416747, label: "Off" }, { value: 0x47814940, label: "On" }, { value: 0x18888888, label: "Fast" }], min: null, max: null, unit: null },
-    { key: "maxFrameRate", name: "Max frame rate", group: "Responsiveness", description: "Caps frames per second. 0 means no cap.", kind: "number", value: 0, defaultValue: 0, isDefault: true, options: null, min: 0, max: 1000, unit: "fps" },
-    { key: "powerMode", name: "Power management mode", group: "Performance", description: "Prefer maximum performance keeps clocks high, using more power at idle.", kind: "enum", value: 1, defaultValue: 0, isDefault: false, options: [{ value: 0, label: "Normal" }, { value: 1, label: "Prefer maximum performance" }], min: null, max: null, unit: null },
-    { key: "textureQuality", name: "Texture filtering quality", group: "Image quality", description: "High performance trades a little sharpness for speed.", kind: "enum", value: 0, defaultValue: 0, isDefault: true, options: [{ value: 20, label: "High quality" }, { value: 0, label: "Quality" }, { value: 10, label: "Performance" }, { value: 20 + 0, label: "High performance" }].filter((o, i, a) => a.findIndex((x) => x.value === o.value) === i), min: null, max: null, unit: null },
-    { key: "shaderCache", name: "Shader cache size", group: "Performance", description: "How much disk space compiled shaders may use. Bigger means fewer stutters.", kind: "enum", value: 0xffffffff, defaultValue: 0xffffffff, isDefault: true, options: [{ value: 0xffffffff, label: "Driver default" }, { value: 10240, label: "10 GB" }, { value: 102400, label: "100 GB" }, { value: 0, label: "Unlimited" }], min: null, max: null, unit: null },
+    {
+      key: "lowLatency",
+      name: "Low latency mode",
+      group: "Responsiveness",
+      description:
+        "Cuts input lag by limiting frames queued by the CPU. Ultra submits frames just in time.",
+      kind: "enum",
+      value: 0,
+      defaultValue: 0,
+      isDefault: true,
+      options: [
+        { value: 0, label: "Off" },
+        { value: 1, label: "On" },
+        { value: 2, label: "Ultra" },
+      ],
+      min: null,
+      max: null,
+      unit: null,
+    },
+    {
+      key: "vsync",
+      name: "Vertical sync",
+      group: "Responsiveness",
+      description: "Stops tearing by waiting for the display. Adds latency.",
+      kind: "enum",
+      value: 0x60925292,
+      defaultValue: 0x60925292,
+      isDefault: true,
+      options: [
+        { value: 0x60925292, label: "Let the game decide" },
+        { value: 0x08416747, label: "Off" },
+        { value: 0x47814940, label: "On" },
+        { value: 0x18888888, label: "Fast" },
+      ],
+      min: null,
+      max: null,
+      unit: null,
+    },
+    {
+      key: "maxFrameRate",
+      name: "Max frame rate",
+      group: "Responsiveness",
+      description: "Caps frames per second. 0 means no cap.",
+      kind: "number",
+      value: 0,
+      defaultValue: 0,
+      isDefault: true,
+      options: null,
+      min: 0,
+      max: 1000,
+      unit: "fps",
+    },
+    {
+      key: "powerMode",
+      name: "Power management mode",
+      group: "Performance",
+      description:
+        "Prefer maximum performance keeps clocks high, using more power at idle.",
+      kind: "enum",
+      value: 1,
+      defaultValue: 0,
+      isDefault: false,
+      options: [
+        { value: 0, label: "Normal" },
+        { value: 1, label: "Prefer maximum performance" },
+      ],
+      min: null,
+      max: null,
+      unit: null,
+    },
+    {
+      key: "textureQuality",
+      name: "Texture filtering quality",
+      group: "Image quality",
+      description: "High performance trades a little sharpness for speed.",
+      kind: "enum",
+      value: 0,
+      defaultValue: 0,
+      isDefault: true,
+      options: [
+        { value: 20, label: "High quality" },
+        { value: 0, label: "Quality" },
+        { value: 10, label: "Performance" },
+        { value: 20 + 0, label: "High performance" },
+      ].filter((o, i, a) => a.findIndex((x) => x.value === o.value) === i),
+      min: null,
+      max: null,
+      unit: null,
+    },
+    {
+      key: "shaderCache",
+      name: "Shader cache size",
+      group: "Performance",
+      description:
+        "How much disk space compiled shaders may use. Bigger means fewer stutters.",
+      kind: "enum",
+      value: 0xffffffff,
+      defaultValue: 0xffffffff,
+      isDefault: true,
+      options: [
+        { value: 0xffffffff, label: "Driver default" },
+        { value: 10240, label: "10 GB" },
+        { value: 102400, label: "100 GB" },
+        { value: 0, label: "Unlimited" },
+      ],
+      min: null,
+      max: null,
+      unit: null,
+    },
   ];
 
   let overclock: NvidiaOverclock = {
-    available: true, coreMHz: 225, coreMin: -500, coreMax: 300, memoryMHz: 0, memoryMin: -1000, memoryMax: 1500,
-    canSet: true, reason: null, applyAtStart: false, notice: null,
+    available: true,
+    coreMHz: 225,
+    coreMin: -500,
+    coreMax: 300,
+    memoryMHz: 0,
+    memoryMin: -1000,
+    memoryMax: 1500,
+    canSet: true,
+    reason: null,
+    applyAtStart: false,
+    notice: null,
   };
-  let power: NvidiaPower = { powerW: 28, limitW: 285, defaultLimitW: 285, minLimitW: 150, maxLimitW: 300, canSet: false, reason: "Run RigControl as administrator to change the power limit." };
+  let power: NvidiaPower = {
+    powerW: 28,
+    limitW: 285,
+    defaultLimitW: 285,
+    minLimitW: 150,
+    maxLimitW: 300,
+    canSet: false,
+    reason: "Run RigControl as administrator to change the power limit.",
+  };
 
   const displays: Display[] = [
     {
@@ -244,35 +529,288 @@ export function createMockBackend() {
       height: 1440,
       refreshHz: 240,
       modes: [
-        ...[240, 165, 144, 120, 60].map((hz) => ({ width: 2560, height: 1440, refreshHz: hz })),
-        ...[240, 144, 60].map((hz) => ({ width: 1920, height: 1080, refreshHz: hz })),
+        ...[240, 165, 144, 120, 60].map((hz) => ({
+          width: 2560,
+          height: 1440,
+          refreshHz: hz,
+        })),
+        ...[240, 144, 60].map((hz) => ({
+          width: 1920,
+          height: 1080,
+          refreshHz: hz,
+        })),
       ],
       vibrance: { value: 50, min: 0, max: 100, defaultValue: 50 },
     },
   ];
 
   let lighting: LightingStatus = {
-    openRgb: { installed: false, path: null, running: false, connected: false, port: 6742, version: null, message: null },
+    openRgb: {
+      installed: false,
+      path: null,
+      running: false,
+      connected: false,
+      port: 6742,
+      version: null,
+      message: null,
+    },
     devices: [],
     conflicts: [],
   };
   const scenes: Scene[] = [];
 
   // ---- lights on the network (example addresses only)
+  // What each brand can be told directly, with the same reasons the real providers give.
+  const yes = { can: true, why: null };
+  const netControls = (brand: string): NetworkLightControls => {
+    if (brand === "leetdesk")
+      return {
+        power: yes,
+        brightness: yes,
+        readBack: yes,
+        giveBack: yes,
+        colour: {
+          can: false,
+          why: "LeetDesk publishes nothing about setting one colour on the desk, and the add-on RigControl follows only switches it on or off and sets its brightness. Effects can still colour it.",
+        },
+      };
+    if (brand === "govee")
+      return {
+        power: yes,
+        brightness: yes,
+        colour: yes,
+        readBack: {
+          can: false,
+          why: "A Govee light only answers on a fixed port of this PC, and RigControl doesn't wait for those answers when you change a light. So it can't show what the light shows now.",
+        },
+        giveBack: {
+          can: false,
+          why: "Without the light's answer RigControl can't know what it showed before, so it can't put that back. Pick a scene in the Govee Home app instead.",
+        },
+      };
+    return {
+      power: yes,
+      brightness: yes,
+      colour: yes,
+      readBack: yes,
+      giveBack: yes,
+    };
+  };
+  /** A change by hand, as the real app makes it: black is off, a colour or brightness switches it on. */
+  const changeNetLight = (
+    l: NetworkLight,
+    p: { on?: boolean; brightness?: number; color?: string },
+  ): NetworkLight => {
+    const c = l.controls ?? netControls(l.brand);
+    const off = p.on === false || (p.color ?? "").toUpperCase() === "#000000";
+    return {
+      ...l,
+      streaming: false,
+      takenOver: l.takenOver || c.giveBack.can,
+      on: c.readBack.can ? !off : null,
+      brightness:
+        c.readBack.can && !off ? (p.brightness ?? l.brightness) : l.brightness,
+      color:
+        c.readBack.can && !off && p.color ? p.color.toUpperCase() : l.color,
+    };
+  };
   let netLights: NetworkLights = {
     // The same words the real providers give (src/RigControl.Lighting/Network/Providers).
     brands: [
-      {"brand": "nanoleaf", "name": "Nanoleaf", "tested": true, "notes": "Panels, Shapes and Lines. Every panel takes its own part of the picture. Tried on Nanoleaf Lines.", "steps": ["Press Search for lights and wait for your Nanoleaf to show up.", "Hold the Nanoleaf's power button for 5 to 7 seconds, until its lights flash.", "Press Pair within 30 seconds."], "returnsSecret": true, "manualAddress": true, "options": [], "nothingFound": "No Nanoleaf answered on this network. Check it's on the same Wi-Fi or router as this PC, then search again.", "maxFramesPerSecond": 10, "canSearch": true, "followsUnplaced": false},
-      {"brand": "hue", "name": "Philips Hue", "tested": false, "notes": "A Hue Bridge and its colour lights. Nothing is touched until you place the bridge on the layout. Then every colour light in the bridge's entertainment area follows and is switched on while it does (with no entertainment area: every colour light on the bridge, in every room). When the sync stops, each light goes back to how it was, on or off. Each light follows as one colour a few times a second. Gradient strips piece by piece and fast sync need Hue's Entertainment stream, which is not built yet. Built from open-source descriptions of the protocol; not yet tried on a real bridge.", "steps": ["Press Search for lights and wait for your Hue Bridge to show up (or type the bridge's address).", "Press the round button on top of the Hue Bridge.", "Press Pair within 30 seconds.", "In the Hue app, make an entertainment area with the lights that should follow (Settings > Entertainment areas). Without one, every colour light on the bridge follows.", "Turn Per LED on and place the bridge on the Layout. Until then no Hue light is touched. Lights that follow are switched on, and go back to how they were when the sync stops."], "returnsSecret": true, "manualAddress": true, "options": [], "nothingFound": "No Hue Bridge answered on this network. Check it's plugged into the same router as this PC, or type its address (the Hue app shows it in the bridge's details).", "maxFramesPerSecond": 5, "canSearch": true, "followsUnplaced": false},
-      {"brand": "wled", "name": "WLED", "tested": false, "notes": "Strips and matrices running WLED. Every LED takes its own part of the picture. Built from WLED's published protocol and not yet tried on a real device.", "steps": ["The WLED must be on the same network as this PC.", "Press Search for lights, or type the WLED's address.", "If nothing lights up, open the WLED's own page, go to Config, then Sync Interfaces, and check that \"Receive UDP realtime\" is ticked."], "returnsSecret": false, "manualAddress": true, "options": [], "nothingFound": "No WLED answered the search. A WLED with an empty mDNS name doesn't announce itself: type its address instead.", "maxFramesPerSecond": 30, "canSearch": true, "followsUnplaced": true},
-      {"brand": "govee", "name": "Govee", "tested": false, "notes": "Govee lights that have LAN Control in the Govee Home app. One colour for the whole light, or a colour per piece on lights that take Govee's Razer stream (not official; you choose the number of pieces when pairing). Built from the published protocol and open-source implementations; not yet tried on a real device. A scene or music mode that was running can't be seen over the network, so it is not put back when the sync stops: the light goes back to its last colour, brightness and on or off.", "steps": ["Set the light up in the Govee Home phone app, on the same network as this PC.", "In Govee Home open the light, tap the settings (gear) icon and switch on LAN Control. It can take a few minutes to show up after first setup. Lights without that switch can't be used.", "Do that for every Govee light you want here.", "Press Search for lights. If Windows asks, allow RigControl on private networks."], "returnsSecret": false, "manualAddress": true, "options": [{"key": "segments", "label": "How many separate colours along the light", "choices": [{"value": "1", "label": "One colour for the whole light"}, {"value": "5", "label": "5 colours along the light"}, {"value": "10", "label": "10 colours along the light"}, {"value": "15", "label": "15 colours along the light"}, {"value": "20", "label": "20 colours along the light"}, {"value": "30", "label": "30 colours along the light"}], "default": "1"}], "nothingFound": "No Govee light answered. Check LAN Control is switched on for it in the Govee Home app, and that no other program is using Govee's reply port (OpenRGB's Govee support, Razer Synapse, Home Assistant). Or type the light's address.", "maxFramesPerSecond": 2, "canSearch": true, "followsUnplaced": true},
-      {"brand": "yeelight", "name": "Yeelight", "tested": false, "notes": "One colour for the whole light, plus the background light on models that have one. Built from Yeelight's published specification; not yet tried on a real light. Lights set up through Mi Home and some newer models have no LAN Control switch and can't be used. Anyone on your network can control a light that has LAN Control on.", "steps": ["Set the light up in the Yeelight phone app, on the same network as this PC.", "Open the light in the app, open its settings and switch on \"LAN Control\" (older app versions call it \"Developer mode\"). It is a switch for each light. If the switch is missing, update the light's firmware.", "Press Search for lights, or type the light's address. If Windows asks, allow RigControl on private networks (the light connects back to this PC for fast updates)."], "returnsSecret": false, "manualAddress": true, "options": [], "nothingFound": "No Yeelight answered. Check LAN Control is switched on for the light in the Yeelight app and that it's on the same network as this PC, then search again.", "maxFramesPerSecond": 15, "canSearch": true, "followsUnplaced": true},
-      {"brand": "cololight", "name": "Cololight", "tested": false, "notes": "Cololight Hexagon (Pro), Strip and MIX. Not yet tried on a real light. The maker has no documentation for this: it is built from other people's recordings of what the phone app sends (pycololight, MIT). The whole light shows one colour. When the sync stops, what the light showed before is put back; some Strip effects may not come back exactly.", "steps": ["Set the light up once in the Cololight or LifeSmart phone app, so it joins your Wi-Fi.", "Find its address in your router's list of devices. Giving it a fixed address there is a good idea.", "Type the address here and choose which kind of Cololight it is."], "returnsSecret": false, "manualAddress": true, "options": [{"key": "type", "label": "Which Cololight", "choices": [{"value": "hexagon", "label": "Hexagon (Pro)"}, {"value": "strip", "label": "Strip"}, {"value": "mix", "label": "MIX"}], "default": "hexagon"}], "nothingFound": "Cololight lights can't be searched for. Type the light's address.", "maxFramesPerSecond": 2, "canSearch": false, "followsUnplaced": true},
-      {"brand": "leetdesk", "name": "LeetDesk Aura", "tested": false, "notes": "The light strip around a LeetDesk Aura desk, as one strip. Not yet tried on a real desk. How it is controlled comes from a third-party add-on last changed in 2024, not from LeetDesk, so current desks may behave differently.", "steps": ["Set the desk up once in the LeetDesk phone app, so it is on your Wi-Fi.", "This PC must be on the same network as the desk.", "Press Search for lights, or type the desk's address."], "returnsSecret": false, "manualAddress": true, "options": [], "nothingFound": "No LeetDesk Aura answered the search. Type the desk's address instead. For a desk that can't be found, LeetDesk suggests holding the small button on the Aura controller for 25 seconds.", "maxFramesPerSecond": 30, "canSearch": true, "followsUnplaced": true},
+      {
+        brand: "nanoleaf",
+        name: "Nanoleaf",
+        tested: true,
+        notes:
+          "Panels, Shapes and Lines. Every panel takes its own part of the picture. Tried on Nanoleaf Lines.",
+        steps: [
+          "Press Search for lights and wait for your Nanoleaf to show up.",
+          "Hold the Nanoleaf's power button for 5 to 7 seconds, until its lights flash.",
+          "Press Pair within 30 seconds.",
+        ],
+        returnsSecret: true,
+        manualAddress: true,
+        options: [],
+        nothingFound:
+          "No Nanoleaf answered on this network. Check it's on the same Wi-Fi or router as this PC, then search again.",
+        maxFramesPerSecond: 10,
+        canSearch: true,
+        followsUnplaced: true,
+      },
+      {
+        brand: "hue",
+        name: "Philips Hue",
+        tested: false,
+        notes:
+          "A Hue Bridge and its colour lights. Effects leave it alone until you place the bridge on the layout. Then every colour light in the bridge's entertainment area follows and is switched on while it does (with no entertainment area: every colour light on the bridge, in every room). The bridge's own switch, brightness and colour here change those same lights; Everything at once and Turn all lights off leave Hue alone. When the sync stops, each light goes back to how it was, on or off. Each light follows as one colour a few times a second. Gradient strips piece by piece and fast sync need Hue's Entertainment stream, which is not built yet. Built from open-source descriptions of the protocol; not yet tried on a real bridge.",
+        steps: [
+          "Press Search for lights and wait for your Hue Bridge to show up (or type the bridge's address).",
+          "Press the round button on top of the Hue Bridge.",
+          "Press Pair within 30 seconds.",
+          "In the Hue app, make an entertainment area with the lights that should follow (Settings > Entertainment areas). Without one, every colour light on the bridge follows.",
+          "To have the effects play on Hue: turn Per LED on and place the bridge on the Layout. Until then no effect touches a Hue light. Lights that follow are switched on, and go back to how they were when the sync stops.",
+        ],
+        returnsSecret: true,
+        manualAddress: true,
+        options: [],
+        nothingFound:
+          "No Hue Bridge answered on this network. Check it's plugged into the same router as this PC, or type its address (the Hue app shows it in the bridge's details).",
+        maxFramesPerSecond: 5,
+        canSearch: true,
+        followsUnplaced: false,
+      },
+      {
+        brand: "wled",
+        name: "WLED",
+        tested: false,
+        notes:
+          "Strips and matrices running WLED. Every LED takes its own part of the picture. Built from WLED's published protocol and not yet tried on a real device.",
+        steps: [
+          "The WLED must be on the same network as this PC.",
+          "Press Search for lights, or type the WLED's address.",
+          'If nothing lights up, open the WLED\'s own page, go to Config, then Sync Interfaces, and check that "Receive UDP realtime" is ticked.',
+        ],
+        returnsSecret: false,
+        manualAddress: true,
+        options: [],
+        nothingFound:
+          "No WLED answered the search. A WLED with an empty mDNS name doesn't announce itself: type its address instead.",
+        maxFramesPerSecond: 30,
+        canSearch: true,
+        followsUnplaced: true,
+      },
+      {
+        brand: "govee",
+        name: "Govee",
+        tested: false,
+        notes:
+          "Govee lights that have LAN Control in the Govee Home app. One colour for the whole light, or a colour per piece on lights that take Govee's Razer stream (not official; you choose the number of pieces when pairing). Built from the published protocol and open-source implementations; not yet tried on a real device. A scene or music mode that was running can't be seen over the network, so it is not put back when the sync stops: the light goes back to its last colour, brightness and on or off.",
+        steps: [
+          "Set the light up in the Govee Home phone app, on the same network as this PC.",
+          "In Govee Home open the light, tap the settings (gear) icon and switch on LAN Control. It can take a few minutes to show up after first setup. Lights without that switch can't be used.",
+          "Do that for every Govee light you want here.",
+          "Press Search for lights. If Windows asks, allow RigControl on private networks.",
+        ],
+        returnsSecret: false,
+        manualAddress: true,
+        options: [
+          {
+            key: "segments",
+            label: "How many separate colours along the light",
+            choices: [
+              { value: "1", label: "One colour for the whole light" },
+              { value: "5", label: "5 colours along the light" },
+              { value: "10", label: "10 colours along the light" },
+              { value: "15", label: "15 colours along the light" },
+              { value: "20", label: "20 colours along the light" },
+              { value: "30", label: "30 colours along the light" },
+            ],
+            default: "1",
+          },
+        ],
+        nothingFound:
+          "No Govee light answered. Check LAN Control is switched on for it in the Govee Home app, and that no other program is using Govee's reply port (OpenRGB's Govee support, Razer Synapse, Home Assistant). Or type the light's address.",
+        maxFramesPerSecond: 2,
+        canSearch: true,
+        followsUnplaced: true,
+      },
+      {
+        brand: "yeelight",
+        name: "Yeelight",
+        tested: false,
+        notes:
+          "One colour for the whole light, plus the background light on models that have one. Built from Yeelight's published specification; not yet tried on a real light. Lights set up through Mi Home and some newer models have no LAN Control switch and can't be used. Anyone on your network can control a light that has LAN Control on.",
+        steps: [
+          "Set the light up in the Yeelight phone app, on the same network as this PC.",
+          'Open the light in the app, open its settings and switch on "LAN Control" (older app versions call it "Developer mode"). It is a switch for each light. If the switch is missing, update the light\'s firmware.',
+          "Press Search for lights, or type the light's address. If Windows asks, allow RigControl on private networks (the light connects back to this PC for fast updates).",
+        ],
+        returnsSecret: false,
+        manualAddress: true,
+        options: [],
+        nothingFound:
+          "No Yeelight answered. Check LAN Control is switched on for the light in the Yeelight app and that it's on the same network as this PC, then search again.",
+        maxFramesPerSecond: 15,
+        canSearch: true,
+        followsUnplaced: true,
+      },
+      {
+        brand: "cololight",
+        name: "Cololight",
+        tested: false,
+        notes:
+          "Cololight Hexagon (Pro), Strip and MIX. Not yet tried on a real light. The maker has no documentation for this: it is built from other people's recordings of what the phone app sends (pycololight, MIT). The whole light shows one colour. When the sync stops, what the light showed before is put back; some Strip effects may not come back exactly.",
+        steps: [
+          "Set the light up once in the Cololight or LifeSmart phone app, so it joins your Wi-Fi.",
+          "Find its address in your router's list of devices. Giving it a fixed address there is a good idea.",
+          "Type the address here and choose which kind of Cololight it is.",
+        ],
+        returnsSecret: false,
+        manualAddress: true,
+        options: [
+          {
+            key: "type",
+            label: "Which Cololight",
+            choices: [
+              { value: "hexagon", label: "Hexagon (Pro)" },
+              { value: "strip", label: "Strip" },
+              { value: "mix", label: "MIX" },
+            ],
+            default: "hexagon",
+          },
+        ],
+        nothingFound:
+          "Cololight lights can't be searched for. Type the light's address.",
+        maxFramesPerSecond: 2,
+        canSearch: false,
+        followsUnplaced: true,
+      },
+      {
+        brand: "leetdesk",
+        name: "LeetDesk Aura",
+        tested: false,
+        notes:
+          "The light strip around a LeetDesk Aura desk, as one strip. Not yet tried on a real desk. How it is controlled comes from a third-party add-on last changed in 2024, not from LeetDesk, so current desks may behave differently.",
+        steps: [
+          "Set the desk up once in the LeetDesk phone app, so it is on your Wi-Fi.",
+          "This PC must be on the same network as the desk.",
+          "Press Search for lights, or type the desk's address.",
+        ],
+        returnsSecret: false,
+        manualAddress: true,
+        options: [],
+        nothingFound:
+          "No LeetDesk Aura answered the search. Type the desk's address instead. For a desk that can't be found, LeetDesk suggests holding the small button on the Aura controller for 25 seconds.",
+        maxFramesPerSecond: 30,
+        canSearch: true,
+        followsUnplaced: true,
+      },
     ],
     paired: [
-      { id: "net|wled|a1b2c3d4e5f6", brand: "wled", brandName: "WLED", deviceId: "a1b2c3d4e5f6", name: "Desk strip", model: "WLED 0.15.0 (esp32)", address: "192.0.2.70", tested: false,
-        kind: "strip", points: 60, pointName: "LED", placed: false, streaming: true, problem: null, note: null },
+      {
+        id: "net|wled|a1b2c3d4e5f6",
+        brand: "wled",
+        brandName: "WLED",
+        deviceId: "a1b2c3d4e5f6",
+        name: "Desk strip",
+        model: "WLED 0.15.0 (esp32)",
+        address: "192.0.2.70",
+        tested: false,
+        kind: "strip",
+        points: 60,
+        pointName: "LED",
+        placed: false,
+        streaming: false,
+        problem: null,
+        note: null,
+        controls: netControls("wled"),
+        on: true,
+        brightness: 60,
+        color: "#FF8800",
+        takenOver: false,
+        joinsEverything: true,
+        followsUnplaced: true,
+      },
     ],
     found: [],
     scanning: false,
@@ -280,42 +818,144 @@ export function createMockBackend() {
     scanStopped: false,
     scanFinished: [],
     notSupported: [
-      {"brand": "hue", "name": "Philips Hue: gradient strips piece by piece, and fast sync", "why": "Needs Hue's Entertainment stream, which is not built yet. Each Hue light follows as one colour, a few times a second. The key for it is already saved at pairing, so nothing has to be pressed again when it is added."},
-      {"brand": "hue", "name": "Philips Hue: choosing single lights or rooms here", "why": "Which Hue lights follow is chosen in the Hue app: the lights of the bridge's entertainment area (the screen one when there are several). A bridge without an entertainment area follows with every colour light it has, in every room."},
-      {"brand": "govee", "name": "Govee: lights without \"LAN Control\", and a colour per piece on every light", "why": "Only Govee lights that show a LAN Control switch in the Govee Home app can be driven locally. Govee's own local protocol sets one colour for the whole light. A colour per piece uses an unofficial stream that only some lights take, and a light doesn't say how many pieces it has: you choose the number when pairing."},
-      {"brand": "yeelight", "name": "Yeelight: lights without \"LAN Control\", and strips LED by LED", "why": "Some newer Yeelight lights, and ones set up through Mi Home, have no LAN Control switch. Those can only be driven through Yeelight's cloud, which RigControl doesn't use. Each Yeelight is one colour (two with a background light); strips and cubes can't be driven LED by LED."},
-      {"brand": "cololight", "name": "Cololight: a colour per panel, and searching", "why": "Nobody has worked out how to colour single Cololight panels over the network, so the whole light follows as one colour. There is no dependable way to search for one either: you type its address."},
-      {"brand": "leetdesk", "name": "LeetDesk Aura: anything beyond one plain strip", "why": "LeetDesk publishes nothing about how the Aura is controlled. RigControl follows a public add-on from 2024, so newer desks may behave differently. Where each light sits along the desk isn't known: place the strip on the layout and use Run backwards if it runs the wrong way."},
-      {"brand": "wled", "name": "WLED: very long strips in one go, and pairing by name", "why": "A strip longer than 489 LEDs is sent in several parts, so a very long strip can change part by part. A WLED is paired by its address, not by a name such as wled.local."},
-      {"brand": "openrgb", "name": "Fan hubs and light headers OpenRGB doesn't know", "why": "Corsair Commander and Lighting Node, Thermaltake Riing, Lian Li Uni hubs, Razer's light strip controller and motherboard headers come through OpenRGB, and you set how many lights hang on each header under the device on this page. Hubs OpenRGB 1.1 doesn't know (such as Lian Li Uni Fan TL) don't show up. NZXT channels count their own lights and can't be set by hand. Of these, only NZXT and Razer have been tried on real hardware."},
-      {"brand": "cloud", "name": "Lights that only work through an account (Tuya / Smart Life, Wiz cloud scenes, TP-Link cloud)", "why": "RigControl controls lights on your own network only. It never signs in to a cloud account."},
+      {
+        brand: "hue",
+        name: "Philips Hue: gradient strips piece by piece, and fast sync",
+        why: "Needs Hue's Entertainment stream, which is not built yet. Each Hue light follows as one colour, a few times a second. The key for it is already saved at pairing, so nothing has to be pressed again when it is added.",
+      },
+      {
+        brand: "hue",
+        name: "Philips Hue: choosing single lights or rooms here",
+        why: "Which Hue lights follow is chosen in the Hue app: the lights of the bridge's entertainment area (the screen one when there are several). A bridge without an entertainment area follows with every colour light it has, in every room.",
+      },
+      {
+        brand: "govee",
+        name: 'Govee: lights without "LAN Control", and a colour per piece on every light',
+        why: "Only Govee lights that show a LAN Control switch in the Govee Home app can be driven locally. Govee's own local protocol sets one colour for the whole light. A colour per piece uses an unofficial stream that only some lights take, and a light doesn't say how many pieces it has: you choose the number when pairing.",
+      },
+      {
+        brand: "yeelight",
+        name: 'Yeelight: lights without "LAN Control", and strips LED by LED',
+        why: "Some newer Yeelight lights, and ones set up through Mi Home, have no LAN Control switch. Those can only be driven through Yeelight's cloud, which RigControl doesn't use. Each Yeelight is one colour (two with a background light); strips and cubes can't be driven LED by LED.",
+      },
+      {
+        brand: "cololight",
+        name: "Cololight: a colour per panel, and searching",
+        why: "Nobody has worked out how to colour single Cololight panels over the network, so the whole light follows as one colour. There is no dependable way to search for one either: you type its address.",
+      },
+      {
+        brand: "leetdesk",
+        name: "LeetDesk Aura: anything beyond one plain strip",
+        why: "LeetDesk publishes nothing about how the Aura is controlled. RigControl follows a public add-on from 2024, so newer desks may behave differently. Where each light sits along the desk isn't known: place the strip on the layout and use Run backwards if it runs the wrong way.",
+      },
+      {
+        brand: "wled",
+        name: "WLED: very long strips in one go, and pairing by name",
+        why: "A strip longer than 489 LEDs is sent in several parts, so a very long strip can change part by part. A WLED is paired by its address, not by a name such as wled.local.",
+      },
+      {
+        brand: "openrgb",
+        name: "Fan hubs and light headers OpenRGB doesn't know",
+        why: "Corsair Commander and Lighting Node, Thermaltake Riing, Lian Li Uni hubs, Razer's light strip controller and motherboard headers come through OpenRGB, and you set how many lights hang on each header under the device on this page. Hubs OpenRGB 1.1 doesn't know (such as Lian Li Uni Fan TL) don't show up. NZXT channels count their own lights and can't be set by hand. Of these, only NZXT and Razer have been tried on real hardware.",
+      },
+      {
+        brand: "cloud",
+        name: "Lights that only work through an account (Tuya / Smart Life, Wiz cloud scenes, TP-Link cloud)",
+        why: "RigControl controls lights on your own network only. It never signs in to a cloud account.",
+      },
     ],
   };
-  const later = <T,>(v: T, ms: number) => new Promise<T>((r) => window.setTimeout(() => r(structuredClone(v)), ms));
+  const later = <T>(v: T, ms: number) =>
+    new Promise<T>((r) => window.setTimeout(() => r(structuredClone(v)), ms));
 
   // ---- health and first-time setup
   let healthScannedAt = new Date().toISOString();
   let healthFindings: HealthFinding[] = [
-    { id: "cooling.nzxt-cam", module: "cooling", name: "NZXT CAM", kind: "process", severity: "blocks", verified: true, fix: null, evidence: "NZXT CAM.exe is running.",
-      whatItBreaks: "While NZXT CAM is open, RigControl can read your cooler but can't change its pump, fans or screen.",
-      whatToDo: "Close NZXT CAM yourself when you want RigControl to run the cooler. RigControl never closes it for you." },
-    { id: "sensors.armoury-crate", module: "sensors", name: "Armoury Crate", kind: "service", severity: "warn", verified: true,
-      fix: { label: "Close Armoury Crate", method: "sensors.closeArmouryCrate", args: null,
-        confirm: "Close Armoury Crate and stop its background services? It can be opened again from the Start menu." },
-      whatItBreaks: "Armoury Crate also sets the motherboard fans, so fan speeds you choose here may be changed back.",
-      whatToDo: "Close Armoury Crate, or leave the motherboard fans on automatic in RigControl." },
-    { id: "lighting.dynamic-lighting", module: "lighting", name: "Windows Dynamic Lighting", kind: "setting", severity: "warn", verified: true, fix: null,
-      whatItBreaks: "Windows is also setting the colour of your lights, so they may flicker or change back.",
-      whatToDo: "In Windows Settings open Personalisation, then Dynamic Lighting, and turn off \"Use Dynamic Lighting on my devices\"." },
-    { id: "nvidia.afterburner", module: "nvidia", name: "MSI Afterburner", kind: "process", severity: "warn", verified: false, fix: null,
-      whatItBreaks: "Afterburner sets the same graphics card clocks and fan speeds, so the last program to apply its settings wins.",
-      whatToDo: "Use one of the two for overclocking. Close Afterburner, or leave the Graphics page on its defaults." },
-    { id: "capture.nvidia-overlay", module: "capture", name: "NVIDIA overlay shortcuts", kind: "process", severity: "info", verified: true, fix: null,
-      whatItBreaks: "The NVIDIA overlay uses Alt+F9 and Alt+F10 too, so one key press may start a recording in both.",
-      whatToDo: "Change the shortcuts on the Recording page, or turn the NVIDIA overlay off in the NVIDIA app." },
-    { id: "system.memory-integrity", module: "system", name: "Memory integrity is on", kind: "setting", severity: "info", verified: true, fix: null,
-      whatItBreaks: "Nothing in RigControl. Some other tuning tools can't load their drivers while this Windows protection is on.",
-      whatToDo: "Leave it on. RigControl never changes Windows security settings." },
+    {
+      id: "cooling.nzxt-cam",
+      module: "cooling",
+      name: "NZXT CAM",
+      kind: "process",
+      severity: "blocks",
+      verified: true,
+      fix: null,
+      evidence: "NZXT CAM.exe is running.",
+      whatItBreaks:
+        "While NZXT CAM is open, RigControl can read your cooler but can't change its pump, fans or screen.",
+      whatToDo:
+        "Close NZXT CAM yourself when you want RigControl to run the cooler. RigControl never closes it for you.",
+    },
+    {
+      id: "sensors.armoury-crate",
+      module: "sensors",
+      name: "Armoury Crate",
+      kind: "service",
+      severity: "warn",
+      verified: true,
+      fix: {
+        label: "Close Armoury Crate",
+        method: "sensors.closeArmouryCrate",
+        args: null,
+        confirm:
+          "Close Armoury Crate and stop its background services? It can be opened again from the Start menu.",
+      },
+      whatItBreaks:
+        "Armoury Crate also sets the motherboard fans, so fan speeds you choose here may be changed back.",
+      whatToDo:
+        "Close Armoury Crate, or leave the motherboard fans on automatic in RigControl.",
+    },
+    {
+      id: "lighting.dynamic-lighting",
+      module: "lighting",
+      name: "Windows Dynamic Lighting",
+      kind: "setting",
+      severity: "warn",
+      verified: true,
+      fix: null,
+      whatItBreaks:
+        "Windows is also setting the colour of your lights, so they may flicker or change back.",
+      whatToDo:
+        'In Windows Settings open Personalisation, then Dynamic Lighting, and turn off "Use Dynamic Lighting on my devices".',
+    },
+    {
+      id: "nvidia.afterburner",
+      module: "nvidia",
+      name: "MSI Afterburner",
+      kind: "process",
+      severity: "warn",
+      verified: false,
+      fix: null,
+      whatItBreaks:
+        "Afterburner sets the same graphics card clocks and fan speeds, so the last program to apply its settings wins.",
+      whatToDo:
+        "Use one of the two for overclocking. Close Afterburner, or leave the Graphics page on its defaults.",
+    },
+    {
+      id: "capture.nvidia-overlay",
+      module: "capture",
+      name: "NVIDIA overlay shortcuts",
+      kind: "process",
+      severity: "info",
+      verified: true,
+      fix: null,
+      whatItBreaks:
+        "The NVIDIA overlay uses Alt+F9 and Alt+F10 too, so one key press may start a recording in both.",
+      whatToDo:
+        "Change the shortcuts on the Recording page, or turn the NVIDIA overlay off in the NVIDIA app.",
+    },
+    {
+      id: "system.memory-integrity",
+      module: "system",
+      name: "Memory integrity is on",
+      kind: "setting",
+      severity: "info",
+      verified: true,
+      fix: null,
+      whatItBreaks:
+        "Nothing in RigControl. Some other tuning tools can't load their drivers while this Windows protection is on.",
+      whatToDo:
+        "Leave it on. RigControl never changes Windows security settings.",
+    },
   ];
   const healthReport = (): HealthReport => ({
     scannedAt: healthScannedAt,
@@ -325,14 +965,28 @@ export function createMockBackend() {
       warn: healthFindings.filter((f) => f.severity === "warn").length,
       info: healthFindings.filter((f) => f.severity === "info").length,
     },
-    system: { elevated: false, fastStartup: true, memoryIntegrity: true, driverBlocklist: true, controlledFolderAccess: null, pendingRestart: false,
-      gameBarRecording: true, gameBarBackgroundRecording: false, gameBarLogoButton: true, gameMode: true, dynamicLighting: true,
-      windowsUpdateDrivers: true, sessionCount: 1, otherSessionRunsRigControl: false },
+    system: {
+      elevated: false,
+      fastStartup: true,
+      memoryIntegrity: true,
+      driverBlocklist: true,
+      controlledFolderAccess: null,
+      pendingRestart: false,
+      gameBarRecording: true,
+      gameBarBackgroundRecording: false,
+      gameBarLogoButton: true,
+      gameMode: true,
+      dynamicLighting: true,
+      windowsUpdateDrivers: true,
+      sessionCount: 1,
+      otherSessionRunsRigControl: false,
+    },
   });
   // The setup shows once per browser in the preview; "Go through first-time setup again" on the Health page reopens it.
   let firstRunDone = false;
   try {
-    firstRunDone = window.localStorage.getItem("rigcontrol.mock.firstRunDone") === "1";
+    firstRunDone =
+      window.localStorage.getItem("rigcontrol.mock.firstRunDone") === "1";
   } catch {
     // storage unavailable
   }
@@ -352,7 +1006,10 @@ export function createMockBackend() {
     programFolderOpen: true,
     hardware: [
       { label: "Processor", value: "Intel Core i7-13700K" },
-      { label: "Motherboard", value: "ASUS ROG STRIX Z790-E GAMING WIFI (BIOS 2301)" },
+      {
+        label: "Motherboard",
+        value: "ASUS ROG STRIX Z790-E GAMING WIFI (BIOS 2301)",
+      },
       { label: "Graphics card", value: "NVIDIA GeForce RTX 4070 Ti" },
       { label: "Memory", value: "32 GB" },
       { label: "Windows", value: "Windows 11 24H2 (build 26100)" },
@@ -360,26 +1017,89 @@ export function createMockBackend() {
       { label: "Discord", value: "Running" },
     ],
     features: [
-      { id: "sensors", name: "Temperatures and motherboard fans", available: true, reason: null },
-      { id: "cooling", name: "NZXT cooler: pump, fans and screen", available: true, reason: null },
-      { id: "nvidia", name: "NVIDIA graphics: driver settings, displays and overclocking", available: true, reason: null },
-      { id: "lighting", name: "Lighting through OpenRGB", available: true, reason: null },
-      { id: "capture", name: "Recording and instant replay", available: true, reason: null },
+      {
+        id: "sensors",
+        name: "Temperatures and motherboard fans",
+        available: true,
+        reason: null,
+      },
+      {
+        id: "cooling",
+        name: "NZXT cooler: pump, fans and screen",
+        available: true,
+        reason: null,
+      },
+      {
+        id: "nvidia",
+        name: "NVIDIA graphics: driver settings, displays and overclocking",
+        available: true,
+        reason: null,
+      },
+      {
+        id: "lighting",
+        name: "Lighting through OpenRGB",
+        available: true,
+        reason: null,
+      },
+      {
+        id: "capture",
+        name: "Recording and instant replay",
+        available: true,
+        reason: null,
+      },
       { id: "presence", name: "Discord status", available: true, reason: null },
-      { id: "cpu", name: "Processor: details and Windows power settings", available: true, reason: null },
-      { id: "bios", name: "Processor settings in the BIOS", available: false, reason: "Only for the ASUS board and BIOS version it was made for." },
-      { id: "gcc", name: "Taking the lights over from GIGABYTE Control Center", available: false, reason: "GIGABYTE Control Center is not installed." },
-      { id: "richpresence", name: "Copying settings from RichPresence", available: false, reason: "RichPresence is not installed." },
+      {
+        id: "cpu",
+        name: "Processor: details and Windows power settings",
+        available: true,
+        reason: null,
+      },
+      {
+        id: "bios",
+        name: "Processor settings in the BIOS",
+        available: false,
+        reason: "Only for the ASUS board and BIOS version it was made for.",
+      },
+      {
+        id: "gcc",
+        name: "Taking the lights over from GIGABYTE Control Center",
+        available: false,
+        reason: "GIGABYTE Control Center is not installed.",
+      },
+      {
+        id: "richpresence",
+        name: "Copying settings from RichPresence",
+        available: false,
+        reason: "RichPresence is not installed.",
+      },
     ],
     helpers: {
       items: [
-        { id: "openrgb", name: "OpenRGB", what: "Sets the colours of your RGB lights. RigControl keeps its own copy in its Program Files folder.",
-          licence: "GPL-2.0-only (its Qt files: LGPL-3.0)", carried: true, installed: helpersInstalled },
-        { id: "pawnio", name: "PawnIO", what: "A signed Windows driver that RigControl needs to read temperatures and control fans.", licence: "GPL-2.0 or later, with PawnIO's own exception (see pawnio.eu)",
-          carried: true, installed: true },
-        { id: "equalizerapo", name: "Equalizer APO",
-          what: "Puts RigControl's audio equaliser on your sound output. Windows needs one restart after it is installed.", licence: "GPL-2.0",
-          carried: true, installed: helpersInstalled },
+        {
+          id: "openrgb",
+          name: "OpenRGB",
+          what: "Sets the colours of your RGB lights. RigControl keeps its own copy in its Program Files folder.",
+          licence: "GPL-2.0-only (its Qt files: LGPL-3.0)",
+          carried: true,
+          installed: helpersInstalled,
+        },
+        {
+          id: "pawnio",
+          name: "PawnIO",
+          what: "A signed Windows driver that RigControl needs to read temperatures and control fans.",
+          licence:
+            "GPL-2.0 or later, with PawnIO's own exception (see pawnio.eu)",
+          carried: true,
+          installed: true,
+        },
+        {
+          id: "equalizerapo",
+          name: "Equalizer APO",
+          what: "Puts RigControl's audio equaliser on your sound output. Windows needs one restart after it is installed.",
+          licence: "GPL-2.0",
+          carried: true,
+          installed: helpersInstalled,
+        },
       ],
       consented: helpersInstalled,
       needsYes: !helpersInstalled,
@@ -391,7 +1111,8 @@ export function createMockBackend() {
     findings: healthFindings,
   });
 
-  const ok = <T,>(v: T) => new Promise<T>((r) => window.setTimeout(() => r(structuredClone(v)), 120));
+  const ok = <T>(v: T) =>
+    new Promise<T>((r) => window.setTimeout(() => r(structuredClone(v)), 120));
 
   return {
     subscribe(emit: (event: string, data: unknown) => void) {
@@ -403,12 +1124,15 @@ export function createMockBackend() {
     },
 
     async call(method: string, params: any): Promise<unknown> {
-      // An add-on answers for its own methods first.
-      const extra = extrasMock(method, params);
-      if (extra !== undefined) return ok(extra);
       switch (method) {
         case "app.getInfo":
-          return ok({ version: "1.0.0", isElevated: false, dataDirectory: "C:\\Users\\you\\AppData\\Local\\RigControl", logDirectory: "…\\logs", machineName: "MY-PC" });
+          return ok({
+            version: "1.0.0",
+            isElevated: false,
+            dataDirectory: "C:\\Users\\you\\AppData\\Local\\RigControl",
+            logDirectory: "…\\logs",
+            machineName: "MY-PC",
+          });
         case "app.getModules":
           return ok(modules);
         case "app.getSettings":
@@ -417,7 +1141,10 @@ export function createMockBackend() {
           settings = { ...settings, ...params };
           return ok({ ...settings });
         case "app.restartAsAdmin":
-          throw new RpcError("cancelled", "Administrator permission was not granted.");
+          throw new RpcError(
+            "cancelled",
+            "Administrator permission was not granted.",
+          );
         case "app.openExternal":
           window.open(params.url, "_blank", "noopener");
           return ok({ opened: true });
@@ -425,8 +1152,18 @@ export function createMockBackend() {
           return ok({ opened: true });
         case "app.getLogs":
           return ok([
-            { time: new Date().toISOString(), level: "info", source: "app", message: "RigControl 1.0.0 starting. Elevated=False." },
-            { time: new Date().toISOString(), level: "warn", source: "cooling", message: "NZXT CAM is running; cooling stays read-only." },
+            {
+              time: new Date().toISOString(),
+              level: "info",
+              source: "app",
+              message: "RigControl 1.0.0 starting. Elevated=False.",
+            },
+            {
+              time: new Date().toISOString(),
+              level: "warn",
+              source: "cooling",
+              message: "NZXT CAM is running; cooling stays read-only.",
+            },
           ]);
         case "app.setNativeView":
           return ok({ view: params?.view ?? null });
@@ -438,18 +1175,53 @@ export function createMockBackend() {
         case "sensors.getSnapshot":
           return ok(snapshot());
         case "sensors.getArmouryCrate":
-          return ok({ installed: true, running: ["Armoury Crate helper", "ASUS framework"], startsWithWindows: true });
+          return ok({
+            installed: true,
+            running: ["Armoury Crate helper", "ASUS framework"],
+            startsWithWindows: true,
+          });
         case "sensors.closeArmouryCrate":
-          healthFindings = healthFindings.filter((f) => f.id !== "sensors.armoury-crate");
-          return ok({ installed: true, running: [], startsWithWindows: !params?.disableAutoStart });
+          healthFindings = healthFindings.filter(
+            (f) => f.id !== "sensors.armoury-crate",
+          );
+          return ok({
+            installed: true,
+            running: [],
+            startsWithWindows: !params?.disableAutoStart,
+          });
         case "sensors.setArmouryCrateAutoStart":
-          return ok({ installed: true, running: [], startsWithWindows: !!params?.enabled });
+          return ok({
+            installed: true,
+            running: [],
+            startsWithWindows: !!params?.enabled,
+          });
         case "sensors.getGpuFans":
-          return ok([{ id: "/gpu-nvidia/0/control/1", name: "Graphics card fans", rpmSensorId: null, mode: "auto", dutyPercent: 0, curve: null, minDutyPercent: 30, canControl: true, reason: null }]);
+          return ok([
+            {
+              id: "/gpu-nvidia/0/control/1",
+              name: "Graphics card fans",
+              rpmSensorId: null,
+              mode: "auto",
+              dutyPercent: 0,
+              curve: null,
+              minDutyPercent: 30,
+              canControl: true,
+              reason: null,
+            },
+          ]);
         case "sensors.getFanControls":
-          throw new RpcError("needsAdmin", "Run RigControl as administrator to control motherboard fans.");
+          throw new RpcError(
+            "needsAdmin",
+            "Run RigControl as administrator to control motherboard fans.",
+          );
         case "sensors.getTemperatureSources":
-          return ok(snapshot().temperatures.map(({ id, name, hardware }) => ({ id, name, hardware })));
+          return ok(
+            snapshot().temperatures.map(({ id, name, hardware }) => ({
+              id,
+              name,
+              hardware,
+            })),
+          );
         case "sensors.setFanFixed":
         case "sensors.setFanCurve":
         case "sensors.setFanAuto":
@@ -467,7 +1239,8 @@ export function createMockBackend() {
           modules[2] = { ...modules[2]!, state: "ready", message: null };
           return ok(coolingStatus());
         case "cooling.setCurve": {
-          if (blockedBy.length) throw new RpcError("unavailable", "NZXT CAM is running.");
+          if (blockedBy.length)
+            throw new RpcError("unavailable", "NZXT CAM is running.");
           const ch = kraken.channels.find((c) => c.id === params.channel)!;
           ch.mode = "curve";
           ch.curve = params.points;
@@ -475,17 +1248,25 @@ export function createMockBackend() {
           return ok(coolingStatus().devices[0]);
         }
         case "cooling.setFixed": {
-          if (blockedBy.length) throw new RpcError("unavailable", "NZXT CAM is running.");
-          const dev = [kraken, controller].find((d) => d.id === params.deviceId)!;
+          if (blockedBy.length)
+            throw new RpcError("unavailable", "NZXT CAM is running.");
+          const dev = [kraken, controller].find(
+            (d) => d.id === params.deviceId,
+          )!;
           const ch = dev.channels.find((c) => c.id === params.channel)!;
-          if (params.dutyPercent < ch.minDutyPercent) throw new RpcError("unsafe", `${ch.name} must stay at ${ch.minDutyPercent}% or more.`);
+          if (params.dutyPercent < ch.minDutyPercent)
+            throw new RpcError(
+              "unsafe",
+              `${ch.name} must stay at ${ch.minDutyPercent}% or more.`,
+            );
           ch.mode = "fixed";
           ch.fixedDutyPercent = params.dutyPercent;
           ch.dutyPercent = params.dutyPercent;
           return ok(coolingStatus().devices.find((d) => d.id === dev.id));
         }
         case "cooling.setLcdScreen": {
-          if (blockedBy.length) throw new RpcError("unavailable", "NZXT CAM is running.");
+          if (blockedBy.length)
+            throw new RpcError("unavailable", "NZXT CAM is running.");
           const s = kraken.screen!;
           kraken.screen = {
             ...s,
@@ -494,11 +1275,20 @@ export function createMockBackend() {
             primary: params.primary ?? s.primary,
             secondary: params.secondary ?? s.secondary,
             accent: params.accent ?? s.accent,
-            mediaName: params.path ? String(params.path).split("\\").pop()! : s.mediaName,
+            mediaName: params.path
+              ? String(params.path).split("\\").pop()!
+              : s.mediaName,
             tertiary: params.tertiary ?? s.tertiary,
-            backgroundName: params.background === undefined ? s.backgroundName : params.background ? String(params.background).split("\\").pop()! : null,
+            backgroundName:
+              params.background === undefined
+                ? s.backgroundName
+                : params.background
+                  ? String(params.background).split("\\").pop()!
+                  : null,
             url: params.url ?? s.url,
-            live: ["infographic", "clock", "visualizer", "web"].includes(params.mode ?? s.mode),
+            live: ["infographic", "clock", "visualizer", "web"].includes(
+              params.mode ?? s.mode,
+            ),
           };
           return ok(coolingStatus().devices[0]);
         }
@@ -507,10 +1297,20 @@ export function createMockBackend() {
           const two = (params?.layout ?? kraken.screen!.layout) === "dual";
           const text = two ? "62 | 48" : "62";
           const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><rect width="640" height="640" fill="#000"/><circle cx="320" cy="320" r="270" fill="none" stroke="${accent}" stroke-width="30"/><text x="320" y="370" font-family="Segoe UI" font-size="${two ? 110 : 190}" font-weight="700" fill="#fff" text-anchor="middle">${text}</text></svg>`;
-          return ok({ image: "data:image/svg+xml;utf8," + encodeURIComponent(svg) });
+          return ok({
+            image: "data:image/svg+xml;utf8," + encodeURIComponent(svg),
+          });
         }
         case "cooling.setLcd":
-          kraken.lcd = { ...kraken.lcd!, ...("brightness" in params ? { brightness: params.brightness } : {}), ...("orientation" in params ? { orientation: params.orientation } : {}) };
+          kraken.lcd = {
+            ...kraken.lcd!,
+            ...("brightness" in params
+              ? { brightness: params.brightness }
+              : {}),
+            ...("orientation" in params
+              ? { orientation: params.orientation }
+              : {}),
+          };
           return ok(coolingStatus().devices[0]);
 
         case "nvidia.getInfo":
@@ -518,7 +1318,17 @@ export function createMockBackend() {
             available: true,
             driverVersion: "621.24",
             driverBranch: "r620_00",
-            gpus: [{ index: 0, name: "NVIDIA GeForce RTX 4070 Ti", vramMB: 12282, busId: "1:0", chip: "AD104", family: "GeForce RTX 40 series", architecture: "Ada Lovelace" }],
+            gpus: [
+              {
+                index: 0,
+                name: "NVIDIA GeForce RTX 4070 Ti",
+                vramMB: 12282,
+                busId: "1:0",
+                chip: "AD104",
+                family: "GeForce RTX 40 series",
+                architecture: "Ada Lovelace",
+              },
+            ],
             limitations: [
               "Recording, instant replay and the in-game overlay (ShadowPlay)",
               "Per-game optimal settings and DLSS overrides",
@@ -535,22 +1345,136 @@ export function createMockBackend() {
           return ok({
             perLed: true,
             zones: [
-              { key: "kb", device: "Razer Blackwidow V4 75%", zone: 0, name: "Keyboard", leds: 12, matrixWidth: 6, matrixHeight: 2, matrix: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], connected: true,
-                placed: { key: "kb", zone: 0, x: 0.3, y: 0.6, w: 0.4, h: 0.25, reverse: false } },
-              { key: "fan", device: "NZXT RGB & Fan Controller", zone: 1, name: "Hue 2 Channel 2", leds: 20, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true,
-                placed: { key: "fan", zone: 1, x: 0.05, y: 0.05, w: 0.9, h: 0.06, reverse: false } },
-              { key: "nanoleaf|Lines|S1", device: "Lines (Nanoleaf)", zone: -1, name: "Whole device", leds: 6, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true,
-                placed: { key: "nanoleaf|Lines|S1", zone: -1, x: 0.62, y: 0.15, w: 0.3, h: 0.4, reverse: false },
-                segments: [[0, 1, 0.25, 0.55], [0.25, 0.55, 0.5, 1], [0.5, 1, 0.75, 0.55], [0.75, 0.55, 1, 1], [0.25, 0.55, 0.5, 0.1], [0.5, 0.1, 0.75, 0.55]] },
-              ...netLights.paired.map((l) => ({ key: l.id, device: `${l.name} (${l.brandName})`, zone: -1, name: "Whole device", leds: Math.max(1, l.points), matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null })),
-              { key: "gpu", device: "Gigabyte GeForce RTX 4070 Ti Eagle OC", zone: -1, name: "Whole device", leds: 5, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null },
-              { key: "gpu", device: "Gigabyte GeForce RTX 4070 Ti Eagle OC", zone: 0, name: "GPU zone 1", leds: 1, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null },
-              { key: "gpu", device: "Gigabyte GeForce RTX 4070 Ti Eagle OC", zone: 1, name: "GPU zone 2", leds: 1, matrixWidth: 0, matrixHeight: 0, matrix: null, connected: true, placed: null },
+              {
+                key: "kb",
+                device: "Razer Blackwidow V4 75%",
+                zone: 0,
+                name: "Keyboard",
+                leds: 12,
+                matrixWidth: 6,
+                matrixHeight: 2,
+                matrix: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                connected: true,
+                placed: {
+                  key: "kb",
+                  zone: 0,
+                  x: 0.3,
+                  y: 0.6,
+                  w: 0.4,
+                  h: 0.25,
+                  reverse: false,
+                },
+              },
+              {
+                key: "fan",
+                device: "NZXT RGB & Fan Controller",
+                zone: 1,
+                name: "Hue 2 Channel 2",
+                leds: 20,
+                matrixWidth: 0,
+                matrixHeight: 0,
+                matrix: null,
+                connected: true,
+                placed: {
+                  key: "fan",
+                  zone: 1,
+                  x: 0.05,
+                  y: 0.05,
+                  w: 0.9,
+                  h: 0.06,
+                  reverse: false,
+                },
+              },
+              {
+                key: "nanoleaf|Lines|S1",
+                device: "Lines (Nanoleaf)",
+                zone: -1,
+                name: "Whole device",
+                leds: 6,
+                matrixWidth: 0,
+                matrixHeight: 0,
+                matrix: null,
+                connected: true,
+                placed: {
+                  key: "nanoleaf|Lines|S1",
+                  zone: -1,
+                  x: 0.62,
+                  y: 0.15,
+                  w: 0.3,
+                  h: 0.4,
+                  reverse: false,
+                },
+                segments: [
+                  [0, 1, 0.25, 0.55],
+                  [0.25, 0.55, 0.5, 1],
+                  [0.5, 1, 0.75, 0.55],
+                  [0.75, 0.55, 1, 1],
+                  [0.25, 0.55, 0.5, 0.1],
+                  [0.5, 0.1, 0.75, 0.55],
+                ],
+              },
+              ...netLights.paired.map((l) => ({
+                key: l.id,
+                device: `${l.name} (${l.brandName})`,
+                zone: -1,
+                name: "Whole device",
+                leds: Math.max(1, l.points),
+                matrixWidth: 0,
+                matrixHeight: 0,
+                matrix: null,
+                connected: true,
+                placed: null,
+              })),
+              {
+                key: "gpu",
+                device: "Gigabyte GeForce RTX 4070 Ti Eagle OC",
+                zone: -1,
+                name: "Whole device",
+                leds: 5,
+                matrixWidth: 0,
+                matrixHeight: 0,
+                matrix: null,
+                connected: true,
+                placed: null,
+              },
+              {
+                key: "gpu",
+                device: "Gigabyte GeForce RTX 4070 Ti Eagle OC",
+                zone: 0,
+                name: "GPU zone 1",
+                leds: 1,
+                matrixWidth: 0,
+                matrixHeight: 0,
+                matrix: null,
+                connected: true,
+                placed: null,
+              },
+              {
+                key: "gpu",
+                device: "Gigabyte GeForce RTX 4070 Ti Eagle OC",
+                zone: 1,
+                name: "GPU zone 2",
+                leds: 1,
+                matrixWidth: 0,
+                matrixHeight: 0,
+                matrix: null,
+                connected: true,
+                placed: null,
+              },
             ],
           });
         case "lighting.getSyncPreview": {
           let px = "";
-          for (let y = 0; y < 27; y++) for (let x = 0; x < 48; x++) px += x < 24 ? (y < 13 ? "E0402A" : "2A6FE0") : y < 13 ? "30C070" : "F0B44C";
+          for (let y = 0; y < 27; y++)
+            for (let x = 0; x < 48; x++)
+              px +=
+                x < 24
+                  ? y < 13
+                    ? "E0402A"
+                    : "2A6FE0"
+                  : y < 13
+                    ? "30C070"
+                    : "F0B44C";
           return ok({ width: 48, height: 27, pixels: px });
         }
         case "health.getReport":
@@ -563,7 +1487,11 @@ export function createMockBackend() {
         case "app.installHelpers": {
           const equaliser = !helpersInstalled;
           helpersInstalled = true;
-          return ok({ ...firstRun(), restartSuggested: equaliser, restartForEqualiser: equaliser });
+          return ok({
+            ...firstRun(),
+            restartSuggested: equaliser,
+            restartForEqualiser: equaliser,
+          });
         }
         case "app.quit":
           return ok({ quitting: true }); // the preview stays open
@@ -575,139 +1503,589 @@ export function createMockBackend() {
           } catch {
             // storage unavailable
           }
-          return ok({ ...firstRun(), restartSuggested: firstRunAutostart, restartForAutostart: firstRunAutostart });
+          return ok({
+            ...firstRun(),
+            restartSuggested: firstRunAutostart,
+            restartForAutostart: firstRunAutostart,
+          });
         case "app.restartPc":
           return ok({ scheduled: true, seconds: 30 }); // the preview never restarts anything
         case "app.cancelRestartPc":
           return ok({ cancelled: true });
         case "app.getBundled":
           return ok({
-            status: { openRgbCarried: true, openRgbPath: helpersInstalled ? "C:\\Program Files\\RigControl\\OpenRGB\\OpenRGB.exe" : null,
-              openRgbServiceUsesIt: helpersInstalled, pawnIoCarried: true, pawnIoInstalled: true, equalizerApoCarried: true,
-              equalizerApoInstalled: helpersInstalled, notes: [] },
+            status: {
+              openRgbCarried: true,
+              openRgbPath: helpersInstalled
+                ? "C:\\Program Files\\RigControl\\OpenRGB\\OpenRGB.exe"
+                : null,
+              openRgbServiceUsesIt: helpersInstalled,
+              pawnIoCarried: true,
+              pawnIoInstalled: true,
+              equalizerApoCarried: true,
+              equalizerApoInstalled: helpersInstalled,
+              notes: [],
+            },
             helpers: firstRun().helpers,
-            oldApps: [{ id: "gcc", name: "GIGABYTE Control Center", version: "26.10.21.01", why: "RigControl runs the graphics card's lights and fans." }],
+            oldApps: [
+              {
+                id: "gcc",
+                name: "GIGABYTE Control Center",
+                version: "26.10.21.01",
+                why: "RigControl runs the graphics card's lights and fans.",
+              },
+            ],
             elevated: true,
           });
         case "app.uninstallOldApp":
           return ok({ started: "GIGABYTE Control Center" });
         case "lighting.getGcc":
-          return ok({ installed: true, running: true, startsWithWindows: true, disabledByRigControl: false });
+          return ok({
+            installed: true,
+            running: true,
+            startsWithWindows: true,
+            disabledByRigControl: false,
+          });
         case "lighting.takeOverGcc":
         case "lighting.giveBackGcc":
-          return ok({ gcc: { installed: true, running: false, startsWithWindows: false, disabledByRigControl: method === "lighting.takeOverGcc" }, status: null });
+          return ok({
+            gcc: {
+              installed: true,
+              running: false,
+              startsWithWindows: false,
+              disabledByRigControl: method === "lighting.takeOverGcc",
+            },
+            status: null,
+          });
         case "lighting.getNetworkLights":
         case "lighting.cancelNetworkScan":
           return ok(netLights);
         case "lighting.scanNetworkLights": {
-          if (params?.brand && !netLights.brands.some((b) => b.brand === params.brand)) throw new RpcError("invalidArgs", "RigControl doesn't know that brand of light.");
+          if (
+            params?.brand &&
+            !netLights.brands.some((b) => b.brand === params.brand)
+          )
+            throw new RpcError(
+              "invalidArgs",
+              "RigControl doesn't know that brand of light.",
+            );
           const all: NetworkLights["found"] = [
-            { brand: "nanoleaf", brandName: "Nanoleaf", deviceId: "at 192.0.2.61", name: "Nanoleaf at 192.0.2.61", model: "", address: "192.0.2.61", paired: false },
-            { brand: "wled", brandName: "WLED", deviceId: "a1b2c3d4e5f6", name: "Desk strip", model: "WLED 0.15.0 (esp32)", address: "192.0.2.70", paired: false },
-            { brand: "hue", brandName: "Philips Hue", deviceId: "001788fffe123456", name: "Hue Bridge", model: "BSB002", address: "192.0.2.80", paired: false },
+            {
+              brand: "nanoleaf",
+              brandName: "Nanoleaf",
+              deviceId: "at 192.0.2.61",
+              name: "Nanoleaf at 192.0.2.61",
+              model: "",
+              address: "192.0.2.61",
+              paired: false,
+            },
+            {
+              brand: "wled",
+              brandName: "WLED",
+              deviceId: "a1b2c3d4e5f6",
+              name: "Desk strip",
+              model: "WLED 0.15.0 (esp32)",
+              address: "192.0.2.70",
+              paired: false,
+            },
+            {
+              brand: "hue",
+              brandName: "Philips Hue",
+              deviceId: "001788fffe123456",
+              name: "Hue Bridge",
+              model: "BSB002",
+              address: "192.0.2.80",
+              paired: false,
+            },
           ];
-          const kept = params?.brand ? netLights.found.filter((f) => f.brand !== params.brand) : [];
+          const kept = params?.brand
+            ? netLights.found.filter((f) => f.brand !== params.brand)
+            : [];
           netLights = {
             ...netLights,
-            found: [...kept, ...all.filter((f) => !params?.brand || f.brand === params.brand)].map((f) => ({ ...f, paired: netLights.paired.some((l) => l.brand === f.brand && l.deviceId === f.deviceId) })),
-            scanProblems: params?.brand ? [] : ["Govee: Windows didn't let RigControl listen for answers. Allow RigControl on private networks, then search again."],
+            found: [
+              ...kept,
+              ...all.filter((f) => !params?.brand || f.brand === params.brand),
+            ].map((f) => ({
+              ...f,
+              paired: netLights.paired.some(
+                (l) => l.brand === f.brand && l.deviceId === f.deviceId,
+              ),
+            })),
+            scanProblems: params?.brand
+              ? []
+              : [
+                  "Govee: Windows didn't let RigControl listen for answers. Allow RigControl on private networks, then search again.",
+                ],
             scanStopped: false,
-            scanFinished: netLights.brands.filter((b) => !params?.brand || b.brand === params.brand).map((b) => b.brand),
+            scanFinished: netLights.brands
+              .filter((b) => !params?.brand || b.brand === params.brand)
+              .map((b) => b.brand),
           };
           return later(netLights, 2500);
         }
         case "lighting.pairNetworkLight": {
           const b = netLights.brands.find((x) => x.brand === params?.brand);
-          if (!b) throw new RpcError("invalidArgs", "RigControl doesn't know that brand of light.");
-          if (!/^192\.0\.2\.\d{1,3}$/.test(params.address ?? "")) throw new RpcError("invalidArgs", "That address isn't on your home network. Type the light's own address, for example the one your router shows for it.");
+          if (!b)
+            throw new RpcError(
+              "invalidArgs",
+              "RigControl doesn't know that brand of light.",
+            );
+          if (!/^192\.0\.2\.\d{1,3}$/.test(params.address ?? ""))
+            throw new RpcError(
+              "invalidArgs",
+              "That address isn't on your home network. Type the light's own address, for example the one your router shows for it.",
+            );
           // Cololight can't be searched for: a typed address pairs in the sample data.
-          const f = netLights.found.find((x) => x.brand === b.brand && x.address === params.address)
-            ?? (b.brand === "cololight" ? { brand: b.brand, brandName: b.name, deviceId: "0a1b2c3d4e5f", name: "Cololight Hexagon", model: "Hexagon", address: params.address as string, paired: false } : undefined);
+          const f =
+            netLights.found.find(
+              (x) => x.brand === b.brand && x.address === params.address,
+            ) ??
+            (b.brand === "cololight"
+              ? {
+                  brand: b.brand,
+                  brandName: b.name,
+                  deviceId: "0a1b2c3d4e5f",
+                  name: "Cololight Hexagon",
+                  model: "Hexagon",
+                  address: params.address as string,
+                  paired: false,
+                }
+              : undefined);
           if (!f) {
             await later(null, 1500);
-            throw new RpcError("unavailable", `It doesn't answer at ${params.address}. Check the light is switched on and on the same network as this PC.`);
+            throw new RpcError(
+              "unavailable",
+              `It doesn't answer at ${params.address}. Check the light is switched on and on the same network as this PC.`,
+            );
           }
           const strip = b.brand === "wled";
           netLights = {
             ...netLights,
             paired: [
-              ...netLights.paired.filter((l) => !(l.brand === b.brand && l.deviceId === f.deviceId)),
-              { id: b.brand === "nanoleaf" ? `nanoleaf|${f.name}|${f.deviceId}` : `net|${b.brand}|${f.deviceId}`, brand: b.brand, brandName: b.name, deviceId: f.deviceId, name: f.name, model: f.model, address: f.address, tested: b.tested,
-                kind: strip ? "strip" : b.brand === "nanoleaf" ? "points" : "single", points: strip ? 60 : b.brand === "nanoleaf" ? 9 : 1, pointName: strip ? "LED" : b.brand === "nanoleaf" ? "panel" : b.brand === "govee" ? "piece" : "light",
-                placed: false, streaming: false, problem: null, note: b.brand === "hue" ? "4 lights on this bridge follow together as one colour each." : null },
+              ...netLights.paired.filter(
+                (l) => !(l.brand === b.brand && l.deviceId === f.deviceId),
+              ),
+              {
+                id:
+                  b.brand === "nanoleaf"
+                    ? `nanoleaf|${f.name}|${f.deviceId}`
+                    : `net|${b.brand}|${f.deviceId}`,
+                brand: b.brand,
+                brandName: b.name,
+                deviceId: f.deviceId,
+                name: f.name,
+                model: f.model,
+                address: f.address,
+                tested: b.tested,
+                kind: strip
+                  ? "strip"
+                  : b.brand === "nanoleaf"
+                    ? "points"
+                    : "single",
+                points: strip ? 60 : b.brand === "nanoleaf" ? 9 : 1,
+                pointName: strip
+                  ? "LED"
+                  : b.brand === "nanoleaf"
+                    ? "panel"
+                    : b.brand === "govee"
+                      ? "piece"
+                      : "light",
+                placed: false,
+                streaming: false,
+                problem: null,
+                note:
+                  b.brand === "hue"
+                    ? "4 lights on this bridge follow together as one colour each."
+                    : null,
+                controls: netControls(b.brand),
+                on: b.brand === "govee" ? null : true,
+                brightness: b.brand === "govee" ? null : 80,
+                color: null,
+                takenOver: false,
+                joinsEverything: b.brand !== "hue",
+                followsUnplaced: b.brand !== "hue",
+              },
             ],
-            found: netLights.found.map((x) => (x === f ? { ...x, paired: true } : x)),
+            found: netLights.found.map((x) =>
+              x === f ? { ...x, paired: true } : x,
+            ),
           };
           return later(netLights, b.returnsSecret ? 3000 : 600);
         }
+        case "lighting.setNetworkLight": {
+          const l = netLights.paired.find((x) => x.id === params?.id);
+          if (!l) throw new RpcError("invalidArgs", "That light isn't paired.");
+          if (
+            params.on == null &&
+            params.brightness == null &&
+            params.color == null
+          )
+            throw new RpcError(
+              "invalidArgs",
+              "Say what to change: on, brightness or colour.",
+            );
+          if (
+            params.brightness != null &&
+            (params.brightness < 0 || params.brightness > 100)
+          )
+            throw new RpcError("invalidArgs", "Brightness is 0 to 100%.");
+          if (params.color != null && !/^#[0-9a-f]{6}$/i.test(params.color))
+            throw new RpcError("invalidArgs", "Colours are #RRGGBB.");
+          const c = l.controls ?? netControls(l.brand);
+          if (
+            params.color != null &&
+            params.color !== "#000000" &&
+            !c.colour.can
+          )
+            throw new RpcError("unavailable", c.colour.why ?? "No colour.");
+          netLights = {
+            ...netLights,
+            paired: netLights.paired.map((x) =>
+              x.id === l.id ? changeNetLight(x, params) : x,
+            ),
+          };
+          return later(netLights, 400);
+        }
+        case "lighting.giveBackNetworkLight": {
+          const l = netLights.paired.find((x) => x.id === params?.id);
+          if (!l) throw new RpcError("invalidArgs", "That light isn't paired.");
+          if (!l.takenOver)
+            throw new RpcError(
+              "invalidArgs",
+              "RigControl hasn't changed this light, so there is nothing to give back.",
+            );
+          netLights = {
+            ...netLights,
+            paired: netLights.paired.map((x) =>
+              x.id === l.id
+                ? {
+                    ...x,
+                    takenOver: false,
+                    on: true,
+                    brightness: 60,
+                    color: null,
+                  }
+                : x,
+            ),
+          };
+          return later(netLights, 400);
+        }
         case "lighting.forgetNetworkLight":
-          if (!netLights.paired.some((l) => l.id === params?.id)) throw new RpcError("invalidArgs", "That light isn't paired.");
-          netLights = { ...netLights, paired: netLights.paired.filter((l) => l.id !== params.id), found: netLights.found.map((f) => (`net|${f.brand}|${f.deviceId}` === params.id ? { ...f, paired: false } : f)) };
+          if (!netLights.paired.some((l) => l.id === params?.id))
+            throw new RpcError("invalidArgs", "That light isn't paired.");
+          netLights = {
+            ...netLights,
+            paired: netLights.paired.filter((l) => l.id !== params.id),
+            found: netLights.found.map((f) =>
+              `net|${f.brand}|${f.deviceId}` === params.id
+                ? { ...f, paired: false }
+                : f,
+            ),
+          };
           return ok(netLights);
         case "lighting.getSync":
         case "lighting.setSync":
         case "lighting.listSyncSources":
-          return ok({ enabled: true, source: "", sourceName: null, brightness: 100, status: "Following the screen", color: "#3A7BFF",
-            sources: [{ id: "usb1", name: "USB Video", present: true }], captureSize: null, vivid: true, bass: true, bassStrength: 70, bassProblem: null, treble: true, trebleStrength: 50, audioGain: 100, mid: true, midStrength: 50,
+          return ok({
+            enabled: true,
+            source: "",
+            sourceName: null,
+            brightness: 100,
+            status: "Following the screen",
+            color: "#3A7BFF",
+            sources: [{ id: "usb1", name: "USB Video", present: true }],
+            captureSize: null,
+            vivid: true,
+            bass: true,
+            bassStrength: 70,
+            bassProblem: null,
+            treble: true,
+            trebleStrength: 50,
+            audioGain: 100,
+            mid: true,
+            midStrength: 50,
             effect: "wave",
             effects: [
-              { id: "screen", name: "Screen ambience", description: "Every light takes the colours of your screen or a capture card.", group: "Screen", audio: false, uses: [] },
-              { id: "solid", name: "Solid colour", description: "One steady colour everywhere.", group: "Simple", audio: false, uses: ["color1"] },
-              { id: "breathing", name: "Breathing", description: "A colour that slowly fades in and out.", group: "Simple", audio: false, uses: ["color1", "speed"] },
-              { id: "cycle", name: "Colour cycle", description: "Every light moves through the whole colour wheel together.", group: "Simple", audio: false, uses: ["speed"] },
-              { id: "wave", name: "Rainbow wave", description: "A rainbow that rolls across your setup.", group: "Animated", audio: false, uses: ["speed", "size", "direction"] },
-              { id: "spiral", name: "Rainbow spiral", description: "A rainbow turning round the middle.", group: "Animated", audio: false, uses: ["speed", "size"] },
-              { id: "gradient", name: "Gradient sweep", description: "Two colours flowing into each other.", group: "Animated", audio: false, uses: ["color1", "color2", "speed", "size", "direction"] },
-              { id: "stars", name: "Starfield", description: "Stars twinkling on a background colour.", group: "Animated", audio: false, uses: ["color1", "color2", "speed", "size"] },
-              { id: "rain", name: "Colour rain", description: "Drops of colour falling down.", group: "Animated", audio: false, uses: ["color1", "color2", "speed", "size"] },
-              { id: "visualizer", name: "Audio visualiser", description: "Bars that jump with the bass, mids and treble of what the PC plays.", group: "Audio", audio: true, uses: ["color1", "color2"] },
-              { id: "ripple", name: "Bass ripple", description: "Every bass hit sends a ring of colour out from the middle.", group: "Audio", audio: true, uses: ["color1", "speed", "size"] },
-              { id: "audiocolor", name: "Sound colour", description: "The colour follows the music: bass is red, mids green, treble blue.", group: "Audio", audio: true, uses: [] },
+              {
+                id: "screen",
+                name: "Screen ambience",
+                description:
+                  "Every light takes the colours of your screen or a capture card.",
+                group: "Screen",
+                audio: false,
+                uses: [],
+              },
+              {
+                id: "solid",
+                name: "Solid colour",
+                description: "One steady colour everywhere.",
+                group: "Simple",
+                audio: false,
+                uses: ["color1"],
+              },
+              {
+                id: "breathing",
+                name: "Breathing",
+                description: "A colour that slowly fades in and out.",
+                group: "Simple",
+                audio: false,
+                uses: ["color1", "speed"],
+              },
+              {
+                id: "cycle",
+                name: "Colour cycle",
+                description:
+                  "Every light moves through the whole colour wheel together.",
+                group: "Simple",
+                audio: false,
+                uses: ["speed"],
+              },
+              {
+                id: "wave",
+                name: "Rainbow wave",
+                description: "A rainbow that rolls across your setup.",
+                group: "Animated",
+                audio: false,
+                uses: ["speed", "size", "direction"],
+              },
+              {
+                id: "spiral",
+                name: "Rainbow spiral",
+                description: "A rainbow turning round the middle.",
+                group: "Animated",
+                audio: false,
+                uses: ["speed", "size"],
+              },
+              {
+                id: "gradient",
+                name: "Gradient sweep",
+                description: "Two colours flowing into each other.",
+                group: "Animated",
+                audio: false,
+                uses: ["color1", "color2", "speed", "size", "direction"],
+              },
+              {
+                id: "stars",
+                name: "Starfield",
+                description: "Stars twinkling on a background colour.",
+                group: "Animated",
+                audio: false,
+                uses: ["color1", "color2", "speed", "size"],
+              },
+              {
+                id: "rain",
+                name: "Colour rain",
+                description: "Drops of colour falling down.",
+                group: "Animated",
+                audio: false,
+                uses: ["color1", "color2", "speed", "size"],
+              },
+              {
+                id: "visualizer",
+                name: "Audio visualiser",
+                description:
+                  "Bars that jump with the bass, mids and treble of what the PC plays.",
+                group: "Audio",
+                audio: true,
+                uses: ["color1", "color2"],
+              },
+              {
+                id: "ripple",
+                name: "Bass ripple",
+                description:
+                  "Every bass hit sends a ring of colour out from the middle.",
+                group: "Audio",
+                audio: true,
+                uses: ["color1", "speed", "size"],
+              },
+              {
+                id: "audiocolor",
+                name: "Sound colour",
+                description:
+                  "The colour follows the music: bass is red, mids green, treble blue.",
+                group: "Audio",
+                audio: true,
+                uses: [],
+              },
             ],
-            effectParams: Object.fromEntries(["screen", "solid", "breathing", "cycle", "wave", "spiral", "gradient", "stars", "rain", "visualizer", "ripple", "audiocolor"]
-              .map((id) => [id, { speed: 50, color1: "#FF0040", color2: "#0040FF", direction: "right", size: 50 }])) });
+            effectParams: Object.fromEntries(
+              [
+                "screen",
+                "solid",
+                "breathing",
+                "cycle",
+                "wave",
+                "spiral",
+                "gradient",
+                "stars",
+                "rain",
+                "visualizer",
+                "ripple",
+                "audiocolor",
+              ].map((id) => [
+                id,
+                {
+                  speed: 50,
+                  color1: "#FF0040",
+                  color2: "#0040FF",
+                  direction: "right",
+                  size: 50,
+                },
+              ]),
+            ),
+          });
         case "presence.getStatus":
         case "presence.setSettings":
         case "presence.setGameEnabled":
         case "presence.rescan":
           return ok({
-            enabled: true, discordRunning: true, blocked: "RichPresence is running. Close it to let RigControl show your Discord status.",
-            status: "Paused", playing: null, music: { player: "Spotify", title: "Song", artist: "Band", album: "", playing: true }, lyricLine: "a lyric line", app: null,
-            scanning: false, scannedAt: new Date().toISOString(),
+            enabled: true,
+            discordRunning: true,
+            blocked:
+              "RichPresence is running. Close it to let RigControl show your Discord status.",
+            status: "Paused",
+            playing: null,
+            music: {
+              player: "Spotify",
+              title: "Song",
+              artist: "Band",
+              album: "",
+              playing: true,
+            },
+            lyricLine: "a lyric line",
+            app: null,
+            scanning: false,
+            scannedAt: new Date().toISOString(),
             games: [
-              { id: "steam:223850", name: "3DMark", store: "Steam", matched: true, enabled: true, running: false, hasArt: false, canPlay: true },
-              { id: "folder:genshin", name: "Genshin Impact", store: "Folder", matched: true, enabled: true, running: true, hasArt: false, canPlay: true },
+              {
+                id: "steam:223850",
+                name: "3DMark",
+                store: "Steam",
+                matched: true,
+                enabled: true,
+                running: false,
+                hasArt: false,
+                canPlay: true,
+              },
+              {
+                id: "folder:genshin",
+                name: "Genshin Impact",
+                store: "Folder",
+                matched: true,
+                enabled: true,
+                running: true,
+                hasArt: false,
+                canPlay: true,
+              },
             ],
-            settings: { showMusic: true, showSpotify: true, showLyrics: true, showAlbumArt: true, showCurrentApp: false, officialToDiscord: true, officialDelayMinutes: 2, genshinUid: "", extraFolders: [],
-              showWatching: true, showWatchTitle: true, showWatchPoster: true, showWatchCasual: true, customMode: "separate",
-              customStatuses: [{ id: "a1", enabled: true, type: 0, name: "Building RigControl", details: "C# and React", state: "", large_image: "", large_text: "", small_image: "", small_text: "", button1_label: "", button1_url: "", button2_label: "", button2_url: "", elapsed: true, app_id: "" }] },
+            settings: {
+              showMusic: true,
+              showSpotify: true,
+              showLyrics: true,
+              showAlbumArt: true,
+              showCurrentApp: false,
+              officialToDiscord: true,
+              officialDelayMinutes: 2,
+              genshinUid: "",
+              extraFolders: [],
+              showWatching: true,
+              showWatchTitle: true,
+              showWatchPoster: true,
+              showWatchCasual: true,
+              customMode: "separate",
+              customStatuses: [
+                {
+                  id: "a1",
+                  enabled: true,
+                  type: 0,
+                  name: "Building RigControl",
+                  details: "C# and React",
+                  state: "",
+                  large_image: "",
+                  large_text: "",
+                  small_image: "",
+                  small_text: "",
+                  button1_label: "",
+                  button1_url: "",
+                  button2_label: "",
+                  button2_url: "",
+                  elapsed: true,
+                  app_id: "",
+                },
+              ],
+            },
             importedFromRichPresence: new Date().toISOString(),
-            watching: "Netflix - Stranger Things", customShown: 1, customSkipped: null, customErrors: { a1: "Invalid asset" }, extensionLinked: true,
-            attachedUser: { id: "123456789012345678", name: "Alex" }, discordState: "attached", discordReason: null, attachNote: null, extensionPort: 47610,
-            setUp: true, setupNote: null, ownAppIds: [],
+            watching: "Netflix - Stranger Things",
+            customShown: 1,
+            customSkipped: null,
+            customErrors: { a1: "Invalid asset" },
+            extensionLinked: true,
+            attachedUser: { id: "123456789012345678", name: "Alex" },
+            discordState: "attached",
+            discordReason: null,
+            attachNote: null,
+            extensionPort: 47610,
+            setUp: true,
+            setupNote: null,
+            ownAppIds: [],
           });
         case "overlay.getAudio":
         case "overlay.setVolume":
-          return ok({ master: 62, masterMuted: false, apps: [{ pid: 1, name: "Spotify", volume: 80, muted: false }, { pid: 2, name: "Discord", volume: 100, muted: false }, { pid: 3, name: "Fortnite", volume: 55, muted: true }] });
+          return ok({
+            master: 62,
+            masterMuted: false,
+            apps: [
+              { pid: 1, name: "Spotify", volume: 80, muted: false },
+              { pid: 2, name: "Discord", volume: 100, muted: false },
+              { pid: 3, name: "Fortnite", volume: 55, muted: true },
+            ],
+          });
         case "overlay.getState":
         case "overlay.openDiscord":
         case "overlay.closeDiscord":
         case "overlay.forgetDiscord":
-          return ok({ enabled: true, hotkey: "Ctrl+Alt+G", hotkeyProblem: null, discordOpen: false, discordProblem: null, discordSignedIn: true, controller: true, gameBarButtonOff: true, pauseRemotePlay: true });
+          return ok({
+            enabled: true,
+            hotkey: "Ctrl+Alt+G",
+            hotkeyProblem: null,
+            discordOpen: false,
+            discordProblem: null,
+            discordSignedIn: true,
+            controller: true,
+            gameBarButtonOff: true,
+            pauseRemotePlay: true,
+          });
         case "overlay.mediaKey":
         case "overlay.open":
         case "overlay.phone":
         case "overlay.hide":
           return ok(null);
         case "presence.getExtension":
-          return ok({ path: "C:\\Users\\you\\AppData\\Local\\RigControl\\browser-extension-1a2b3c4d" });
+          return ok({
+            path: "C:\\Users\\you\\AppData\\Local\\RigControl\\browser-extension-1a2b3c4d",
+          });
         case "presence.getArt":
           return ok(null);
         case "cpu.getInfo":
           return ok({
-            name: "13th Gen Intel(R) Core(TM) i9-13900KF", vendor: "Intel", vendorId: "GenuineIntel", family: 6, model: 183, stepping: 1,
-            cores: 24, threads: 32, performanceCores: 8, efficiencyCores: 16, known: true, generation: "13th gen Core", codeName: "Raptor Lake",
-            line: "Desktop", summary: "13th gen Core (Raptor Lake), desktop", tested: true, note: null,
+            name: "13th Gen Intel(R) Core(TM) i9-13900KF",
+            vendor: "Intel",
+            vendorId: "GenuineIntel",
+            family: 6,
+            model: 183,
+            stepping: 1,
+            cores: 24,
+            threads: 32,
+            performanceCores: 8,
+            efficiencyCores: 16,
+            known: true,
+            generation: "13th gen Core",
+            codeName: "Raptor Lake",
+            line: "Desktop",
+            summary: "13th gen Core (Raptor Lake), desktop",
+            tested: true,
+            note: null,
           });
         case "cpu.getPower":
           return ok(cpuPower);
@@ -715,10 +2093,20 @@ export function createMockBackend() {
           const settings = cpuPower.settings.map((s) => {
             const ac = params?.ac?.[s.key];
             if (ac == null || ac === s.ac) return s;
-            return { ...s, ac, originalAc: s.originalAc ?? s.ac, originalDc: s.originalDc ?? s.dc };
+            return {
+              ...s,
+              ac,
+              originalAc: s.originalAc ?? s.ac,
+              originalDc: s.originalDc ?? s.dc,
+            };
           });
           const changed = settings.some((s) => s.originalAc != null);
-          cpuPower = { ...cpuPower, settings, changed, changedPlans: changed ? ["Balanced"] : [] };
+          cpuPower = {
+            ...cpuPower,
+            settings,
+            changed,
+            changedPlans: changed ? ["Balanced"] : [],
+          };
           return ok(cpuPower);
         }
         case "cpu.resetPower":
@@ -726,13 +2114,61 @@ export function createMockBackend() {
           return ok(cpuPower);
         case "bios.getStatus":
           return ok({
-            board: "ROG STRIX Z790-A GAMING WIFI II", biosVersion: "2301", elevated: true, supported: true, problem: null,
-            variableName: "OcmrSettings", variableSize: 17546, variableAttributes: "non-volatile, boot, runtime (0x7)", backupPath: null,
-            cpu: { profile: "intelExtreme", pl1: 0, pl2: 0, undervoltMv: 0, allCoreRatio: 0, notes: [] }, cpuProblem: null, writable: null, writeProblem: null,
-            restartNeeded: false, originalBackup: "x.bin", lastChanges: null,
+            board: "ROG STRIX Z790-A GAMING WIFI II",
+            biosVersion: "2301",
+            elevated: true,
+            supported: true,
+            problem: null,
+            variableName: "OcmrSettings",
+            variableSize: 17546,
+            variableAttributes: "non-volatile, boot, runtime (0x7)",
+            backupPath: null,
+            cpu: {
+              profile: "intelExtreme",
+              pl1: 0,
+              pl2: 0,
+              undervoltMv: 0,
+              allCoreRatio: 0,
+              notes: [],
+            },
+            cpuProblem: null,
+            writable: null,
+            writeProblem: null,
+            restartNeeded: false,
+            originalBackup: "x.bin",
+            lastChanges: null,
             settings: [
-              { name: "Ai Overclock Tuner", form: "Ai Tweaker", offset: 0, size: 1, kind: "oneof", value: 5, label: "XMP I", options: [{ value: 0, label: "Auto" }, { value: 5, label: "XMP I" }], min: 0, max: 11, help: null, valueKnown: true },
-              { name: "Long Duration Package Power Limit", form: "Internal CPU Power Management", offset: 1358, size: 2, kind: "numeric", value: 253, label: null, options: null, min: 0, max: 4095, help: "Power limit 1, in watts.", valueKnown: true },
+              {
+                name: "Ai Overclock Tuner",
+                form: "Ai Tweaker",
+                offset: 0,
+                size: 1,
+                kind: "oneof",
+                value: 5,
+                label: "XMP I",
+                options: [
+                  { value: 0, label: "Auto" },
+                  { value: 5, label: "XMP I" },
+                ],
+                min: 0,
+                max: 11,
+                help: null,
+                valueKnown: true,
+              },
+              {
+                name: "Long Duration Package Power Limit",
+                form: "Internal CPU Power Management",
+                offset: 1358,
+                size: 2,
+                kind: "numeric",
+                value: 253,
+                label: null,
+                options: null,
+                min: 0,
+                max: 4095,
+                help: "Power limit 1, in watts.",
+                valueKnown: true,
+              },
             ],
           });
         case "nvidia.getOverclock":
@@ -764,15 +2200,41 @@ export function createMockBackend() {
         }
         case "nvidia.listProfiles": {
           const all: DriverProfile[] = [
-            { name: "Fortnite", programs: ["FortniteClient-Win64-Shipping.exe"], isPredefined: true, modifiedCount: 0 },
-            { name: "Counter-Strike 2", programs: ["cs2.exe"], isPredefined: true, modifiedCount: 2 },
-            { name: "Roblox", programs: ["RobloxPlayerBeta.exe"], isPredefined: true, modifiedCount: 0 },
+            {
+              name: "Fortnite",
+              programs: ["FortniteClient-Win64-Shipping.exe"],
+              isPredefined: true,
+              modifiedCount: 0,
+            },
+            {
+              name: "Counter-Strike 2",
+              programs: ["cs2.exe"],
+              isPredefined: true,
+              modifiedCount: 2,
+            },
+            {
+              name: "Roblox",
+              programs: ["RobloxPlayerBeta.exe"],
+              isPredefined: true,
+              modifiedCount: 0,
+            },
           ];
           const q = String(params?.query ?? "").toLowerCase();
-          return ok(all.filter((p) => p.name.toLowerCase().includes(q) || p.programs.some((x) => x.toLowerCase().includes(q))));
+          return ok(
+            all.filter(
+              (p) =>
+                p.name.toLowerCase().includes(q) ||
+                p.programs.some((x) => x.toLowerCase().includes(q)),
+            ),
+          );
         }
         case "nvidia.addProgram":
-          return ok({ name: "Game", programs: ["Game.exe"], isPredefined: false, modifiedCount: 0 });
+          return ok({
+            name: "Game",
+            programs: ["Game.exe"],
+            isPredefined: false,
+            modifiedCount: 0,
+          });
         case "nvidia.getDisplays":
           return ok(displays);
         case "nvidia.setDisplayMode":
@@ -794,10 +2256,62 @@ export function createMockBackend() {
             checking: false,
             rows: checked
               ? [
-                  { key: "lan", name: "Wired network (Intel I226)", category: "LAN", device: "Intel(R) Ethernet Controller I226-V", installedVersion: "2.1.5.10", availableVersion: "2.1.5.10", availableTitle: "Intel I226 LAN driver", released: "2026-03-31", size: "5.22 MB", fileId: "lan", state: "current", note: null },
-                  { key: "wifi", name: "Wi-Fi", category: "Wireless", device: "Intel(R) Wi-Fi 7 BE202 160MHz", installedVersion: "23.80.0.7", availableVersion: "24.20.0.4", availableTitle: "Intel Wi-Fi Driver", released: "2026-05-14", size: "88.73 MB", fileId: "wifi", state: "update", note: null },
-                  { key: "audio", name: "Audio (Realtek)", category: "Audio", device: "Realtek USB Audio", installedVersion: "6.4.0.2414", availableVersion: "6.3.9600.2393", availableTitle: "Realtek USB Audio Driver", released: "2025-03-04", size: "928.91 MB", fileId: "audio", state: "newer", note: "Windows Update or the maker already gave you a newer driver than ASUS offers, so nothing to do." },
-                  { key: "chipset", name: "Intel chipset", category: "Chipset", device: "Intel(R) SMBus - 7A23", installedVersion: "10.1.46.5", availableVersion: "10.1.20532.8842", availableTitle: "Intel Chipset driver", released: "2026-07-02", size: "96.73 MB", fileId: "chipset", state: "unknown", note: "ASUS numbers this package differently from the version Windows shows." },
+                  {
+                    key: "lan",
+                    name: "Wired network (Intel I226)",
+                    category: "LAN",
+                    device: "Intel(R) Ethernet Controller I226-V",
+                    installedVersion: "2.1.5.10",
+                    availableVersion: "2.1.5.10",
+                    availableTitle: "Intel I226 LAN driver",
+                    released: "2026-03-31",
+                    size: "5.22 MB",
+                    fileId: "lan",
+                    state: "current",
+                    note: null,
+                  },
+                  {
+                    key: "wifi",
+                    name: "Wi-Fi",
+                    category: "Wireless",
+                    device: "Intel(R) Wi-Fi 7 BE202 160MHz",
+                    installedVersion: "23.80.0.7",
+                    availableVersion: "24.20.0.4",
+                    availableTitle: "Intel Wi-Fi Driver",
+                    released: "2026-05-14",
+                    size: "88.73 MB",
+                    fileId: "wifi",
+                    state: "update",
+                    note: null,
+                  },
+                  {
+                    key: "audio",
+                    name: "Audio (Realtek)",
+                    category: "Audio",
+                    device: "Realtek USB Audio",
+                    installedVersion: "6.4.0.2414",
+                    availableVersion: "6.3.9600.2393",
+                    availableTitle: "Realtek USB Audio Driver",
+                    released: "2025-03-04",
+                    size: "928.91 MB",
+                    fileId: "audio",
+                    state: "newer",
+                    note: "Windows Update or the maker already gave you a newer driver than ASUS offers, so nothing to do.",
+                  },
+                  {
+                    key: "chipset",
+                    name: "Intel chipset",
+                    category: "Chipset",
+                    device: "Intel(R) SMBus - 7A23",
+                    installedVersion: "10.1.46.5",
+                    availableVersion: "10.1.20532.8842",
+                    availableTitle: "Intel Chipset driver",
+                    released: "2026-07-02",
+                    size: "96.73 MB",
+                    fileId: "chipset",
+                    state: "unknown",
+                    note: "ASUS numbers this package differently from the version Windows shows.",
+                  },
                 ]
               : [],
             asusProblem: null,
@@ -809,60 +2323,226 @@ export function createMockBackend() {
         }
         case "drivers.installAsus":
         case "drivers.installWindowsUpdate":
-          return ok({ started: true, message: "The installer has started.", restartNeeded: false, status: null });
+          return ok({
+            started: true,
+            message: "The installer has started.",
+            restartNeeded: false,
+            status: null,
+          });
         case "capture.getStatus":
         case "capture.openFolder":
           return ok(captureStatus);
         case "capture.setSettings":
-          captureStatus = { ...captureStatus, settings: { ...captureStatus.settings, ...params } };
+          captureStatus = {
+            ...captureStatus,
+            settings: { ...captureStatus.settings, ...params },
+          };
           captureStatus.replayRunning = captureStatus.settings.replayEnabled;
           return ok(captureStatus);
         case "capture.startRecording":
-          captureStatus = { ...captureStatus, recording: true, recordingSince: new Date().toISOString(), recordingFile: "C:\\Users\\You\\Videos\\RigControl\\Recording.mp4" };
+          captureStatus = {
+            ...captureStatus,
+            recording: true,
+            recordingSince: new Date().toISOString(),
+            recordingFile: "C:\\Users\\You\\Videos\\RigControl\\Recording.mp4",
+          };
           return ok(captureStatus);
         case "capture.stopRecording":
-          captureStatus = { ...captureStatus, recording: false, recordingSince: null, lastSaved: captureStatus.recordingFile, recordingFile: null };
+          captureStatus = {
+            ...captureStatus,
+            recording: false,
+            recordingSince: null,
+            lastSaved: captureStatus.recordingFile,
+            recordingFile: null,
+          };
           return ok(captureStatus);
         case "capture.saveReplay":
-          captureStatus = { ...captureStatus, lastSaved: "C:\\Users\\You\\Videos\\RigControl\\Replay.mp4" };
+          captureStatus = {
+            ...captureStatus,
+            lastSaved: "C:\\Users\\You\\Videos\\RigControl\\Replay.mp4",
+          };
           return ok(captureStatus);
         case "app.pickFolder":
           return ok({ path: "D:\\Videos" });
         case "nvidia.installDriver":
           return ok({ started: true, version: "621.24" });
         case "nvidia.checkDriverUpdate":
-          return ok({ installed: "621.24", latest: "621.24", newer: false, downloadUrl: null, checkedAt: new Date().toISOString(), error: null });
+          return ok({
+            installed: "621.24",
+            latest: "621.24",
+            newer: false,
+            downloadUrl: null,
+            checkedAt: new Date().toISOString(),
+            error: null,
+          });
 
         case "lighting.getStatus":
           return ok(lighting);
         case "lighting.installOpenRgb":
-          lighting = { ...lighting, openRgb: { ...lighting.openRgb, installed: true, path: "C:\\Program Files\\OpenRGB\\OpenRGB.exe", version: "1.0" } };
-          return ok({ started: true, message: "The OpenRGB download page is open in your browser. Install it, then press Start OpenRGB here." });
+          lighting = {
+            ...lighting,
+            openRgb: {
+              ...lighting.openRgb,
+              installed: true,
+              path: "C:\\Program Files\\OpenRGB\\OpenRGB.exe",
+              version: "1.0",
+            },
+          };
+          return ok({
+            started: true,
+            message:
+              "The OpenRGB download page is open in your browser. Install it, then press Start OpenRGB here.",
+          });
         case "lighting.startOpenRgb":
           lighting = {
             openRgb: { ...lighting.openRgb, running: true, connected: true },
             conflicts: ["Armoury Crate"],
             devices: [
-              { id: 0, name: "ASUS ROG STRIX Z790-A GAMING WIFI II", type: "Motherboard", vendor: "ASUS", ledCount: 12, zones: [{ id: 0, name: "Aura Mainboard", ledCount: 4, ledsMin: 4, ledsMax: 4, resizable: false }, { id: 1, name: "Aura Addressable 1", ledCount: 8, ledsMin: 0, ledsMax: 120, resizable: true }], modes: mockModes(), activeModeId: 1, color: "#00E5FF" },
-              { id: 1, name: "Team Group T-Force Delta RGB DDR5", type: "DRAM", vendor: "ENE", ledCount: 15, zones: [{ id: 0, name: "DRAM", ledCount: 15, ledsMin: 15, ledsMax: 15, resizable: false }], modes: mockModes(), activeModeId: 1, color: "#9B4DFF" },
-              { id: 2, name: "NZXT Kraken Elite", type: "Cooler", vendor: "NZXT", ledCount: 24, zones: [{ id: 0, name: "Ring", ledCount: 24, ledsMin: 24, ledsMax: 24, resizable: false }], modes: mockModes(), activeModeId: 1, color: "#00E5FF" },
-              { id: 4, name: "Corsair Lighting Node Pro", type: "LED strip", vendor: "Corsair", ledCount: 0, zones: [{ id: 0, name: "Corsair RGB Header 1", ledCount: 0, ledsMin: 0, ledsMax: 204, resizable: true }], modes: mockModes(), activeModeId: 1, color: null },
-              { id: 3, name: "Razer BlackWidow V4 75%", type: "Keyboard", vendor: "Razer", ledCount: 84, zones: [{ id: 0, name: "Keys", ledCount: 84, ledsMin: 84, ledsMax: 84, resizable: false }], modes: mockModes(), activeModeId: 2, color: "#FF3DCB" },
+              {
+                id: 0,
+                name: "ASUS ROG STRIX Z790-A GAMING WIFI II",
+                type: "Motherboard",
+                vendor: "ASUS",
+                ledCount: 12,
+                zones: [
+                  {
+                    id: 0,
+                    name: "Aura Mainboard",
+                    ledCount: 4,
+                    ledsMin: 4,
+                    ledsMax: 4,
+                    resizable: false,
+                  },
+                  {
+                    id: 1,
+                    name: "Aura Addressable 1",
+                    ledCount: 8,
+                    ledsMin: 0,
+                    ledsMax: 120,
+                    resizable: true,
+                  },
+                ],
+                modes: mockModes(),
+                activeModeId: 1,
+                color: "#00E5FF",
+              },
+              {
+                id: 1,
+                name: "Team Group T-Force Delta RGB DDR5",
+                type: "DRAM",
+                vendor: "ENE",
+                ledCount: 15,
+                zones: [
+                  {
+                    id: 0,
+                    name: "DRAM",
+                    ledCount: 15,
+                    ledsMin: 15,
+                    ledsMax: 15,
+                    resizable: false,
+                  },
+                ],
+                modes: mockModes(),
+                activeModeId: 1,
+                color: "#9B4DFF",
+              },
+              {
+                id: 2,
+                name: "NZXT Kraken Elite",
+                type: "Cooler",
+                vendor: "NZXT",
+                ledCount: 24,
+                zones: [
+                  {
+                    id: 0,
+                    name: "Ring",
+                    ledCount: 24,
+                    ledsMin: 24,
+                    ledsMax: 24,
+                    resizable: false,
+                  },
+                ],
+                modes: mockModes(),
+                activeModeId: 1,
+                color: "#00E5FF",
+              },
+              {
+                id: 4,
+                name: "Corsair Lighting Node Pro",
+                type: "LED strip",
+                vendor: "Corsair",
+                ledCount: 0,
+                zones: [
+                  {
+                    id: 0,
+                    name: "Corsair RGB Header 1",
+                    ledCount: 0,
+                    ledsMin: 0,
+                    ledsMax: 204,
+                    resizable: true,
+                  },
+                ],
+                modes: mockModes(),
+                activeModeId: 1,
+                color: null,
+              },
+              {
+                id: 3,
+                name: "Razer BlackWidow V4 75%",
+                type: "Keyboard",
+                vendor: "Razer",
+                ledCount: 84,
+                zones: [
+                  {
+                    id: 0,
+                    name: "Keys",
+                    ledCount: 84,
+                    ledsMin: 84,
+                    ledsMax: 84,
+                    resizable: false,
+                  },
+                ],
+                modes: mockModes(),
+                activeModeId: 2,
+                color: "#FF3DCB",
+              },
             ],
           };
           return ok(lighting);
         case "lighting.setZoneSize": {
           const dev = lighting.devices.find((d) => d.id === params?.deviceId);
           const zone = dev?.zones.find((z) => z.id === params?.zone);
-          if (!dev || !zone) throw new RpcError("invalidArgs", "That header isn't there any more.");
-          if (!zone.resizable) throw new RpcError("unavailable", `${zone.name} has a fixed number of lights.`);
-          if (!Number.isInteger(params.leds) || params.leds < zone.ledsMin || params.leds > zone.ledsMax) throw new RpcError("invalidArgs", `${zone.name} takes ${zone.ledsMin} to ${zone.ledsMax} lights.`);
+          if (!dev || !zone)
+            throw new RpcError(
+              "invalidArgs",
+              "That header isn't there any more.",
+            );
+          if (!zone.resizable)
+            throw new RpcError(
+              "unavailable",
+              `${zone.name} has a fixed number of lights.`,
+            );
+          if (
+            !Number.isInteger(params.leds) ||
+            params.leds < zone.ledsMin ||
+            params.leds > zone.ledsMax
+          )
+            throw new RpcError(
+              "invalidArgs",
+              `${zone.name} takes ${zone.ledsMin} to ${zone.ledsMax} lights.`,
+            );
           lighting = {
             ...lighting,
             devices: lighting.devices.map((d) => {
               if (d !== dev) return d;
-              const zones = d.zones.map((z) => (z === zone ? { ...z, ledCount: params.leds } : z));
-              return { ...d, zones, ledCount: zones.reduce((n, z) => n + z.ledCount, 0) };
+              const zones = d.zones.map((z) =>
+                z === zone ? { ...z, ledCount: params.leds } : z,
+              );
+              return {
+                ...d,
+                zones,
+                ledCount: zones.reduce((n, z) => n + z.ledCount, 0),
+              };
             }),
           };
           return ok(lighting);
@@ -871,10 +2551,37 @@ export function createMockBackend() {
         case "lighting.setZoneColor":
         case "lighting.setMode":
         case "lighting.off":
+          // "Everything at once" and "Turn all lights off" also reach the lights on the network (not a Hue Bridge).
+          if (
+            (method === "lighting.setColor" || method === "lighting.off") &&
+            params?.deviceIds == null
+          )
+            netLights = {
+              ...netLights,
+              paired: netLights.paired.map((l) =>
+                !l.joinsEverything ||
+                (method === "lighting.setColor" &&
+                  !(l.controls ?? netControls(l.brand)).colour.can)
+                  ? l
+                  : changeNetLight(
+                      l,
+                      method === "lighting.off"
+                        ? { on: false }
+                        : { color: params.color },
+                    ),
+              ),
+            };
           lighting = {
             ...lighting,
             devices: lighting.devices.map((d) =>
-              params?.deviceIds == null && params?.deviceId == null ? { ...d, color: method === "lighting.off" ? "#000000" : params.color } : params?.deviceIds?.includes(d.id) || params?.deviceId === d.id ? { ...d, color: params.color ?? d.color } : d,
+              params?.deviceIds == null && params?.deviceId == null
+                ? {
+                    ...d,
+                    color: method === "lighting.off" ? "#000000" : params.color,
+                  }
+                : params?.deviceIds?.includes(d.id) || params?.deviceId === d.id
+                  ? { ...d, color: params.color ?? d.color }
+                  : d,
             ),
           };
           return ok(lighting);
@@ -886,7 +2593,13 @@ export function createMockBackend() {
         case "lighting.applyScene":
           return ok(lighting);
         case "lighting.deleteScene":
-          return ok(scenes.splice(0, scenes.length, ...scenes.filter((s) => s.name !== params.name)) && scenes);
+          return ok(
+            scenes.splice(
+              0,
+              scenes.length,
+              ...scenes.filter((s) => s.name !== params.name),
+            ) && scenes,
+          );
       }
       throw new RpcError("unknownMethod", `Mock has no ${method}`);
     },
@@ -895,10 +2608,50 @@ export function createMockBackend() {
 
 function mockModes() {
   return [
-    { id: 0, name: "Off", colorCount: 0, supportsSpeed: false, supportsBrightness: false, speedMin: null, speedMax: null, brightnessMin: null, brightnessMax: null },
-    { id: 1, name: "Static", colorCount: 1, supportsSpeed: false, supportsBrightness: true, speedMin: null, speedMax: null, brightnessMin: 0, brightnessMax: 100 },
-    { id: 2, name: "Breathing", colorCount: 1, supportsSpeed: true, supportsBrightness: true, speedMin: 0, speedMax: 4, brightnessMin: 0, brightnessMax: 100 },
-    { id: 3, name: "Spectrum cycle", colorCount: 0, supportsSpeed: true, supportsBrightness: true, speedMin: 0, speedMax: 4, brightnessMin: 0, brightnessMax: 100 },
+    {
+      id: 0,
+      name: "Off",
+      colorCount: 0,
+      supportsSpeed: false,
+      supportsBrightness: false,
+      speedMin: null,
+      speedMax: null,
+      brightnessMin: null,
+      brightnessMax: null,
+    },
+    {
+      id: 1,
+      name: "Static",
+      colorCount: 1,
+      supportsSpeed: false,
+      supportsBrightness: true,
+      speedMin: null,
+      speedMax: null,
+      brightnessMin: 0,
+      brightnessMax: 100,
+    },
+    {
+      id: 2,
+      name: "Breathing",
+      colorCount: 1,
+      supportsSpeed: true,
+      supportsBrightness: true,
+      speedMin: 0,
+      speedMax: 4,
+      brightnessMin: 0,
+      brightnessMax: 100,
+    },
+    {
+      id: 3,
+      name: "Spectrum cycle",
+      colorCount: 0,
+      supportsSpeed: true,
+      supportsBrightness: true,
+      speedMin: 0,
+      speedMax: 4,
+      brightnessMin: 0,
+      brightnessMax: 100,
+    },
   ];
 }
 

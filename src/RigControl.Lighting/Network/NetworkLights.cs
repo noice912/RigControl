@@ -13,8 +13,17 @@ public sealed record NetworkBrandDto(string Brand, string Name, bool Tested, str
     bool FollowsUnplaced = true);
 
 /// <summary>A paired light. <see cref="Id"/> is also its key on the layout.</summary>
+/// <param name="Controls">What it can be told directly, each with why not; null for a brand this version doesn't know.</param>
+/// <param name="On">Whether it is on, as last read from the light; null when not known.</param>
+/// <param name="Brightness">0-100, as last read; null when not known.</param>
+/// <param name="Color">"#RRGGBB" at full strength, as last read; null for an effect, a white, or not known.</param>
+/// <param name="TakenOver">True when RigControl changed it by hand and remembers what it did before ("Give back" puts that back).</param>
+/// <param name="JoinsEverything">False for a brand left out of "Everything at once" and "Turn all lights off" (a Hue Bridge).</param>
+/// <param name="FollowsUnplaced">False for a brand the effects leave alone until it is placed on the layout (a Hue Bridge).</param>
 public sealed record NetworkLightDto(string Id, string Brand, string BrandName, string DeviceId, string Name, string Model, string Address,
-    bool Tested, string Kind, int Points, string PointName, bool Placed, bool Streaming, string? Problem, string? Note);
+    bool Tested, string Kind, int Points, string PointName, bool Placed, bool Streaming, string? Problem, string? Note,
+    LightControls? Controls = null, bool? On = null, int? Brightness = null, string? Color = null, bool TakenOver = false,
+    bool JoinsEverything = true, bool FollowsUnplaced = true);
 
 /// <summary>A light the last search found.</summary>
 public sealed record FoundLightDto(string Brand, string BrandName, string DeviceId, string Name, string Model, string Address, bool Paired);
@@ -138,6 +147,15 @@ public sealed class NetworkLights : IDisposable
         /// <summary>How long <see cref="Stopping"/> may take (the light's own stop budget).</summary>
         public TimeSpan StoppingNeeds = TimeSpan.Zero;
         public volatile bool Streaming;
+        /// <summary>What the light last said it shows (null until read, or when it can't say).</summary>
+        public volatile LightReading? Reading;
+        public DateTime ReadAt = DateTime.MinValue;
+        public int ReadingNow;
+        /// <summary>Goes up on every change by hand, so a reading that started before it is not shown over it.</summary>
+        public int Changes;
+        /// <summary>One direct change at a time per light, kept the provider's gap apart.</summary>
+        public readonly SemaphoreSlim Control = new(1, 1);
+        public DateTime ControlAt = DateTime.MinValue;
     }
 
     private LightState State(string key) => _states.GetOrAdd(key, _ => new LightState());
@@ -154,10 +172,15 @@ public sealed class NetworkLights : IDisposable
             var st = State(l.LayoutKey);
             if (p is not null) EnsureDescribed(p, l, st);
             var d = st.Description;
+            var controls = p is null ? null : ControlsOf(p, l);
+            if (p is not null && controls!.ReadBack.Can) EnsureRead(p, l, st);
+            var reading = st.Reading;
             lights.Add(new NetworkLightDto(l.LayoutKey, l.Brand, p?.DisplayName ?? l.Brand, l.Id, l.Name, l.Model, l.Address, p?.Tested ?? false,
                 (d?.Kind ?? LightKind.Single).ToString().ToLowerInvariant(), d?.Points.Count ?? 0, p?.PointName ?? "light",
                 placed.Any(i => i.Key == l.LayoutKey), st.Streaming,
-                p is null ? "This version of RigControl doesn't know this kind of light." : st.Problem, d?.Note));
+                p is null ? "This version of RigControl doesn't know this kind of light." : st.Problem, d?.Note,
+                controls, reading?.On, reading?.Brightness, reading?.Colour is { } c ? LightColour.Hex(c) : null,
+                _store.Before(l.LayoutKey) is not null, p?.JoinsEverythingAtOnce ?? false, p?.FollowsWhenNotPlaced ?? false));
         }
         var found = _found.Select(f => new FoundLightDto(f.Provider.Brand, f.Provider.DisplayName, f.Light.Id, f.Light.Name, f.Light.Model, f.Light.Address,
             // By id, or by address for brands that only say who they are once paired.
@@ -492,6 +515,213 @@ public sealed class NetworkLights : IDisposable
             st.RetryAt = st.LoadFailedAt = DateTime.MinValue;
         }
         try { await stopping.WaitAsync(StopWait(needs)).ConfigureAwait(false); } catch { /* it keeps its last colours */ }
+    }
+
+    // ---------------------------------------------------------------- direct control (on/off, brightness, colour, give back)
+
+    /// <summary>How long one direct change may take (a Hue Bridge with many lights needs a while).</summary>
+    public TimeSpan ControlTime { get; init; } = TimeSpan.FromSeconds(20);
+    /// <summary>How often a light is asked what it shows, at most, while the page asks for the list.</summary>
+    public TimeSpan ReadEvery { get; init; } = TimeSpan.FromSeconds(15);
+
+    private static LightControls ControlsOf(INetworkLightProvider p, PairedLight l)
+    {
+        try { return p.Controls(l); }
+        catch { return LightControls.None("This light's controls couldn't be worked out."); }
+    }
+
+    /// <summary>Asks the light what it shows, in the background, at most every <see cref="ReadEvery"/>. Not while an effect drives it.</summary>
+    private void EnsureRead(INetworkLightProvider p, PairedLight l, LightState st)
+    {
+        if (_disposed != 0 || st.Streaming || st.Runner is not null) return;
+        if (DateTime.UtcNow - st.ReadAt < ReadEvery) return;
+        if (Interlocked.Exchange(ref st.ReadingNow, 1) == 1) return;
+        st.ReadAt = DateTime.UtcNow;
+        var changes = Volatile.Read(ref st.Changes);
+        _ = Task.Run(async () =>
+        {
+            LightReading? reading;
+            try
+            {
+                using var cts = new CancellationTokenSource(DescribeTime < TimeSpan.FromSeconds(10) ? DescribeTime : TimeSpan.FromSeconds(10));
+                reading = await p.ReadAsync(_net, l, cts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                reading = null; // not known; a problem with the light itself shows through its description
+            }
+            finally
+            {
+                Volatile.Write(ref st.ReadingNow, 0);
+            }
+            // A change by hand while it was being read wins: the reading is older than it.
+            if (Volatile.Read(ref st.Changes) == changes) st.Reading = reading;
+        });
+    }
+
+    /// <summary>What a paired light can be told directly; null when it isn't paired or its brand isn't known.</summary>
+    public LightControls? Controls(string key) =>
+        _store.Find(key) is { } l && Provider(l.Brand) is { } p ? ControlsOf(p, l) : null;
+
+    /// <summary>
+    /// Changes one light by hand. The first change remembers what it did before (for <see cref="GiveBackAsync"/>).
+    /// A light an effect was driving is let go (put back) first. Throws <see cref="ArgumentException"/> for a light
+    /// that isn't paired and <see cref="InvalidOperationException"/> (plain words) when it can't be done.
+    /// </summary>
+    public async Task SetAsync(string key, LightChange change, CancellationToken ct)
+    {
+        var (p, light) = Find(key);
+        var can = Check(p, light, change);
+        var st = State(key);
+        Interlocked.Increment(ref st.Changes);
+        await ControlledAsync(p, light, st, async token =>
+        {
+            // Taken over: what it did before is kept, once, so it can be given back later (even after a restart).
+            if (can.GiveBack.Can && _store.Before(key) is null)
+                _store.SetBefore(key, await p.SaveAsync(_net, light, token).ConfigureAwait(false));
+            await p.SetAsync(_net, light, change, token).ConfigureAwait(false);
+        }, ct).ConfigureAwait(false);
+        // What it shows now, as far as RigControl knows; it is read again later. A reading made during the change is older.
+        Interlocked.Increment(ref st.Changes);
+        var was = st.Reading;
+        st.Reading = change.TurnsOff
+            ? new LightReading(false, was?.Brightness, was?.Colour)
+            : new LightReading(true, change.Brightness ?? was?.Brightness, change.Colour is { } c ? LightColour.Full(c) : was?.Colour);
+        st.ReadAt = DateTime.UtcNow;
+        _log.Info($"{p.DisplayName} {light.Name}: {Describe(change)} by hand.");
+    }
+
+    /// <summary>
+    /// Throws unless the change can be made: <see cref="ArgumentException"/> for a light that isn't paired or an empty
+    /// change, <see cref="InvalidOperationException"/> (saying why) for something the brand can't do.
+    /// </summary>
+    public void Check(string key, LightChange change)
+    {
+        var (p, light) = Find(key);
+        Check(p, light, change);
+    }
+
+    private static LightControls Check(INetworkLightProvider p, PairedLight light, LightChange change)
+    {
+        var can = ControlsOf(p, light);
+        if (change.IsEmpty) throw new ArgumentException("Say what to change: on, brightness or colour.");
+        if ((change.On is not null || change.TurnsOff) && !can.Power.Can) throw new InvalidOperationException(can.Power.Why ?? "It can't be switched from here.");
+        if (change.Brightness is not null && !change.TurnsOff && !can.Brightness.Can) throw new InvalidOperationException(can.Brightness.Why ?? "Its brightness can't be set from here.");
+        if (change.Colour is not null && !change.TurnsOff && !can.Colour.Can) throw new InvalidOperationException(can.Colour.Why ?? "Its colour can't be set from here.");
+        return can;
+    }
+
+    private static string Describe(LightChange change) =>
+        change.TurnsOff ? "switched off"
+        : string.Join(", ", new[]
+        {
+            "switched on",
+            change.Brightness is { } b ? $"brightness {b}%" : null,
+            change.Colour is { } c ? "colour " + LightColour.Hex(c) : null,
+        }.Where(s => s is not null));
+
+    /// <summary>Puts a light RigControl took over back to what it did before, and forgets that it took it over.</summary>
+    public async Task GiveBackAsync(string key, CancellationToken ct)
+    {
+        var (p, light) = Find(key);
+        var can = ControlsOf(p, light);
+        if (!can.GiveBack.Can) throw new InvalidOperationException(can.GiveBack.Why ?? "This light can't be given back from here.");
+        var saved = _store.Before(key) ?? throw new InvalidOperationException("RigControl hasn't changed this light, so there is nothing to give back.");
+        var st = State(key);
+        Interlocked.Increment(ref st.Changes);
+        await ControlledAsync(p, light, st, token => p.GiveBackAsync(_net, light, saved, token), ct).ConfigureAwait(false);
+        _store.SetBefore(key, null);
+        Interlocked.Increment(ref st.Changes);
+        st.Reading = null;
+        st.ReadAt = DateTime.MinValue;
+        _log.Info($"{p.DisplayName} {light.Name}: given back; it does what it did before RigControl changed it.");
+    }
+
+    /// <summary>
+    /// "Everything at once" and "Turn all lights off" for the lights on the network: every paired light whose brand
+    /// takes part and can do it. Each light is tried on its own; the ones that failed come back as plain sentences.
+    /// </summary>
+    /// <returns>How many lights were tried, and a sentence for each one that failed.</returns>
+    public async Task<(int Tried, IReadOnlyList<string> Problems)> SetAllAsync(LightChange change, CancellationToken ct)
+    {
+        var jobs = new List<Task<string?>>();
+        foreach (var l in _store.All())
+        {
+            if (Provider(l.Brand) is not { } p || !p.JoinsEverythingAtOnce) continue;
+            var can = ControlsOf(p, l);
+            // A brand that can't do it (a LeetDesk takes no colour) is left out rather than failing.
+            if (change.TurnsOff ? !can.Power.Can : (change.Colour is not null && !can.Colour.Can) || (change.Brightness is not null && !can.Brightness.Can)) continue;
+            jobs.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    await SetAsync(l.LayoutKey, change, ct).ConfigureAwait(false);
+                    return null;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    return $"{p.DisplayName} {l.Name}: {ex.Message.TrimEnd('.')}.";
+                }
+            }, ct));
+        }
+        var results = await Task.WhenAll(jobs).ConfigureAwait(false);
+        return (jobs.Count, results.Where(r => r is not null).Select(r => r!).ToList());
+    }
+
+    private (INetworkLightProvider Provider, PairedLight Light) Find(string key)
+    {
+        var light = _store.Find(key ?? "") ?? throw new ArgumentException("That light isn't paired.");
+        var p = Provider(light.Brand) ?? throw new InvalidOperationException("This version of RigControl doesn't know this kind of light.");
+        return (p, light);
+    }
+
+    /// <summary>
+    /// Runs one direct change: an effect driving the light is let go first (it is put back as it was), changes to one
+    /// light go one at a time and the brand's gap apart, and a failure is said in plain words (and shown on the light).
+    /// </summary>
+    private async Task ControlledAsync(INetworkLightProvider p, PairedLight light, LightState st, Func<CancellationToken, Task> action, CancellationToken ct)
+    {
+        Task stopping;
+        TimeSpan needs;
+        lock (st)
+        {
+            StopRunner(st, restore: true);
+            stopping = st.Stopping;
+            needs = st.StoppingNeeds;
+        }
+        try { await stopping.WaitAsync(StopWait(needs), ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { /* it keeps its last colours; the change below goes ahead */ }
+
+        await st.Control.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var left = p.ControlGap - (DateTime.UtcNow - st.ControlAt);
+            if (left > TimeSpan.Zero) await Task.Delay(left, ct).ConfigureAwait(false);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(ControlTime);
+            try
+            {
+                await action(cts.Token).ConfigureAwait(false);
+                st.Problem = null;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                var message = ex is OperationCanceledException or TimeoutException
+                    ? $"It didn't answer in time at {light.Address}. Check it is switched on" + (p.Pairing.NoAnswerHint is { Length: > 0 } hint ? " " + hint.Trim().TrimEnd('.') : "") + "."
+                    : Plain(p, light, ex);
+                _log.Warn($"{p.DisplayName} {light.Name}: couldn't be changed: {message}");
+                st.Problem = message;
+                throw new InvalidOperationException(message);
+            }
+        }
+        finally
+        {
+            st.ControlAt = DateTime.UtcNow;
+            st.Control.Release();
+        }
     }
 
     // ---------------------------------------------------------------- layout

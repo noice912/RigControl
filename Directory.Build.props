@@ -2,11 +2,28 @@
   <PropertyGroup>
     <!-- .NET 8 is the runtime installed on this PC, so tests and debug runs work without extra installs.
          The published exe is self-contained and carries its own runtime. -->
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!--
+      Which system a project is built for (docs/PORTING.md has the list):
+        - Windows-only projects say nothing and get net8.0-windows from here, as before.
+        - Platform-neutral projects (Core, Hosting, the Linux/macOS host and their tests) set
+              <TargetFramework>$(RigPortableTfm)</TargetFramework>
+        - Projects with a Windows flavour and a neutral flavour (Lighting, Presence and their tests) set
+              <TargetFramework Condition="'$(TargetFramework)' == '$(RigWindowsDefaultTfm)'"></TargetFramework>
+              <TargetFrameworks>$(RigDualTfms)</TargetFrameworks>
+          On Windows that builds both flavours; on Linux and macOS only the neutral one, so no Windows SDK is needed
+          there. A Windows project that references such a project must itself target $(RigWindowsTfm) to get the
+          Windows flavour; the code tells the flavours apart with "#if WINDOWS".
+    -->
+    <RigPortableTfm>net8.0</RigPortableTfm>
+    <RigWindowsDefaultTfm>net8.0-windows</RigWindowsDefaultTfm>
+    <RigWindowsTfm>net8.0-windows10.0.19041.0</RigWindowsTfm>
+    <RigDualTfms>$(RigPortableTfm)</RigDualTfms>
+    <RigDualTfms Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(RigPortableTfm);$(RigWindowsTfm)</RigDualTfms>
+    <TargetFramework>$(RigWindowsDefaultTfm)</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>RigControl</Product>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
@@ -26,7 +43,7 @@
   <PropertyGroup>
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <ArtifactsPath Condition="'$(RIGCONTROL_ARTIFACTS)' != ''">$(RIGCONTROL_ARTIFACTS)</ArtifactsPath>
-    <ArtifactsPath Condition="'$(RIGCONTROL_ARTIFACTS)' == '' and $(MSBuildThisFileDirectory.Length) &gt; 110">$(TEMP)\rigcontrol-build</ArtifactsPath>
+    <ArtifactsPath Condition="'$(ArtifactsPath)' == '' and '$(RIGCONTROL_ARTIFACTS)' == '' and $(MSBuildThisFileDirectory.Length) &gt; 110 and $([MSBuild]::IsOSPlatform('Windows'))">$(TEMP)\rigcontrol-build</ArtifactsPath>
     <ArtifactsPath Condition="'$(ArtifactsPath)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
   </PropertyGroup>
 </Project>

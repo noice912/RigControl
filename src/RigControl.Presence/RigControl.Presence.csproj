@@ -2,17 +2,29 @@
 
   <PropertyGroup>
     <RootNamespace>RigControl.Presence</RootNamespace>
-    <!-- Windows media controls (Apple Music / Spotify) are a WinRT API. -->
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <!--
+      Two flavours (docs/PORTING.md): the Windows one (media controls are a WinRT API, the game library, the
+      launcher, the browser extension link) and a neutral one for Linux and macOS (custom statuses and a card for
+      a running program, over Discord's Unix socket).
+    -->
+    <TargetFramework Condition="'$(TargetFramework)' == '$(RigWindowsDefaultTfm)'"></TargetFramework>
+    <TargetFrameworks>$(RigDualTfms)</TargetFrameworks>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\RigControl.Core\RigControl.Core.csproj" />
+  <!-- Files that only make sense on Windows are left out of the neutral flavour. Shared files use "#if WINDOWS". -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'windows'">
+    <Compile Remove="Sessions.cs" />
+    <Compile Remove="Launcher.cs" />
+    <Compile Remove="WindowsParts.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The browser extension (from RichPresence), handed out by the Games page. -->
-    <EmbeddedResource Include="..\..\extension\*" LogicalName="RigControl.Presence.Extension.%(Filename)%(Extension)" />
+    <ProjectReference Include="../RigControl.Core/RigControl.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <!-- The browser extension (from RichPresence), handed out by the Games page. Windows flavour only. -->
+    <EmbeddedResource Include="../../extension/*" LogicalName="RigControl.Presence.Extension.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

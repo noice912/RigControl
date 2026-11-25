@@ -2,24 +2,31 @@
 
   <PropertyGroup>
     <RootNamespace>RigControl.Lighting</RootNamespace>
-    <!-- Capture cards (MediaCapture) are a WinRT API. -->
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <!--
+      Two flavours (docs/PORTING.md). The Windows one (capture cards are a WinRT API) is what the Windows app uses and
+      compiles every file. The neutral one, for Linux and macOS, leaves out what only Windows has: the files removed
+      below, and the parts of other files inside "#if WINDOWS".
+    -->
+    <TargetFramework Condition="'$(TargetFramework)' == '$(RigWindowsDefaultTfm)'"></TargetFramework>
+    <TargetFrameworks>$(RigDualTfms)</TargetFrameworks>
   </PropertyGroup>
+
+  <!-- Windows only: reading OBS's picture (it stands in for a capture card), and finding and starting OpenRGB. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'windows'">
+    <Compile Remove="ObsSource.cs" />
+    <Compile Remove="OpenRgbServer.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\RigControl.Core\RigControl.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    
-  </ItemGroup>
-
-  <ItemGroup>
     <InternalsVisibleTo Include="RigControl.Lighting.Tests" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- The sound meter (WASAPI loopback) is Windows only. Secrets go through RigControl.Core, which carries what it needs. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
     <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 </Project>

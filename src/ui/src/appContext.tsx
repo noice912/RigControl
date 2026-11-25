@@ -9,6 +9,13 @@ type AppCtx = {
   modules: ModuleInfo[];
   restartAsAdmin: () => Promise<void>;
   openUrl: (url: string) => void;
+  /**
+   * True when this app can do the named thing ("lighting.screen", "host.tray": see docs/API.md).
+   * Also true while the app has not said yet, and for an older app that sends no list: nothing is hidden on a guess.
+   */
+  can: (capability: string) => boolean;
+  /** True on the Linux and macOS app. */
+  notWindows: boolean;
 };
 
 const Ctx = createContext<AppCtx>({
@@ -16,7 +23,17 @@ const Ctx = createContext<AppCtx>({
   modules: [],
   restartAsAdmin: async () => {},
   openUrl: () => {},
+  can: () => true,
+  notWindows: false,
 });
+
+/** How a module's message starts when the feature has no version for this system (Linux, macOS). */
+export const NOT_ON_THIS_SYSTEM = "Not available on this system";
+
+/** True when the module is a stand-in that only says "Not available on this system". */
+export function notOnThisSystem(m: ModuleInfo | null | undefined): boolean {
+  return !!m && m.state === "failed" && (m.message ?? "").startsWith(NOT_ON_THIS_SYSTEM);
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const toast = useToast();
@@ -55,7 +72,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [toast],
   );
 
-  const value = useMemo(() => ({ info, modules, restartAsAdmin, openUrl }), [info, modules, restartAsAdmin, openUrl]);
+  const can = useCallback(
+    (capability: string) => !info || !info.capabilities || info.capabilities.includes(capability),
+    [info],
+  );
+  const notWindows = !!info?.platform && info.platform !== "windows";
+
+  const value = useMemo(
+    () => ({ info, modules, restartAsAdmin, openUrl, can, notWindows }),
+    [info, modules, restartAsAdmin, openUrl, can, notWindows],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

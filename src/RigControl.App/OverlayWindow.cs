@@ -20,8 +20,6 @@ public sealed class OverlayWindow : Window
     private readonly TextBlock _replay = Line(13, FontWeights.Normal);
     private readonly TextBlock _stats = Line(13, FontWeights.Normal);
     private readonly TextBlock _notice = Line(14, FontWeights.SemiBold);
-    private readonly TextBlock _extra = Line(13, FontWeights.Normal);
-    private string? _extraLines;
     private readonly DispatcherTimer _timer;
     private CaptureStatusDto? _status;
     private SensorSnapshotDto? _snapshot;
@@ -45,7 +43,7 @@ public sealed class OverlayWindow : Window
         Title = "RigControl overlay";
 
         var panel = new StackPanel { Margin = new Thickness(14, 10, 14, 10) };
-        foreach (var t in new[] { _recording, _replay, _notice, _stats, _extra }) panel.Children.Add(t);
+        foreach (var t in new[] { _recording, _replay, _notice, _stats }) panel.Children.Add(t);
         Content = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(0xB8, 0x10, 0x14, 0x1A)),
@@ -87,13 +85,6 @@ public sealed class OverlayWindow : Window
 
     public void SetSnapshot(SensorSnapshotDto snapshot) => _snapshot = snapshot;
 
-    /// <summary>Extra lines an add-on wants shown with the stats (one per line), or null for none.</summary>
-    public void SetExtraLines(string? lines)
-    {
-        _extraLines = string.IsNullOrWhiteSpace(lines) ? null : lines;
-        Refresh();
-    }
-
     /// <param name="duration">How long the message stays; by default 3 s, or 6 s for a problem.</param>
     public void ShowNotice(CaptureNoticeDto notice, TimeSpan? duration = null)
     {
@@ -133,12 +124,8 @@ public sealed class OverlayWindow : Window
         }
         Show(_stats, stats);
 
-        // An add-on's lines, shown together with the stats (Alt+R).
-        Show(_extra, s is { Settings.OverlayStats: true } ? _extraLines : null);
-
         var any = _recording.Visibility == Visibility.Visible || _replay.Visibility == Visibility.Visible
-                  || _notice.Visibility == Visibility.Visible || _stats.Visibility == Visibility.Visible
-                  || _extra.Visibility == Visibility.Visible;
+                  || _notice.Visibility == Visibility.Visible || _stats.Visibility == Visibility.Visible;
         if (any && !IsVisible) Show();
         else if (!any && IsVisible) Hide();
         if (any) Place();

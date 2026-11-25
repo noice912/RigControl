@@ -11,6 +11,13 @@ export type AppInfo = {
   dataDirectory: string;
   logDirectory: string;
   machineName: string;
+  /** "windows", "linux" or "macos". Left out by an older app, which is always Windows. */
+  platform?: string;
+  /**
+   * What works here: one name per module that is really there, "module.part" for its parts and "host.*" for what
+   * the app itself can do. Left out by an older app, where everything works.
+   */
+  capabilities?: string[];
 };
 export type AppSettings = { minimizeToTray: boolean; startMinimized: boolean; startWithWindows: boolean; temperatureUnit?: "F" | "C" };
 export type LogLine = { time: string; level: "info" | "warn" | "error"; source: string; message: string };
@@ -550,6 +557,30 @@ export type NetworkLight = {
   streaming: boolean;
   problem: string | null;
   note: string | null;
+  /** What it can be told directly; each with a plain reason when it can't. Null for a brand this version doesn't know. */
+  controls: NetworkLightControls | null;
+  /** As last read from the light; null when not known (or the brand can't say). */
+  on: boolean | null;
+  /** 0-100, as last read. */
+  brightness: number | null;
+  /** "#RRGGBB" at full strength, as last read; null for an effect, a white, or not known. */
+  color: string | null;
+  /** True when RigControl changed it by hand and remembers what it did before (Give back puts that back). */
+  takenOver: boolean;
+  /** False for a brand left out of "Everything at once" and "Turn all lights off" (a Hue Bridge). */
+  joinsEverything: boolean;
+  /** False for a brand the effects leave alone until it is placed on the layout (a Hue Bridge). */
+  followsUnplaced: boolean;
+};
+
+export type LightAbility = { can: boolean; why: string | null };
+
+export type NetworkLightControls = {
+  power: LightAbility;
+  brightness: LightAbility;
+  colour: LightAbility;
+  readBack: LightAbility;
+  giveBack: LightAbility;
 };
 
 export type FoundLight = {
@@ -692,7 +723,7 @@ export type FirstRunInfo = {
   findings: HealthFinding[];
 };
 
-/** Every event the backend sends. An interface, so an add-on can add its own events to it. */
+/** Every event the backend sends. */
 export interface EventMap {
   "app.modulesChanged": ModuleInfo[];
   "sensors.snapshot": SensorSnapshot;

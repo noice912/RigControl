@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { call } from "./bridge";
-import { useApp } from "./appContext";
+import { call, hostKind } from "./bridge";
+import { notOnThisSystem, useApp } from "./appContext";
+import { NotOnThisSystem } from "./components/ModuleProblem";
 import { Icons } from "./components/icons";
 import { FirstRun } from "./components/FirstRun";
 import { useHealth } from "./health";
@@ -18,7 +19,11 @@ import { Settings } from "./pages/Settings";
 
 type Route = "overview" | "cooling" | "graphics" | "capture" | "lighting" | "drivers" | "cpu" | "games" | "audio" | "health" | "settings";
 
-const NAV: { route: Route; label: string; icon: () => ReactNode; module?: string }[] = [
+/**
+ * `module` is the module whose state the entry shows. `needs` is what the page cannot do without, when that is not
+ * `module`: another module's name, or something the app itself must offer ("host.audio").
+ */
+const NAV: { route: Route; label: string; icon: () => ReactNode; module?: string; needs?: string }[] = [
   { route: "overview", label: "Overview", icon: Icons.overview, module: "sensors" },
   { route: "cooling", label: "Cooling", icon: Icons.cooling, module: "cooling" },
   { route: "graphics", label: "Graphics", icon: Icons.graphics, module: "nvidia" },
@@ -27,8 +32,8 @@ const NAV: { route: Route; label: string; icon: () => ReactNode; module?: string
   { route: "lighting", label: "Lighting", icon: Icons.lighting, module: "lighting" },
   { route: "cpu", label: "CPU", icon: Icons.cpu, module: "cpu" },
   { route: "drivers", label: "Drivers", icon: Icons.drivers, module: "drivers" },
-  { route: "audio", label: "Audio", icon: Icons.audio },
-  { route: "health", label: "Health", icon: Icons.health },
+  { route: "audio", label: "Audio", icon: Icons.audio, needs: "host.audio" },
+  { route: "health", label: "Health", icon: Icons.health, needs: "health" },
   { route: "settings", label: "Settings", icon: Icons.settings },
 ];
 
@@ -48,7 +53,7 @@ function loadRoute(): Route {
 }
 
 export function App() {
-  const { info, modules, restartAsAdmin } = useApp();
+  const { info, modules, restartAsAdmin, can } = useApp();
   const [route, setRoute] = useState<Route>(loadRoute);
   const [setupOpen, setSetupOpen] = useState(false);
   const health = useHealth().report;
@@ -76,8 +81,25 @@ export function App() {
   // A page that does not fit this PC at all (its module says "Not available on this PC") is left out of the menu.
   const notForThisPc = (module?: string) =>
     !!module && (modules.find((x) => x.name === module)?.message ?? "").startsWith("Not available on this PC");
-  const nav = NAV.filter((n) => !notForThisPc(n.module));
-  const shownRoute: Route = nav.some((n) => n.route === route) ? route : "overview";
+  // The same for a page whose feature has no version for this system (the Linux and macOS app),
+  // and for a page that needs something this app does not offer.
+  const notHere = (n: (typeof NAV)[number]) => {
+    const name = n.needs ?? n.module;
+    if (!name) return false;
+    if (name.startsWith("host.")) return !can(name);
+    return notOnThisSystem(modules.find((x) => x.name === name));
+  };
+  const nav = NAV.filter((n) => !notForThisPc(n.module) && !notHere(n));
+  // Overview is the usual fallback. Where Overview itself has no version, the first page that does.
+  const overviewHere = !notHere(NAV[0]!);
+  const shownRoute: Route = nav.some((n) => n.route === route) ? route : overviewHere ? "overview" : (nav[0]?.route ?? "settings");
+  // A page that has no version here is never drawn, so it never asks its module for anything.
+  const shownEntry = NAV.find((n) => n.route === shownRoute);
+  const blocked = shownEntry && notHere(shownEntry) ? modules.find((x) => x.name === (shownEntry.needs ?? shownEntry.module)) : undefined;
+  const firstRunHere = !!info && can("host.firstRun");
+  // The Linux and macOS app has only some of the pages. Until it has said which, no page is drawn there, so a page
+  // it does not have never asks for anything. The Windows app draws at once, as always.
+  const waitingForModules = hostKind === "photino" && modules.length === 0;
 
   const flagged = (module?: string) => {
     if (!module) return false;
@@ -86,6 +108,15 @@ export function App() {
   };
 
   const page =
+    waitingForModules ? null :
+    blocked ? (
+      <div className="page">
+        <div className="page-head">
+          <h1>{shownEntry!.label}</h1>
+        </div>
+        <NotOnThisSystem title={blocked.displayName} message={blocked.message} />
+      </div>
+    ) :
     shownRoute === "overview" ? <Overview /> :
     shownRoute === "cooling" ? <Cooling /> :
     shownRoute === "graphics" ? <Graphics /> :
@@ -121,7 +152,7 @@ export function App() {
             </button>
           ))}
         </div>
-        {info && !info.isElevated && (
+        {info && !info.isElevated && can("host.elevation") && (
           <div className="rail-foot">
             <span className="limited">Running without administrator rights. Some sensors and controls are off.</span>
             <button className="btn small" onClick={() => void restartAsAdmin()}>
@@ -131,7 +162,8 @@ export function App() {
         )}
       </nav>
       {shownRoute !== "audio" && <main className="main">{page}</main>}
-      <FirstRun onOpenChange={setSetupOpen} />
+      {/* The first-time setup is a Windows thing; where the app has none it is not asked for at all. */}
+      {firstRunHere && <FirstRun onOpenChange={setSetupOpen} />}
     </div>
   );
 }

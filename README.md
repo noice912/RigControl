@@ -12,6 +12,7 @@ on it.
 - [What each page does](#what-each-page-does)
 - [Safety](#safety)
 - [Building from source](#building-from-source)
+- [Linux and macOS](#linux-and-macos)
 - [Privacy](PRIVACY.md), [Security](SECURITY.md), [Third-party notices](THIRD-PARTY-NOTICES.md)
 
 ## Will it work on my PC?
@@ -59,16 +60,21 @@ real device yet**. The Lighting page says the same next to each brand. If you ow
 **Lights on your network (Wi-Fi).** RigControl talks to each light directly over your home network. It never signs
 in to a cloud account for lights. You pair a light on the Lighting page under "Lights on your network", which shows
 the steps for its brand. These lights do not need OpenRGB: they play the effects even while OpenRGB is not running.
+Each paired light has its own switch, brightness slider, colour and a "Give back" button on that page. The first time
+you change a light there, RigControl remembers what it was doing; "Give back" puts that back (its own effect or scene,
+as far as the brand allows). "Everything at once" and "Turn all lights off" reach these lights too, except a Hue
+Bridge, which you change from its own controls. An effect drives a light only while it plays; changing a light by
+hand stops the effect. Scenes hold the PC's own lights only.
 
 | Brand | Tried on real hardware | How to pair | What it does, and its limits |
 |---|---|---|---|
-| Nanoleaf (panels, Shapes, Lines) | Yes (Nanoleaf Lines) | Search, hold the Nanoleaf's power button 5 to 7 seconds until it flashes, then press Pair within 30 seconds. | Each panel takes its own part of the picture, about 10 times a second. |
-| WLED | **No.** Built from WLED's published protocol. | Search or type its address, press Pair. Nothing to press on the light. "Receive UDP realtime" must be ticked in WLED (it is by default). | Every LED of a strip or matrix takes its own part of the picture. A strip over 489 LEDs is sent in several parts. |
-| Philips Hue (through a Hue Bridge) | **No.** Built from open-source descriptions of the bridge's local API. | Search (or type the bridge's address), press the round button on the bridge, then press Pair within 30 seconds. Then place the bridge on the layout: until you do, no Hue light is touched. | The colour lights in the bridge's entertainment area follow (make one in the Hue app to choose which lights). **A bridge with no entertainment area follows with every colour light it has, in every room.** Lights that follow are switched on, and go back to how they were, on or off, when the effect stops. Each light shows one colour, a few times a second. Hue's fast Entertainment stream is not built yet, so gradient strips are not lit piece by piece. |
-| Govee | **No.** Built from Govee's published LAN protocol and open-source projects. | In the Govee Home app switch on "LAN Control" for each light first. Then search (or type its address) and press Pair. | Only lights that show a "LAN Control" switch. One colour for the whole light, or a colour per piece on lights that accept Govee's unofficial Razer stream (you choose the number of pieces). A running scene or music mode is not put back afterwards. |
-| Yeelight | **No.** Built from Yeelight's published specification. | In the Yeelight app switch on "LAN Control" for each light first. Then search (or type its address) and press Pair. | One colour for the whole light (plus the background light on models that have one). Lights without that switch, and ones set up through Mi Home, cannot be driven locally. |
-| Cololight (Hexagon, Strip, MIX) | **No.** The maker publishes nothing; built from the open-source pycololight project. | Type the light's address (your router shows it) and choose which Cololight it is. It cannot be searched for. | One colour for the whole light. |
-| LeetDesk Aura | **No.** The maker publishes nothing; built from a third-party add-on last changed in 2024, so current desks may behave differently. | Search or type the desk's address, press Pair. | The desk's light strip, as one strip. Use "Run backwards" on the layout if it runs the wrong way. |
+| Nanoleaf (panels, Shapes, Lines) | Yes (Nanoleaf Lines) | Search, hold the Nanoleaf's power button 5 to 7 seconds until it flashes, then press Pair within 30 seconds. | Each panel takes its own part of the picture, about 10 times a second. Not placed on the layout, the whole Nanoleaf shows the one overall colour while an effect plays. On/off, brightness, colour, read back and give back (its effect comes back). |
+| WLED | **No.** Built from WLED's published protocol. | Search or type its address, press Pair. Nothing to press on the light. "Receive UDP realtime" must be ticked in WLED (it is by default). | Every LED of a strip or matrix takes its own part of the picture. A strip over 489 LEDs is sent in several parts. On/off, brightness, one colour, read back and give back. |
+| Philips Hue (through a Hue Bridge) | **No.** Built from open-source descriptions of the bridge's local API. | Search (or type the bridge's address), press the round button on the bridge, then press Pair within 30 seconds. Then place the bridge on the layout: until you do, no effect touches a Hue light. | The colour lights in the bridge's entertainment area follow (make one in the Hue app to choose which lights). **A bridge with no entertainment area follows with every colour light it has, in every room.** Lights that follow are switched on, and go back to how they were, on or off, when the effect stops. Each light shows one colour, a few times a second. Hue's fast Entertainment stream is not built yet, so gradient strips are not lit piece by piece. Its own on/off, brightness and colour change the same lights; left out of "Everything at once" and "Turn all lights off". |
+| Govee | **No.** Built from Govee's published LAN protocol and open-source projects. | In the Govee Home app switch on "LAN Control" for each light first. Then search (or type its address) and press Pair. | Only lights that show a "LAN Control" switch. One colour for the whole light, or a colour per piece on lights that accept Govee's unofficial Razer stream (you choose the number of pieces). A running scene or music mode is not put back afterwards. On/off, brightness and colour by hand, but no read back and no "Give back": a Govee light can't be asked what it shows without RigControl waiting on its answer port. |
+| Yeelight | **No.** Built from Yeelight's published specification. | In the Yeelight app switch on "LAN Control" for each light first. Then search (or type its address) and press Pair. | One colour for the whole light (plus the background light on models that have one). Lights without that switch, and ones set up through Mi Home, cannot be driven locally. On/off, brightness, colour, read back and give back. |
+| Cololight (Hexagon, Strip, MIX) | **No.** The maker publishes nothing; built from the open-source pycololight project. | Type the light's address (your router shows it) and choose which Cololight it is. It cannot be searched for. | One colour for the whole light. On/off, brightness, colour, read back and give back. |
+| LeetDesk Aura | **No.** The maker publishes nothing; built from a third-party add-on last changed in 2024, so current desks may behave differently. | Search or type the desk's address, press Pair. | The desk's light strip, as one strip. Use "Run backwards" on the layout if it runs the wrong way. On/off and brightness by hand (no one colour: nothing published says how), read back and give back. |
 
 Not supported: lights that only work through an account (Tuya / Smart Life, Wiz cloud scenes, TP-Link cloud), Hue's
 Entertainment stream, Govee and Yeelight lights without a LAN Control switch, Yeelight strips LED by LED, and a
@@ -109,9 +115,9 @@ never closes it.
   the BIOS part only shows the settings.
 - Laptops. Nothing stops it from starting on one, but fan and light control on laptops is not something it knows.
 - Windows on ARM, and 32-bit Windows.
-- **Linux and macOS: not available yet.** Planned for a first version there: the app window with settings, Discord
-  status, and lighting through OpenRGB. Fans, sensors, recording, audio and the in-game panel will stay
-  Windows-only for now.
+- **Linux and macOS: a first version exists in the source, with fewer features, and nobody has tried it on a real
+  Linux PC or Mac yet.** See [Linux and macOS](#linux-and-macos). Fans, sensors, graphics, recording, audio, drivers,
+  the CPU page and the in-game panel are Windows-only.
 
 The hardware names RigControl shows come from the PC itself and from a built-in list (graphics cards from the public
 PCI ID database, processor generations from a table in the app). "Known" means known to the list in that version of
@@ -264,6 +270,8 @@ the exe.
 Code layout:
 
 - `src/RigControl.App`: the Windows host (WPF window, tray, in-game panel, WebView2)
+- `src/RigControl.Desktop`: the Linux and macOS host (one window through Photino.NET); `src/RigControl.Hosting`:
+  what both hosts share
 - `src/RigControl.*`: one project per area (Core, Sensors, Cooling, Nvidia, Lighting, Capture, Presence, Drivers,
   Bios, Cpu, Health, Bundled)
 - `src/ui`: the interface (React and TypeScript)
@@ -272,6 +280,66 @@ Code layout:
 - `tools`: the build script and the script that makes the graphics card list
 - `docs/API.md`: every call between the interface and the app. `docs/protocols`: research notes for each device
   protocol.
+
+## Linux and macOS
+
+**How far this is checked: it is built by CI, and its tests are run there, on GitHub's Linux and macOS machines;
+it has not been tried on real hardware.** The Actions tab of this repository shows whether the
+latest run passed, and [docs/CI.md](docs/CI.md) says what each check proves and what it does not: the window is
+opened once on Linux with no screen attached, never on macOS, and no OpenRGB, Discord or light is ever involved.
+It was written on a Windows PC with no Linux PC or Mac at hand. The window itself has never been opened by its
+author. Treat it as an early test version and please report what you see.
+
+What it has: the same window and interface, settings, Discord status, and lighting effects through OpenRGB and the
+lights on your network. Every other page is left out, and Settings lists those features as "Not available on this
+system".
+
+What is different from Windows:
+
+- It runs as your normal user. It refuses to start as root and never asks for your password.
+- There is no tray icon. Closing the window closes RigControl and puts your lights back as they were.
+- **OpenRGB is not started for you.** Install OpenRGB yourself (https://openrgb.org), open it and turn on its SDK
+  server (port 6742). RigControl connects by itself within a few seconds. Screen colours, capture cards and
+  sound-reactive lighting are Windows-only; the other effects, the layout, scenes and network lights are there.
+- **Discord status** attaches to your own Discord through its local socket in your private runtime folder. It can
+  show your custom statuses and the name of a well-known program you have open (from a short fixed list; never a
+  window title). Games, music, "watching" and the browser extension are Windows-only. A Discord socket in a shared
+  folder such as `/tmp` is never used; if your Discord only offers that one, RigControl says Discord isn't running
+  and the log says why.
+- Pairing keys for your lights are encrypted with a key kept in a file only you can read, not in the system keyring.
+  [PRIVACY.md](PRIVACY.md) says what that means.
+
+What you need:
+
+- Linux (x64): the system packages **libwebkit2gtk-4.1** and **libnotify** (Debian and Ubuntu:
+  `sudo apt install libwebkit2gtk-4.1-0 libnotify4`; Fedora: `sudo dnf install webkit2gtk4.1 libnotify`) and a
+  desktop session. The window needs both; the web view package does not bring in the second one. macOS (Apple
+  silicon or Intel): nothing extra, it uses the system's own web view.
+- To build: the .NET 8 SDK or newer and Node.js with npm. FFmpeg and the helper programs are not needed.
+
+Building and starting it (from the top of the repository, on the system you want to run it on):
+
+```
+npm install --prefix src/ui
+dotnet publish src/RigControl.Desktop -c Release -r linux-x64      # or osx-arm64, osx-x64
+```
+
+The result is a folder (about 75 MB, with its own .NET runtime) under `artifacts/publish/RigControl.Desktop/`. Start
+the file `RigControl` in it. It is a folder and not one file because the window library is a native file that has to
+sit next to the program. Publish on the system you will run it on: a copy published on Windows has no "executable"
+mark on its files, and on a Mac it is not signed.
+
+`./RigControl --smoke` opens the window, waits until the page has connected to the app, and closes again (exit code
+0 when it worked, 1 with the reason in its output when not). It uses a temporary folder and touches no lights and no
+Discord. `--help` lists the other options.
+
+How the page reaches the window: from memory, by an address of its own (`app://rigcontrol/`). RigControl opens no
+network port for it, not even one only your own computer can reach. If the system's web view will not load the page
+that way, RigControl tries a second way (the same address, the script handed over differently). If neither works,
+RigControl closes and says so, instead of leaving an empty window open. The log says which way was used. Which of
+the two a real Linux PC or Mac needs is not known yet.
+
+The layout of the shared source is in [docs/PORTING.md](docs/PORTING.md).
 
 ## Credits
 

@@ -161,6 +161,99 @@ public interface ILightSession : IAsyncDisposable
     Task StopAsync(CancellationToken ct);
 }
 
+/// <summary>One thing a light can or can't be told directly. <see cref="Why"/> says, in plain words, why not.</summary>
+public sealed record LightAbility(bool Can, string? Why = null)
+{
+    public static readonly LightAbility Yes = new(true);
+    public static LightAbility No(string why) => new(false, why);
+}
+
+/// <summary>
+/// What a paired light can be told directly, without an effect playing: switched on or off, its brightness, one
+/// colour, read back (what it shows now), and given back (put back to what it did before RigControl changed it).
+/// </summary>
+public sealed record LightControls(LightAbility Power, LightAbility Brightness, LightAbility Colour, LightAbility ReadBack, LightAbility GiveBack)
+{
+    public static LightControls None(string why) =>
+        new(LightAbility.No(why), LightAbility.No(why), LightAbility.No(why), LightAbility.No(why), LightAbility.No(why));
+}
+
+/// <summary>What a light shows now, as far as it says. Null = it doesn't say (or can't be asked).</summary>
+/// <param name="Brightness">0-100.</param>
+/// <param name="Colour">0xRRGGBB at full strength (brightness is separate); null for an effect or a white.</param>
+public sealed record LightReading(bool? On, int? Brightness, int? Colour);
+
+/// <summary>
+/// One direct change. Null fields stay as they are. A colour or a brightness without <see cref="On"/> also switches
+/// the light on (you want to see what you picked). A colour of black switches it off.
+/// </summary>
+/// <param name="Brightness">0-100 (a brand without a 0 takes its lowest).</param>
+/// <param name="Colour">0xRRGGBB.</param>
+public sealed record LightChange(bool? On = null, int? Brightness = null, int? Colour = null)
+{
+    public bool IsEmpty => On is null && Brightness is null && Colour is null;
+
+    /// <summary>True when the light ends up off.</summary>
+    public bool TurnsOff => On == false || (Colour is { } c && (c & 0xFFFFFF) == 0);
+}
+
+/// <summary>Colour sums every provider needs for direct control.</summary>
+public static class LightColour
+{
+    /// <summary>Hue 0-359, saturation 0-100, value 0-100.</summary>
+    public static (int Hue, int Sat, int Value) ToHsv(int rgb)
+    {
+        double r = ((rgb >> 16) & 255) / 255.0, g = ((rgb >> 8) & 255) / 255.0, b = (rgb & 255) / 255.0;
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        var d = max - min;
+        double h = 0;
+        if (d > 1e-9)
+        {
+            if (max == r) h = 60 * (((g - b) / d) % 6);
+            else if (max == g) h = 60 * ((b - r) / d + 2);
+            else h = 60 * ((r - g) / d + 4);
+        }
+        if (h < 0) h += 360;
+        var hue = (int)Math.Round(h) % 360;
+        var sat = max <= 1e-9 ? 0 : (int)Math.Round(d / max * 100);
+        return (hue, sat, (int)Math.Round(max * 100));
+    }
+
+    /// <summary>0xRRGGBB from hue 0-359, saturation 0-100, value 0-100.</summary>
+    public static int FromHsv(double hue, double sat, double value)
+    {
+        var h = ((hue % 360) + 360) % 360;
+        var s = Math.Clamp(sat, 0, 100) / 100.0;
+        var v = Math.Clamp(value, 0, 100) / 100.0;
+        var c = v * s;
+        var x = c * (1 - Math.Abs(h / 60 % 2 - 1));
+        var m = v - c;
+        var (r, g, b) = h switch
+        {
+            < 60 => (c, x, 0.0),
+            < 120 => (x, c, 0.0),
+            < 180 => (0.0, c, x),
+            < 240 => (0.0, x, c),
+            < 300 => (x, 0.0, c),
+            _ => (c, 0.0, x),
+        };
+        int To(double v2) => (int)Math.Round(Math.Clamp(v2 + m, 0, 1) * 255);
+        return (To(r) << 16) | (To(g) << 8) | To(b);
+    }
+
+    /// <summary>The same colour at full strength (its brightest part at 255), so brightness can be told apart.</summary>
+    public static int Full(int rgb)
+    {
+        int r = (rgb >> 16) & 255, g = (rgb >> 8) & 255, b = rgb & 255;
+        var max = Math.Max(r, Math.Max(g, b));
+        if (max == 0) return 0;
+        return ((int)Math.Round(r * 255.0 / max) << 16) | ((int)Math.Round(g * 255.0 / max) << 8) | (int)Math.Round(b * 255.0 / max);
+    }
+
+    public static string Hex(int rgb) => "#" + (rgb & 0xFFFFFF).ToString("X6");
+}
+
 /// <summary>
 /// One brand of network light. Rules for every provider:
 ///  - local control only: no cloud account, no sign-in page, nothing sent outside the user's own network;
@@ -207,4 +300,37 @@ public interface INetworkLightProvider
 
     /// <summary>Remembers the light's current state and gets it ready to take frames.</summary>
     Task<ILightSession> StartAsync(ILightNetwork net, PairedLight light, LightDescription description, CancellationToken ct);
+
+    // ---- direct control (no effect needed). Each call is one short exchange with the light; nothing is kept open.
+
+    /// <summary>What this light can be told directly. A brand that can't do something says why, rather than faking it.</summary>
+    LightControls Controls(PairedLight light) => LightControls.None("This version of RigControl can't control this kind of light directly.");
+
+    /// <summary>
+    /// True when "Everything at once" and "Turn all lights off" also reach this brand. False for a brand where one
+    /// paired entry can be a whole house of lights (a Hue Bridge): it is only changed from its own controls.
+    /// </summary>
+    bool JoinsEverythingAtOnce => true;
+
+    /// <summary>The least time between two direct changes to one light (some lights only take so many commands a minute).</summary>
+    TimeSpan ControlGap => TimeSpan.FromMilliseconds(250);
+
+    /// <summary>What the light shows now. Only called when <see cref="Controls"/> says it can be read back.</summary>
+    Task<LightReading> ReadAsync(ILightNetwork net, PairedLight light, CancellationToken ct) =>
+        throw new InvalidOperationException("This light can't say what it shows.");
+
+    /// <summary>
+    /// What the light is doing now, as text <see cref="GiveBackAsync"/> understands later. Called once, just before
+    /// RigControl first changes the light; the text is kept with the pairing (never a secret).
+    /// </summary>
+    Task<string> SaveAsync(ILightNetwork net, PairedLight light, CancellationToken ct) =>
+        throw new InvalidOperationException("RigControl can't read what this light was doing, so it can't give it back.");
+
+    /// <summary>Switches it on or off, sets its brightness or one colour.</summary>
+    Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct) =>
+        throw new InvalidOperationException("This version of RigControl can't control this kind of light directly.");
+
+    /// <summary>Puts the light back to what <paramref name="saved"/> (from <see cref="SaveAsync"/>) says it did.</summary>
+    Task GiveBackAsync(ILightNetwork net, PairedLight light, string saved, CancellationToken ct) =>
+        throw new InvalidOperationException("RigControl can't give this light back.");
 }

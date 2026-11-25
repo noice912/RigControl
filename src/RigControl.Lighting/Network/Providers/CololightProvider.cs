@@ -99,6 +99,60 @@ public sealed class CololightProvider : INetworkLightProvider
         }
     }
 
+    // ---- direct control: the same captured packets (state question, power with brightness, one colour)
+
+    public LightControls Controls(PairedLight light) =>
+        new(LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes);
+
+    // A small Wi-Fi chip with no known safe rate: changes are kept half a second apart.
+    public TimeSpan ControlGap => TimeSpan.FromMilliseconds(500);
+
+    private static bool IsStrip(PairedLight light) => light.Data.TryGetValue("type", out var type) && type == "strip";
+
+    public async Task<LightReading> ReadAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        using var link = new Link(net, light.Address);
+        var state = await link.AskStateAsync(AnswerWait, ct).ConfigureAwait(false) ?? throw NoAnswer();
+        return new LightReading(state.On, state.Brightness, state.Colour is { } c ? LightColour.Full(c) : null);
+    }
+
+    internal sealed record Saved(bool On, int Brightness, string? Shown);
+
+    public async Task<string> SaveAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        using var link = new Link(net, light.Address);
+        var state = await link.AskStateAsync(AnswerWait, ct).ConfigureAwait(false) ?? throw NoAnswer();
+        return System.Text.Json.JsonSerializer.Serialize(new Saved(state.On, state.Brightness, state.Shown is { } s ? Convert.ToHexString(s) : null));
+    }
+
+    public async Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct)
+    {
+        using var link = new Link(net, light.Address);
+        // Its brightness now, since power and brightness go in one packet.
+        var state = await link.AskStateAsync(AnswerWait, ct).ConfigureAwait(false) ?? throw NoAnswer();
+        var brightness = Math.Clamp(change.Brightness ?? (state.Brightness >= 1 ? state.Brightness : SyncBrightness), 1, 100);
+        if (change.TurnsOff)
+        {
+            link.Send(Power(false, Math.Clamp(state.Brightness, 1, 100)));
+            return;
+        }
+        link.Send(Power(true, brightness));
+        if (change.Colour is { } c) link.Send(Colour(IsStrip(light), c & 0xFFFFFF));
+    }
+
+    public Task GiveBackAsync(ILightNetwork net, PairedLight light, string saved, CancellationToken ct)
+    {
+        Saved? was;
+        try { was = System.Text.Json.JsonSerializer.Deserialize<Saved>(saved); }
+        catch (System.Text.Json.JsonException) { was = null; }
+        if (was is null) throw new InvalidOperationException("What the Cololight showed before couldn't be read.");
+        ct.ThrowIfCancellationRequested();
+        using var link = new Link(net, light.Address);
+        if (was.Shown is { Length: 8 } hex) link.Send(Show(IsStrip(light), Convert.FromHexString(hex)));
+        link.Send(Power(was.On, was.Brightness >= 1 ? was.Brightness : SyncBrightness));
+        return Task.CompletedTask;
+    }
+
     private static InvalidOperationException NoAnswer() =>
         new("The Cololight doesn't answer. Check that it is switched on and still has the same address.");
 

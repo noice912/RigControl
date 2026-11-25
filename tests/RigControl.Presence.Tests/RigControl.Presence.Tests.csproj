@@ -3,8 +3,21 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <!-- Both flavours, like RigControl.Presence itself: each one tests the flavour it gets. -->
+    <TargetFramework Condition="'$(TargetFramework)' == '$(RigWindowsDefaultTfm)'"></TargetFramework>
+    <TargetFrameworks>$(RigDualTfms)</TargetFrameworks>
   </PropertyGroup>
+
+  <!--
+    The tests that were here first use Windows-only parts (pipes, sessions, the extension link) and run against the
+    Windows flavour. The tests under Portable run in both flavours, and on Linux and macOS.
+  -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'windows'">
+    <Compile Remove="AppIdsTests.cs" />
+    <Compile Remove="LimiterTests.cs" />
+    <Compile Remove="MultiUserTests.cs" />
+    <Compile Remove="PresenceTests.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
@@ -17,8 +30,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\RigControl.Presence\RigControl.Presence.csproj" />
-    <ProjectReference Include="..\..\src\RigControl.Core\RigControl.Core.csproj" />
+    <ProjectReference Include="../../src/RigControl.Presence/RigControl.Presence.csproj" />
+    <ProjectReference Include="../../src/RigControl.Core/RigControl.Core.csproj" />
   </ItemGroup>
 
   <!--
@@ -29,11 +42,11 @@
   <PropertyGroup>
     <DiscordIdsEmbed>false</DiscordIdsEmbed>
   </PropertyGroup>
-  <Import Project="..\..\src\RigControl.Presence\DiscordIds.targets" />
+  <Import Project="../../src/RigControl.Presence/DiscordIds.targets" />
   <Target Name="SealMadeUpIds" BeforeTargets="BeforeBuild"
-          Inputs="$(MSBuildProjectDirectory)\made-up-discord-ids.json;$(MSBuildThisFileDirectory)..\..\src\RigControl.Presence\DiscordIds.targets"
+          Inputs="$(MSBuildProjectDirectory)/made-up-discord-ids.json;$(MSBuildThisFileDirectory)../../src/RigControl.Presence/DiscordIds.targets"
           Outputs="$(IntermediateOutputPath)made-up-ids.bin">
-    <SealDiscordIds Source="$(MSBuildProjectDirectory)\made-up-discord-ids.json" Output="$(IntermediateOutputPath)made-up-ids.bin" />
+    <SealDiscordIds Source="$(MSBuildProjectDirectory)/made-up-discord-ids.json" Output="$(IntermediateOutputPath)made-up-ids.bin" />
   </Target>
   <Target Name="EmbedMadeUpIds" BeforeTargets="BeforeBuild" DependsOnTargets="SealMadeUpIds">
     <ItemGroup>

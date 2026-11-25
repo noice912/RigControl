@@ -4,7 +4,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+#if WINDOWS
 using Windows.Media.Control;
+#endif
 
 namespace RigControl.Presence;
 
@@ -47,7 +49,9 @@ public static class Watching
     public static readonly IReadOnlySet<string> ServiceNames = Services.Select(s => s.Name).ToHashSet();
 
     private const string BrowserAum = "chrome|msedge|firefox|308046B0AF4A39CB|brave|opera|vivaldi";
+#if WINDOWS
     private static readonly string[] BrowserProcs = { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi" };
+#endif
     private const string Dashes = "•–—";
     private const string Sep = "[|" + Dashes + ":-]";
     private static readonly char[] TrimChars = (" |:-" + Dashes).ToCharArray();
@@ -151,6 +155,7 @@ public static class Watching
         return found.OrderBy(f => f.Svc.Casual).FirstOrDefault();
     }
 
+#if WINDOWS
     // ---------------------------------------------------------------- Windows
 
     public static async Task<IReadOnlyList<MediaSession>> SessionsAsync()
@@ -204,6 +209,7 @@ public static class Watching
     [DllImport("user32.dll")] private static extern int GetWindowThreadProcessId(IntPtr h, out int pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr h);
+#endif
 }
 
 /// <summary>Posters (TVMaze for shows, Cinemeta for movies) and service logos, cached.</summary>

@@ -60,7 +60,7 @@ login or token, and it never uses another Windows user's Discord.
 |---|---|---|
 | **A search for lights** on your home network | Only when you press "Search for lights" on the Lighting page. Never by itself, never on a timer. | Only networks that have a router are searched, which leaves out most VPN adapters and a virtual machine's network. Any network with private addresses and a router counts, so do not press Search on a network that is not yours. Every brand is asked at once, each in its own way: a name question to the whole home network (mDNS) for WLED, LeetDesk and the Hue Bridge; one question to a group address for Yeelight (239.255.255.250, UDP port 1982) and one for Govee (239.255.255.250, UDP port 4001); and for Nanoleaf a try of port 16021 on every address of the PC's own local network (small home networks only). Other devices on the network see these short questions and connection attempts. A device that answers the name question is then asked what it is, at the address its answer came from and nowhere else. Cololight is not searched for: you type its address. The search stops by itself after about half a minute, or when you press Stop. |
 | **A light you are pairing** | When you press "Pair" | RigControl asks the light at that address what it is and, for Nanoleaf and Philips Hue, asks it for a key after you pressed the button on the light. Only addresses on a home network are accepted. |
-| **A light you paired** | While it is paired | Once in a while RigControl reads what the light is made of (how many panels or LEDs). While an effect or the screen sync runs, colours go to that light's address and nowhere else. When the effect stops, the light is put back as it was. A key the light gave at pairing (Nanoleaf's access token, Hue's application key) is only ever sent to the address it was paired with. |
+| **A light you paired** | While it is paired | Once in a while RigControl reads what the light is made of (how many panels or LEDs). While the Lighting page is open, it asks each light that can say what it shows (on or off, brightness, colour) at most every 15 seconds. While an effect or the screen sync runs, colours go to that light's address and nowhere else. When the effect stops, the light is put back as it was. When you switch, dim or colour a light by hand, press "Everything at once" or "Turn all lights off", or press "Give back", the command goes to that light's address only; the first change by hand reads what the light was doing so it can be given back later (that is kept in the settings file, see below). A key the light gave at pairing (Nanoleaf's access token, Hue's application key) is only ever sent to the address it was paired with. |
 | **Yeelight fast mode** | While a Yeelight follows an effect | RigControl asks the light to connect back to this PC, so colours can be sent quickly. For that RigControl listens on one port, on your home network's address only, until the light has connected. Windows Firewall may ask once whether to allow RigControl on private networks. |
 | **Govee answers** | During a search, while pairing, and for a moment when a paired Govee light is read or starts following | Govee lights send their answers to UDP port 4002 on this PC, so RigControl listens there (on every local network address of the PC, so a light you paired by typing its address can answer too) for as long as it waits for an answer, then stops. Windows Firewall may ask once whether to allow RigControl on private networks. |
 
@@ -122,7 +122,7 @@ Everything is on your PC. Nothing is synced.
 
 | Where | What |
 |---|---|
-| `%LOCALAPPDATA%\RigControl\settings.json` | All settings: fan curves, lighting scenes and layout, hotkeys, Discord status choices and custom statuses, and for each light you paired on your network: its brand, name, model, id (serial number or hardware address) and network address, plus the key it gave at pairing (Nanoleaf's access token, Hue's application key and client key) **in protected form, encrypted for your Windows user** (Windows DPAPI). Forgetting a light removes its entry and its key. |
+| `%LOCALAPPDATA%\RigControl\settings.json` | All settings: fan curves, lighting scenes and layout, hotkeys, Discord status choices and custom statuses, and for each light you paired on your network: its brand, name, model, id (serial number or hardware address) and network address, plus the key it gave at pairing (Nanoleaf's access token, Hue's application key and client key) **in protected form, encrypted for your Windows user** (Windows DPAPI), and, once you changed a light by hand, what it was doing before (its effect or scene name, colour, brightness, on or off) so "Give back" can put it back. Forgetting a light removes its entry and its key. |
 | `%LOCALAPPDATA%\RigControl\logs` | Log files in plain text: what the app did and what went wrong. They can contain device names, program names and file paths. RigControl does not write passwords or tokens to them. Nothing uploads them; you choose whether to attach one to an issue. |
 | `%LOCALAPPDATA%\RigControl\presence` | The game library that was found, Discord's public game list, and the secret for the browser extension link |
 | `%LOCALAPPDATA%\RigControl\browser-extension-xxxxxxxx` | The copy of the browser extension made by "Get the browser extension" |
@@ -140,6 +140,54 @@ Everything is on your PC. Nothing is synced.
 
 The first-time setup also installs PawnIO and Equalizer APO as normal Windows programs, and may point an existing
 OpenRGB service at RigControl's copy. See the README.
+
+### On Linux and macOS
+
+This is for the Linux and macOS version. It has fewer features (see the README) and has not been tried on real
+hardware yet, so this part describes what the code does, not what was watched happening.
+
+| Where | What |
+|---|---|
+| Linux: `~/.config/RigControl` (or `$XDG_CONFIG_HOME/RigControl`). macOS: `~/Library/Application Support/RigControl` | `settings.json` with the same kind of settings as on Windows, `secret.key`, a `presence` folder (what the Discord status part keeps, such as Discord's public game list), and `running.lock`, an empty file that is held open while RigControl runs so a second copy can tell |
+| Linux: `~/.local/state/RigControl/logs` (or `$XDG_STATE_HOME/RigControl/logs`). macOS: `~/Library/Logs/RigControl` | Log files in plain text, as on Windows |
+| Linux: `~/.config/autostart/rigcontrol.desktop`. macOS: `~/Library/LaunchAgents/io.github.rigcontrol.plist` | Only if you turn on starting at sign-in |
+| Where the system's web view keeps its own data. This is the system's choice, not RigControl's: normally `~/.local/share/RigControl` and `~/.cache/RigControl` on Linux, `~/Library/WebKit` and `~/Library/Caches` on macOS | The window's own small notes, such as which page you had open last. The interface itself is carried inside the program and is not stored there by RigControl. |
+
+The keys your lights gave at pairing are protected differently there. Windows encrypts them for your Windows user.
+On Linux and macOS RigControl encrypts them with a random key that it keeps in `secret.key`, a file that only your
+user account can read (file mode 0600). The system keyring is not used. What that means: a copy of `settings.json`
+alone does not give the keys away, but any program running as you can read both files. The folders are made so
+that only you can open them. RigControl never runs as root there and never asks for your password.
+
+**What it reads there.** For Discord status it looks at the names of the programs you are running, to show the
+name of a well-known one from a short fixed list. It does not read window titles, and it has no way to know which
+window is in front. It does not read your music player, your browser or your games on these systems.
+
+**What it connects to on your own computer there.**
+
+- Discord, through Discord's own local socket in your private runtime folder (`$XDG_RUNTIME_DIR` on Linux, your
+  own temporary folder on macOS). The folder must be yours alone; a socket in a shared folder such as `/tmp` is
+  never used. No stored Discord login is read.
+- OpenRGB, on `127.0.0.1` port 6742, when you have started it and turned on its SDK server. RigControl does not
+  start OpenRGB on these systems.
+- The lights you paired on your network, as on Windows.
+
+**How the interface is shown.** The interface is carried inside the program and handed to the window from memory.
+The page is not allowed to load anything from the internet or to connect anywhere; everything it does goes through
+the window's own message channel to RigControl. Links open in your normal browser.
+
+Nothing listens on any network port for this, not even on `127.0.0.1`. If the system's web view will not load the
+page the usual way, RigControl tries a second way, also from memory; if that one was needed, it is noted
+(`desktop.uiMode` in `settings.json`) so it is tried first next time. If neither works, RigControl closes and says
+so instead of leaving an empty window open.
+
+Only RigControl's own page can give RigControl orders. The window passes on messages from whatever page it shows,
+so each time RigControl starts it makes a random value, writes it into its own page, and reads only messages that
+carry it. If another page ended up in the window (for example a link or file dropped on it), RigControl ignores
+everything that page sends. The value is never written to the log.
+
+**Removing it there.** Switch off "Start when I sign in" in Settings, close RigControl, delete the folder you
+started it from, and delete the folders in the table above.
 
 ## Removing it
 

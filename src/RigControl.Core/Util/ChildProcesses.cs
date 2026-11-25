@@ -15,6 +15,8 @@ public static class ChildProcesses
     /// <summary>Attaches a started process. Returns false if Windows refused (the process then still runs normally).</summary>
     public static bool Attach(Process process)
     {
+        // Job objects are a Windows thing. Elsewhere the helper simply runs on its own, as the summary says.
+        if (!OperatingSystem.IsWindows()) return false;
         try
         {
             lock (Gate)

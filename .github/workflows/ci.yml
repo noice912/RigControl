@@ -1,0 +1,352 @@
+# Checks every push to main and every pull request. docs/CI.md says in plain words what each job proves.
+#
+# Rules this file keeps:
+#   - No secrets are used anywhere, and the token can only read the source.
+#   - Every action is pinned to a full commit, with its version beside it.
+#   - Nothing is cached between runs.
+#   - Nothing here is a release: no tags, no signing, only short-lived workflow artifacts.
+#   - No text from a pull request (title, branch name, message) is ever put into a command.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # bash on all three systems (Git Bash on Windows), started by GitHub with "-eo pipefail":
+    # a failing command, also one in front of a pipe, fails the step.
+    shell: bash
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+  # The SDK the code is written with. The projects target .NET 8, so the .NET 8 runtime is installed
+  # beside it to run the tests.
+  SDK_VERSION: '11.0.100'
+  NODE_VERSION: '24'
+  # Warnings are errors for the platform-neutral code, so a Windows-only call (CA1416) cannot slip in.
+  # Two kinds stay warnings, because they depend on the day and not on the change being checked:
+  #   NU1901-NU1904  a package got a security notice     NETSDK1138  .NET 8 is past its support date
+  STRICT: '-warnaserror -warnnotaserror:NU1901,NU1902,NU1903,NU1904,NETSDK1138'
+
+jobs:
+  # ------------------------------------------------------------------ 1. The interface on its own
+  ui:
+    name: Interface (typecheck and build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Install the interface's packages
+        working-directory: src/ui
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        working-directory: src/ui
+        run: npm run typecheck
+      - name: Build
+        working-directory: src/ui
+        run: npm run build
+
+  # ------------------------------------------------------------------ 2. The shared code on three systems
+  portable:
+    name: Shared code (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: |
+            8.0.x
+            11.0.x
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Use one SDK version
+        run: |
+          # Without this the newest SDK on the machine is used, and that changes when GitHub updates its machines.
+          if [ ! -f global.json ]; then
+            printf '{ "sdk": { "version": "%s", "rollForward": "latestFeature" } }\n' "$SDK_VERSION" > global.json
+          fi
+          dotnet --version
+      - name: Install the interface's packages
+        working-directory: src/ui
+        run: npm ci --no-audit --no-fund
+      - name: Build (platform-neutral, warnings are errors)
+        run: |
+          # RigControl.slnx is not built here: it lists Windows-only projects.
+          # The first build of RigControl.Hosting also builds the interface (npm run build).
+          for project in \
+            src/RigControl.Core \
+            src/RigControl.Hosting \
+            src/RigControl.Lighting \
+            src/RigControl.Presence \
+            src/RigControl.Desktop \
+            tests/RigControl.Core.Tests \
+            tests/RigControl.Hosting.Tests \
+            tests/RigControl.Lighting.Tests \
+            tests/RigControl.Presence.Tests \
+            tests/RigControl.Desktop.Tests
+          do
+            echo "::group::build $project"
+            dotnet build "$project" -c Debug -f net8.0 $STRICT
+            echo "::endgroup::"
+          done
+      - name: Test
+        run: |
+          for project in \
+            tests/RigControl.Core.Tests \
+            tests/RigControl.Hosting.Tests \
+            tests/RigControl.Lighting.Tests \
+            tests/RigControl.Presence.Tests \
+            tests/RigControl.Desktop.Tests
+          do
+            echo "::group::test $project"
+            dotnet test "$project" -c Debug -f net8.0 --no-build
+            echo "::endgroup::"
+          done
+
+  # ------------------------------------------------------------------ 3. The Windows projects
+  windows-app:
+    name: Windows projects
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: |
+            8.0.x
+            11.0.x
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Use one SDK version
+        run: |
+          if [ ! -f global.json ]; then
+            printf '{ "sdk": { "version": "%s", "rollForward": "latestFeature" } }\n' "$SDK_VERSION" > global.json
+          fi
+          dotnet --version
+      - name: Install the interface's packages
+        working-directory: src/ui
+        run: npm ci --no-audit --no-fund
+      - name: Build
+        run: |
+          # Every Windows project that builds from a fresh copy of the source.
+          # Left out, because FFmpeg is not in the repository (third_party/ffmpeg/README.md):
+          #   src/Audio/AudioController.Ffmpeg, src/Audio/AudioController.App, tests/Audio/AudioController.Tests,
+          #   src/RigControl.App, tests/RigControl.App.Tests.           docs/CI.md has the details.
+          for project in \
+            src/RigControl.Hosting \
+            src/RigControl.Bundled \
+            src/Audio/AudioController.Core \
+            src/Audio/AudioController.Storage \
+            src/Audio/AudioController.Decode \
+            src/Audio/AudioController.Audio \
+            tests/RigControl.Bios.Tests \
+            tests/RigControl.Capture.Tests \
+            tests/RigControl.Cooling.Tests \
+            tests/RigControl.Cpu.Tests \
+            tests/RigControl.Drivers.Tests \
+            tests/RigControl.Health.Tests \
+            tests/RigControl.Nvidia.Tests \
+            tests/RigControl.Sensors.Tests
+          do
+            echo "::group::build $project"
+            dotnet build "$project" -c Debug
+            echo "::endgroup::"
+          done
+          # Lighting and Discord status: the Windows flavour (the neutral one is checked by the job above).
+          for project in tests/RigControl.Lighting.Tests tests/RigControl.Presence.Tests
+          do
+            echo "::group::build $project"
+            dotnet build "$project" -c Debug -f net8.0-windows10.0.19041.0
+            echo "::endgroup::"
+          done
+      - name: Test
+        run: |
+          for project in \
+            tests/RigControl.Bios.Tests \
+            tests/RigControl.Capture.Tests \
+            tests/RigControl.Cooling.Tests \
+            tests/RigControl.Cpu.Tests \
+            tests/RigControl.Drivers.Tests \
+            tests/RigControl.Health.Tests \
+            tests/RigControl.Nvidia.Tests \
+            tests/RigControl.Sensors.Tests
+          do
+            echo "::group::test $project"
+            dotnet test "$project" -c Debug --no-build
+            echo "::endgroup::"
+          done
+          for project in tests/RigControl.Lighting.Tests tests/RigControl.Presence.Tests
+          do
+            echo "::group::test $project"
+            dotnet test "$project" -c Debug -f net8.0-windows10.0.19041.0 --no-build
+            echo "::endgroup::"
+          done
+
+  # ------------------------------------------------------------------ 4. Does the Linux window really open?
+  smoke:
+    name: Linux window starts (headless)
+    needs: portable
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 11.0.x
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Use one SDK version
+        run: |
+          if [ ! -f global.json ]; then
+            printf '{ "sdk": { "version": "%s", "rollForward": "latestFeature" } }\n' "$SDK_VERSION" > global.json
+          fi
+          dotnet --version
+      - name: Install the system web view and a virtual screen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 libnotify4 xvfb xauth
+      - name: Install the interface's packages
+        working-directory: src/ui
+        run: npm ci --no-audit --no-fund
+      - name: Publish for linux-x64
+        run: dotnet publish src/RigControl.Desktop -c Release -r linux-x64 --self-contained true -o "$RUNNER_TEMP/smoke-app"
+      - name: Start it with --smoke
+        timeout-minutes: 5
+        env:
+          # --smoke keeps its settings and log in a throwaway folder under the temporary folder. Put that
+          # somewhere known, so the log can be found if the app had to be stopped from outside.
+          TMPDIR: ${{ runner.temp }}/smoke-home/tmp
+          # The virtual screen has no graphics card: draw in software.
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+        run: |
+          mkdir -p "$TMPDIR"
+          test -x "$RUNNER_TEMP/smoke-app/RigControl"
+          # --smoke: open the window with stand-ins for the modules, load the interface, wait until the page itself
+          # has asked app.getInfo over the bridge and sent a note saying the answer arrived, then exit 0. After 60
+          # seconds without that the app writes how far it got and exits 1 (3 if its window would not close).
+          # It prints its log at the end. It opens no network port.
+          # "timeout" is the hard limit should it hang instead (exit 124, or 137 when it had to be killed).
+          xvfb-run --auto-servernum \
+            timeout --signal=TERM --kill-after=10 120 \
+            "$RUNNER_TEMP/smoke-app/RigControl" --smoke 2>&1 | tee "$RUNNER_TEMP/smoke-home/console.txt"
+      - name: Try each way of loading the page (for information, never fails the job)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 8
+        env:
+          TMPDIR: ${{ runner.temp }}/smoke-home/tmp
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+        run: |
+          mkdir -p "$TMPDIR"
+          for mode in scheme classic
+          do
+            code=0
+            xvfb-run --auto-servernum \
+              timeout --signal=TERM --kill-after=10 120 \
+              "$RUNNER_TEMP/smoke-app/RigControl" --smoke "--ui=$mode" > "$RUNNER_TEMP/smoke-home/console-$mode.txt" 2>&1 || code=$?
+            echo "--ui=$mode: exit code $code" | tee -a "$RUNNER_TEMP/smoke-home/modes.txt"
+          done
+      - name: Keep the logs when it failed
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-logs
+          # What the app printed (its log is part of that), and the log files left behind if it had to be
+          # stopped from outside. Nothing else from its folder is uploaded.
+          path: |
+            ${{ runner.temp }}/smoke-home/*.txt
+            ${{ runner.temp }}/smoke-home/tmp/rigcontrol-smoke-*/logs
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ------------------------------------------------------------------ 5. Try-out builds (not releases)
+  package:
+    name: Package (${{ matrix.rid }})
+    needs: portable
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: macos-latest, rid: osx-arm64 }
+          - { os: macos-latest, rid: osx-x64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 11.0.x
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Use one SDK version
+        run: |
+          if [ ! -f global.json ]; then
+            printf '{ "sdk": { "version": "%s", "rollForward": "latestFeature" } }\n' "$SDK_VERSION" > global.json
+          fi
+          dotnet --version
+      - name: Install the interface's packages
+        working-directory: src/ui
+        run: npm ci --no-audit --no-fund
+      - name: Publish (self-contained)
+        env:
+          RID: ${{ matrix.rid }}
+        run: dotnet publish src/RigControl.Desktop -c Release -r "$RID" --self-contained true -o "$RUNNER_TEMP/out/RigControl"
+      - name: Pack it, keeping the "can be run" mark on the program
+        env:
+          RID: ${{ matrix.rid }}
+        run: |
+          test -x "$RUNNER_TEMP/out/RigControl/RigControl"
+          # Debug files are not needed to run it.
+          find "$RUNNER_TEMP/out/RigControl" -name '*.pdb' -delete
+          tar -C "$RUNNER_TEMP/out" -czf "$RUNNER_TEMP/RigControl-$RID.tar.gz" RigControl
+          ls -l "$RUNNER_TEMP/RigControl-$RID.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # Uploaded as it is (not zipped again), so the download is the .tar.gz itself and is named after the file.
+          path: ${{ runner.temp }}/RigControl-${{ matrix.rid }}.tar.gz
+          archive: false
+          if-no-files-found: error
+          retention-days: 7

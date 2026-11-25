@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { call } from "../bridge";
 import { useAction, useLive } from "../hooks";
+import { useApp } from "../appContext";
 import { Notice, Switch } from "../components/controls";
 import { ModuleProblem } from "../components/ModuleProblem";
 import { HealthNotice } from "../components/HealthFindings";
@@ -75,6 +76,13 @@ function GameTile({ game, onStatus }: { game: PresenceGame; onStatus: (s: Presen
 
 export function Games() {
   const { data: s, setData, error } = useLive("presence.status", "presence.getStatus");
+  // Parts the Linux and macOS app does not have are left out. On Windows every one of these is true.
+  const { info, can, notWindows } = useApp();
+  const hasMedia = can("presence.media");
+  const hasGames = can("presence.games");
+  const hasWatching = can("presence.watching");
+  const hasExtension = can("presence.extension");
+  const hasPanel = !!info && can("host.overlay");
   const { busy, run } = useAction();
   const [filter, setFilter] = useState("");
   const [uid, setUid] = useState("");
@@ -114,7 +122,11 @@ export function Games() {
             <div className="panel-head">
               <div>
                 <h2>Discord status</h2>
-                <div className="sub">Shows the game you're playing, your Apple Music or Spotify song and the app you're using on your Discord profile.</div>
+                <div className="sub">
+                  {hasGames && hasMedia
+                    ? "Shows the game you're playing, your Apple Music or Spotify song and the app you're using on your Discord profile."
+                    : "Shows your own statuses and a well-known program you have open on your Discord profile."}
+                </div>
               </div>
               <Switch checked={s.enabled} disabled={busy !== null} onChange={(v) => void save({ enabled: v })} label="Show on Discord" />
             </div>
@@ -155,36 +167,53 @@ export function Games() {
                 <h2>What to show</h2>
               </div>
             </div>
-            <Switch checked={s.settings.showMusic} disabled={busy !== null} onChange={(v) => void save({ showMusic: v })} label="Apple Music" />
-            <Switch checked={s.settings.showSpotify} disabled={busy !== null} onChange={(v) => void save({ showSpotify: v })} label="Spotify" />
-            <Switch checked={s.settings.showLyrics} disabled={busy !== null} onChange={(v) => void save({ showLyrics: v })} label="The current lyric line" />
-            <Switch checked={s.settings.showAlbumArt} disabled={busy !== null} onChange={(v) => void save({ showAlbumArt: v })} label="Album art" />
-            <Switch checked={s.settings.showCurrentApp} disabled={busy !== null} onChange={(v) => void save({ showCurrentApp: v })} label="The app I'm using, with its window or tab title" />
-            <Switch checked={s.settings.showWatching} disabled={busy !== null} onChange={(v) => void save({ showWatching: v })} label="What I'm watching (Netflix, Hulu, Disney+, Prime Video, Max, Crunchyroll, Paramount+, Peacock, Apple TV+, Plex)" />
-            {s.settings.showWatching && (
+            {hasMedia && (
+              <>
+                <Switch checked={s.settings.showMusic} disabled={busy !== null} onChange={(v) => void save({ showMusic: v })} label="Apple Music" />
+                <Switch checked={s.settings.showSpotify} disabled={busy !== null} onChange={(v) => void save({ showSpotify: v })} label="Spotify" />
+                <Switch checked={s.settings.showLyrics} disabled={busy !== null} onChange={(v) => void save({ showLyrics: v })} label="The current lyric line" />
+                <Switch checked={s.settings.showAlbumArt} disabled={busy !== null} onChange={(v) => void save({ showAlbumArt: v })} label="Album art" />
+              </>
+            )}
+            <Switch
+              checked={s.settings.showCurrentApp}
+              disabled={busy !== null}
+              onChange={(v) => void save({ showCurrentApp: v })}
+              label={notWindows ? "A well-known program I have open (its name only, never a window title)" : "The app I'm using, with its window or tab title"}
+            />
+            {hasWatching && (
+              <Switch checked={s.settings.showWatching} disabled={busy !== null} onChange={(v) => void save({ showWatching: v })} label="What I'm watching (Netflix, Hulu, Disney+, Prime Video, Max, Crunchyroll, Paramount+, Peacock, Apple TV+, Plex)" />
+            )}
+            {hasWatching && s.settings.showWatching && (
               <div className="stack" style={{ gap: 6, marginLeft: 24 }}>
                 <Switch checked={s.settings.showWatchTitle} disabled={busy !== null} onChange={(v) => void save({ showWatchTitle: v })} label="With the show or movie name" />
                 <Switch checked={s.settings.showWatchPoster} disabled={busy !== null} onChange={(v) => void save({ showWatchPoster: v })} label="With its poster (looked up on TVMaze and Cinemeta)" />
                 <Switch checked={s.settings.showWatchCasual} disabled={busy !== null} onChange={(v) => void save({ showWatchCasual: v })} label="Also YouTube and Twitch" />
-                <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                  <button className="btn small" disabled={busy !== null} onClick={() => void getExtension()}>
-                    Get the browser extension
-                  </button>
-                  <span className="sub">Adds the show, episode and progress bar. Chrome or Edge.</span>
-                </div>
-                {extPath && (
+                {hasExtension && (
+                  <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                    <button className="btn small" disabled={busy !== null} onClick={() => void getExtension()}>
+                      Get the browser extension
+                    </button>
+                    <span className="sub">Adds the show, episode and progress bar. Chrome or Edge.</span>
+                  </div>
+                )}
+                {hasExtension && extPath && (
                   <div className="sub">
                     Copied to {extPath} (opened in Explorer). In Chrome or Edge open the extensions page (chrome://extensions or edge://extensions),
                     turn on Developer mode, press Load unpacked and pick that folder. If you already have it loaded, press its reload button on that page to get the newest version.
                   </div>
                 )}
+                {hasExtension && (
                 <div className="sub faint">
                   {s.extensionLinked
                     ? "The RichPresence browser extension can report the exact show, episode and position here."
                     : "The browser extension link isn't open yet. RigControl keeps trying (it uses one of the ports 47610 to 47619 on this PC)."}
                 </div>
+                )}
               </div>
             )}
+            {hasGames && (
+            <>
             <Switch
               checked={s.settings.officialToDiscord}
               disabled={busy !== null}
@@ -203,12 +232,16 @@ export function Games() {
                 </button>
               </div>
             </div>
+            </>
+            )}
           </section>
 
           <CustomStatusesPanel status={s} onStatus={setData} />
 
-          <PanelSettings />
+          {/* The in-game panel belongs to the Windows app; elsewhere it is not asked for. */}
+          {hasPanel && <PanelSettings />}
 
+          {hasGames && (
           <section className="panel" aria-label="Game library">
             <div className="panel-head">
               <div>
@@ -230,6 +263,7 @@ export function Games() {
               ))}
             </div>
           </section>
+          )}
         </>
       )}
     </div>

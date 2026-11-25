@@ -1,6 +1,8 @@
+#if WINDOWS
 using NAudio.CoreAudioApi;
 using NAudio.Dsp;
 using NAudio.Wave;
+#endif
 
 namespace RigControl.Lighting;
 
@@ -11,6 +13,7 @@ namespace RigControl.Lighting;
 /// </summary>
 public sealed class BandFollower
 {
+#if WINDOWS // The filters come from NAudio, which only the Windows flavour carries. The gain sum below is used everywhere.
     private readonly BiQuadFilter _f1, _f2;
     private readonly float _attack, _release, _peakFall;
     private float _env, _peak;
@@ -52,6 +55,9 @@ public sealed class BandFollower
         // Below a quiet floor nothing is playing (or it is too soft to matter): no pulse.
         Level = _peak < 0.003f ? 0f : Math.Clamp(_env / Math.Max(_peak, 0.02f), 0f, 1f);
     }
+#else
+    private BandFollower() { }
+#endif
 
     /// <summary>
     /// A level with gain applied (percent, 100 = as heard): more gain reaches "full" on softer hits and lifts the
@@ -86,12 +92,13 @@ public static class BassFollower
     }
 }
 
+#if WINDOWS
 /// <summary>
 /// Listens to what the PC plays (WASAPI loopback of the default output, the same way the audio spectrum does) and
 /// keeps a bass and a treble <see cref="BandFollower"/> up to date. Audio stays in memory; nothing is recorded or
 /// saved. When the default output changes, it moves to the new one.
 /// </summary>
-public sealed class BassMeter : IDisposable
+public sealed class BassMeter : IAudioMeter
 {
     private readonly object _gate = new();
     private WasapiLoopbackCapture? _capture;
@@ -214,3 +221,4 @@ public sealed class BassMeter : IDisposable
 
     public void Dispose() => Close();
 }
+#endif

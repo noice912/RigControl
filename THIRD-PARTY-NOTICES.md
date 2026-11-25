@@ -102,6 +102,20 @@ LibreHardwareMonitorLib carries compiled PawnIO modules inside its own file (for
 `SmbusI801`, `AMDFamily17`, `RyzenSMU`). They are PawnIO modules (LGPL-2.1 per that repository, see above); to be
 confirmed with them.
 
+### Only in the Linux and macOS app (`src/RigControl.Desktop`)
+
+The Windows exe does not carry these. The Linux and macOS app carries them next to its program file, together with
+the .NET 8 runtime (MIT, as above) and the same Lighting and Discord status code as the Windows app, without the
+Windows-only libraries (no NAudio, no WebView2, no WPF).
+
+| Library | Version | Licence | Source |
+|---|---|---|---|
+| Photino.NET | 4.0.16 | Apache-2.0 per the package ([text](LICENSES/Apache-2.0.txt)), by TryPhotino, "Copyright (C) 2025" in the package. To be confirmed: the package holds no licence or NOTICE file of its own, so the repository's must be read at this version before a Linux or macOS release. | https://github.com/tryphotino/photino.NET |
+| Photino.Native (the native window library: `Photino.Native.so` on Linux, `Photino.Native.dylib` on macOS) | 4.0.22 | Apache-2.0 per the package ([text](LICENSES/Apache-2.0.txt)), by TryPhotino. To be confirmed the same way. It includes the JSON library "JSON for Modern C++" by Niels Lohmann (MIT per that project); to be confirmed. | https://github.com/tryphotino/photino.Native |
+
+The web view itself is the system's and is not carried: WebKitGTK (`libwebkit2gtk-4.1`, LGPL-2.1 and BSD) on Linux,
+which you install as a system package, and Apple's WKWebView on macOS.
+
 ## 3. Interface (npm)
 
 Carried in the exe as part of the built interface:
@@ -172,6 +186,8 @@ RigControl works with these but does not carry them, and none of their code is i
 - **VB-Audio Virtual Cable** (donationware, proprietary). You install it yourself from https://vb-audio.com/Cable.
 - **Discord**, **OBS Studio**, **NZXT CAM**, **Armoury Crate**, **GIGABYTE Control Center**, NVIDIA's and ASUS's
   drivers and installers. RigControl talks to or works beside whatever is installed.
+- **WebKitGTK** on Linux and **WKWebView** on macOS: the system's own web view that the Linux and macOS app shows
+  its interface in. On Linux, **OpenRGB** is also yours to install and start; RigControl only connects to it there.
 - **Online services** it can ask for information (LRCLIB, Apple's iTunes Search, TVmaze, Cinemeta, Enka.Network).
   See [PRIVACY.md](PRIVACY.md).
 

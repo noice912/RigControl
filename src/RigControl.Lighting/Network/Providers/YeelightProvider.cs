@@ -264,6 +264,141 @@ public sealed class YeelightProvider : INetworkLightProvider
         return LightDescription.Single();
     }
 
+    // ---------------------------------------------------------------- direct control (the specification's set_power,
+    // set_bright, set_scene and get_prop, on a fresh normal connection each time; music mode is never used for this)
+
+    public LightControls Controls(PairedLight light) =>
+        new(LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes);
+
+    // A change is at most three commands for each of up to two lights. Yeelight allows 144 commands a minute over all
+    // connections to one light, so changes are kept at least 2.5 seconds apart (at most 24 a minute).
+    public TimeSpan ControlGap => TimeSpan.FromSeconds(2.5);
+
+    /// <summary>"" for the main light, "bg_" for the background light: the ones that have colour.</summary>
+    private static string[] Prefixes(Caps caps) => (caps.Main, caps.Background) switch
+    {
+        (true, true) => new[] { "", "bg_" },
+        (false, true) => new[] { "bg_" },
+        _ => new[] { "" },
+    };
+
+    private async Task<Wire> OpenAsync(ILightNetwork net, PairedLight light, CancellationToken ct) =>
+        new(await net.ConnectTcpAsync(light.Address, PortOf(light.Data), TimeSpan.FromSeconds(2.5), ct).ConfigureAwait(false));
+
+    /// <summary>Sends one command and waits for its answer. Throws (in plain words) when the light refuses or says nothing.</summary>
+    private async Task<IReadOnlyList<string>> AskCoreAsync(Wire wire, int id, string method, object[] parameters, CancellationToken ct)
+    {
+        var reply = await wire.AskAsync(id, Command(id, method, parameters), ReplyTime, ct).ConfigureAwait(false)
+                    ?? throw new IOException("it didn't answer");
+        if (reply.Result is null)
+            throw new InvalidOperationException("The Yeelight refused: " + DeviceText.Tidy(reply.Error, 80).TrimEnd('.') + ".");
+        return reply.Result;
+    }
+
+    private async Task<Dictionary<string, string>> PropsAsync(Wire wire, int id, string[] names, CancellationToken ct)
+    {
+        var result = await AskCoreAsync(wire, id, "get_prop", names.Cast<object>().ToArray(), ct).ConfigureAwait(false);
+        var props = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i < names.Length && i < result.Count; i++) props[names[i]] = result[i];
+        return props;
+    }
+
+    public async Task<LightReading> ReadAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        var caps = Caps.Of(light.Data);
+        var p = caps.Main ? "" : "bg_";
+        var mode = caps.Main ? "color_mode" : "bg_lmode";
+        using var wire = await OpenAsync(net, light, ct).ConfigureAwait(false);
+        var props = await PropsAsync(wire, 1, new[] { p + "power", p + "bright", mode, p + "rgb", p + "hue", p + "sat" }, ct).ConfigureAwait(false);
+        var power = props.GetValueOrDefault(p + "power", "");
+        bool? on = power == "on" ? true : power == "off" ? false : null;
+        int? bright = Number(props, p + "bright", -1) is var b and >= 0 ? Math.Clamp(b, 0, 100) : null;
+        int? colour = Number(props, mode, 0) switch
+        {
+            1 when Number(props, p + "rgb", 0) is var rgb and > 0 => LightColour.Full(rgb),
+            3 when Number(props, p + "hue", -1) is var h and >= 0 && Number(props, p + "sat", -1) is var s and >= 0 => LightColour.FromHsv(h, s, 100),
+            _ => null,
+        };
+        return new LightReading(on, bright, colour);
+    }
+
+    public async Task<string> SaveAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        var caps = Caps.Of(light.Data);
+        var names = (caps.Main ? Session.MainProps : Array.Empty<string>()).Concat(caps.Background ? Session.BackgroundProps : Array.Empty<string>()).ToArray();
+        using var wire = await OpenAsync(net, light, ct).ConfigureAwait(false);
+        return JsonSerializer.Serialize(await PropsAsync(wire, 1, names, ct).ConfigureAwait(false));
+    }
+
+    public async Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct)
+    {
+        var caps = Caps.Of(light.Data);
+        using var wire = await OpenAsync(net, light, ct).ConfigureAwait(false);
+        var id = 0;
+        foreach (var p in Prefixes(caps))
+        {
+            if (change.TurnsOff)
+            {
+                await AskCoreAsync(wire, ++id, p + "set_power", new object[] { "off", "smooth", 300 }, ct).ConfigureAwait(false);
+                continue;
+            }
+            var now = await PropsAsync(wire, ++id, new[] { p + "power", p + "bright" }, ct).ConfigureAwait(false);
+            var bright = Math.Clamp(change.Brightness ?? Number(now, p + "bright", 100), 1, 100);
+            if (change.Colour is { } c)
+            {
+                // A scene sets colour and brightness in one command, and switches the light on.
+                await AskCoreAsync(wire, ++id, p + "set_scene", new object[] { "color", Math.Max(1, c & 0xFFFFFF), bright }, ct).ConfigureAwait(false);
+                continue;
+            }
+            if (now.GetValueOrDefault(p + "power", "") != "on")
+                await AskCoreAsync(wire, ++id, p + "set_power", new object[] { "on", "smooth", 300 }, ct).ConfigureAwait(false);
+            if (change.Brightness is not null)
+                await AskCoreAsync(wire, ++id, p + "set_bright", new object[] { bright, "smooth", 300 }, ct).ConfigureAwait(false);
+        }
+    }
+
+    public async Task GiveBackAsync(ILightNetwork net, PairedLight light, string saved, CancellationToken ct)
+    {
+        Dictionary<string, string>? before;
+        try { before = JsonSerializer.Deserialize<Dictionary<string, string>>(saved); }
+        catch (JsonException) { before = null; }
+        if (before is null) throw new InvalidOperationException("What the Yeelight showed before couldn't be read.");
+        var caps = Caps.Of(light.Data);
+        using var wire = await OpenAsync(net, light, ct).ConfigureAwait(false);
+        var id = 0;
+        if (caps.Main && Restore(before, "", "color_mode") is { } main) await AskCoreAsync(wire, ++id, main.Method, main.Parameters, ct).ConfigureAwait(false);
+        if (caps.Background && Restore(before, "bg_", "bg_lmode") is { } bg) await AskCoreAsync(wire, ++id, bg.Method, bg.Parameters, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The one command that puts a light (main, or "bg_" for the background) back. A light that was on gets its
+    /// colour and brightness back by the mode it was in; a colour flow that was running comes back as its plain
+    /// colour (flows are not rebuilt). A light that was off is switched off again; the colour it will show when
+    /// next switched on is then the last one sent, because giving back the old colour would switch it on.
+    /// </summary>
+    private static (string Method, object[] Parameters)? Restore(IReadOnlyDictionary<string, string> before, string prefix, string modeName)
+    {
+        var power = before.GetValueOrDefault(prefix + "power", "");
+        if (power == "off") return (prefix + "set_power", new object[] { "off", "smooth", 300 });
+        if (power != "on") return null; // unknown: left as it is
+        var bright = Math.Clamp(Number(before, prefix + "bright", 100), 1, 100);
+        int rgb = Number(before, prefix + "rgb", 0), kelvin = Number(before, prefix + "ct", 0), hue = Number(before, prefix + "hue", -1), sat = Number(before, prefix + "sat", -1);
+        object[]? colour = rgb > 0 ? new object[] { "color", rgb, bright } : null;
+        object[]? white = kelvin > 0 ? new object[] { "ct", kelvin, bright } : null;
+        object[]? hsv = hue >= 0 && sat >= 0 ? new object[] { "hsv", Math.Clamp(hue, 0, 359), Math.Clamp(sat, 0, 100), bright } : null;
+        var scene = Number(before, modeName, 0) switch
+        {
+            1 => colour ?? white ?? hsv,
+            2 => white ?? colour ?? hsv,
+            3 => hsv ?? colour ?? white,
+            _ => colour ?? white ?? hsv,
+        };
+        return scene is null ? null : (prefix + "set_scene", scene);
+    }
+
+    private static int Number(IReadOnlyDictionary<string, string> props, string name, int otherwise) =>
+        int.TryParse(props.GetValueOrDefault(name, ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : otherwise;
+
     // ---------------------------------------------------------------- sending colours
 
     public async Task<ILightSession> StartAsync(ILightNetwork net, PairedLight light, LightDescription description, CancellationToken ct)
@@ -413,8 +548,8 @@ public sealed class YeelightProvider : INetworkLightProvider
 
     private sealed class Session : ILightSession
     {
-        private static readonly string[] MainProps = { "power", "bright", "color_mode", "ct", "rgb", "hue", "sat", "flowing", "flow_params" };
-        private static readonly string[] BackgroundProps = { "bg_power", "bg_bright", "bg_lmode", "bg_rgb", "bg_ct", "bg_hue", "bg_sat" };
+        internal static readonly string[] MainProps = { "power", "bright", "color_mode", "ct", "rgb", "hue", "sat", "flowing", "flow_params" };
+        internal static readonly string[] BackgroundProps = { "bg_power", "bg_bright", "bg_lmode", "bg_rgb", "bg_ct", "bg_hue", "bg_sat" };
 
         private readonly YeelightProvider _owner;
         private readonly ILightNetwork _net;
@@ -628,8 +763,8 @@ public sealed class YeelightProvider : INetworkLightProvider
                 music?.Dispose(); // closing it also ends music mode
             }
             string? problem = null;
-            if (_caps.Main && Restore("", "color_mode") is { } main) problem = await PutBackAsync(wait, ct, main.Method, main.Parameters).ConfigureAwait(false);
-            if (_caps.Background && Restore("bg_", "bg_lmode") is { } background)
+            if (_caps.Main && Restore(_before, "", "color_mode") is { } main) problem = await PutBackAsync(wait, ct, main.Method, main.Parameters).ConfigureAwait(false);
+            if (_caps.Background && Restore(_before, "bg_", "bg_lmode") is { } background)
                 problem = await PutBackAsync(wait, ct, background.Method, background.Parameters).ConfigureAwait(false) ?? problem;
             if (problem is not null) throw new IOException(problem);
         }
@@ -661,35 +796,6 @@ public sealed class YeelightProvider : INetworkLightProvider
             }
             return problem;
         }
-
-        /// <summary>
-        /// The one command that puts a light (main, or "bg_" for the background) back. A light that was on gets its
-        /// colour and brightness back by the mode it was in; a colour flow that was running comes back as its plain
-        /// colour (flows are not rebuilt). A light that was off is switched off again; the colour it will show when
-        /// next switched on is then the last one sent, because giving back the old colour would switch it on.
-        /// </summary>
-        private (string Method, object[] Parameters)? Restore(string prefix, string modeName)
-        {
-            var power = _before.GetValueOrDefault(prefix + "power", "");
-            if (power == "off") return (prefix + "set_power", new object[] { "off", "smooth", 300 });
-            if (power != "on") return null; // unknown: left as it is
-            var bright = Math.Clamp(Number(prefix + "bright", 100), 1, 100);
-            int rgb = Number(prefix + "rgb", 0), kelvin = Number(prefix + "ct", 0), hue = Number(prefix + "hue", -1), sat = Number(prefix + "sat", -1);
-            object[]? colour = rgb > 0 ? new object[] { "color", rgb, bright } : null;
-            object[]? white = kelvin > 0 ? new object[] { "ct", kelvin, bright } : null;
-            object[]? hsv = hue >= 0 && sat >= 0 ? new object[] { "hsv", Math.Clamp(hue, 0, 359), Math.Clamp(sat, 0, 100), bright } : null;
-            var scene = Number(modeName, 0) switch
-            {
-                1 => colour ?? white ?? hsv,
-                2 => white ?? colour ?? hsv,
-                3 => hsv ?? colour ?? white,
-                _ => colour ?? white ?? hsv,
-            };
-            return scene is null ? null : (prefix + "set_scene", scene);
-        }
-
-        private int Number(string name, int otherwise) =>
-            int.TryParse(_before.GetValueOrDefault(name, ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : otherwise;
 
         public ValueTask DisposeAsync()
         {

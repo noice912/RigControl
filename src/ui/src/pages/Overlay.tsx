@@ -282,8 +282,11 @@ export function Overlay() {
     refresh();
     readAudio();
     const id = window.setInterval(readAudio, 2000);
+    // The layout follows the room the page really has, so a panel window of the wrong size can't cut columns off.
+    const fit = () => setWide(window.innerWidth >= 1500);
+    window.addEventListener("resize", fit);
     const offShown = on("overlay.shown", (d) => {
-      setWide(d.wide);
+      setWide(d.wide && window.innerWidth >= 1500);
       refresh();
       readAudio();
       call<PresenceStatus>("presence.getStatus").then(setS).catch(() => {});
@@ -305,6 +308,7 @@ export function Overlay() {
       offPad();
       offMode();
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", fit);
     };
   }, [refresh, readAudio, setS]);
 

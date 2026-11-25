@@ -47,8 +47,9 @@ public sealed class HueProvider : INetworkLightProvider
     public string DisplayName => "Philips Hue";
     public bool Tested => false;
     public string Notes =>
-        "A Hue Bridge and its colour lights. Nothing is touched until you place the bridge on the layout. Then every colour light in the " +
+        "A Hue Bridge and its colour lights. Effects leave it alone until you place the bridge on the layout. Then every colour light in the " +
         "bridge's entertainment area follows and is switched on while it does (with no entertainment area: every colour light on the bridge, in every room). " +
+        "The bridge's own switch, brightness and colour here change those same lights; Everything at once and Turn all lights off leave Hue alone. " +
         "When the sync stops, each light goes back to how it was, on or off. Each light follows as one colour a few times a second. " +
         "Gradient strips piece by piece and fast sync need Hue's Entertainment stream, which is not built yet. " +
         "Built from open-source descriptions of the protocol; not yet tried on a real bridge.";
@@ -64,7 +65,7 @@ public sealed class HueProvider : INetworkLightProvider
             "Press the round button on top of the Hue Bridge.",
             "Press Pair within 30 seconds.",
             "In the Hue app, make an entertainment area with the lights that should follow (Settings > Entertainment areas). Without one, every colour light on the bridge follows.",
-            "Turn Per LED on and place the bridge on the Layout. Until then no Hue light is touched. Lights that follow are switched on, and go back to how they were when the sync stops.",
+            "To have the effects play on Hue: turn Per LED on and place the bridge on the Layout. Until then no effect touches a Hue light. Lights that follow are switched on, and go back to how they were when the sync stops.",
         },
         ReturnsSecret: true,
         ManualAddress: true,
@@ -332,6 +333,138 @@ public sealed class HueProvider : INetworkLightProvider
             throw new IOException("the bridge's list of entertainment areas couldn't be read");
         }
         return (places, hasArea);
+    }
+
+    // ---- direct control: the same CLIP v2 light commands, for the lights that follow (the entertainment area's)
+
+    public LightControls Controls(PairedLight light) =>
+        new(LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes, LightAbility.Yes);
+
+    // One Hue Bridge can run every light in a house: it is only changed from its own controls, never by "everything".
+    public bool JoinsEverythingAtOnce => false;
+
+    // A change is one command per light, and the bridge takes about ten a second.
+    public TimeSpan ControlGap => TimeSpan.FromSeconds(1);
+
+    /// <summary>The colour lights that follow: the entertainment area's (every colour light when the bridge has no area).</summary>
+    private static async Task<List<HueLight>> FollowingAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        var key = light.RequireSecret("token");
+        var tls = RuleFor(light);
+        var lights = await ColourLightsAsync(net, light.Address, key, tls, ct).ConfigureAwait(false);
+        if (lights.Count == 0) throw new InvalidOperationException(NoColourLightsMessage);
+        var (places, hasArea) = await PlacesAsync(net, light.Address, key, tls, lights, ct).ConfigureAwait(false);
+        if (!hasArea) return lights;
+        var inArea = lights.Where(l => places.ContainsKey(l.Id)).ToList();
+        return inArea.Count > 0 ? inArea : throw new InvalidOperationException(EmptyAreaMessage);
+    }
+
+    public async Task<LightReading> ReadAsync(ILightNetwork net, PairedLight light, CancellationToken ct) =>
+        Reading(await FollowingAsync(net, light, ct).ConfigureAwait(false));
+
+    /// <summary>
+    /// The lights as one: on when any is on, the average brightness of those that are on, and their colour when they
+    /// all show (about) the same one; null where they differ or show a white.
+    /// </summary>
+    internal static LightReading Reading(IReadOnlyList<HueLight> lights)
+    {
+        var on = lights.Where(l => l.On).ToList();
+        if (on.Count == 0) return new LightReading(false, null, null);
+        var brightness = (int)Math.Round(on.Average(l => Math.Clamp(l.Brightness, 0, 100)));
+        int? colour = null;
+        var first = on[0];
+        if (on.All(l => l.Mirek is null && Math.Abs(l.X - first.X) < 0.01 && Math.Abs(l.Y - first.Y) < 0.01))
+            colour = FromXy(first.X, first.Y);
+        return new LightReading(true, brightness, colour);
+    }
+
+    public async Task<string> SaveAsync(ILightNetwork net, PairedLight light, CancellationToken ct) =>
+        JsonSerializer.Serialize((await FollowingAsync(net, light, ct).ConfigureAwait(false))
+            .Select(l => new SavedLight(l.Id, l.On, l.Brightness, l.X, l.Y, l.Mirek)).ToList());
+
+    /// <summary>One light as it was before RigControl changed it.</summary>
+    internal sealed record SavedLight(string Id, bool On, double Brightness, double X, double Y, int? Mirek);
+
+    public async Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct)
+    {
+        var key = light.RequireSecret("token");
+        var tls = RuleFor(light);
+        var lights = await FollowingAsync(net, light, ct).ConfigureAwait(false);
+        var failed = 0;
+        for (var i = 0; i < lights.Count; i++)
+        {
+            if (i > 0) await Wait(TimeSpan.FromMilliseconds(100), ct).ConfigureAwait(false);
+            if (!await PutLightAsync(net, light.Address, key, tls, lights[i].Id, ChangeBody(change, lights[i].Gamut), Wait, ct).ConfigureAwait(false)) failed++;
+        }
+        if (failed > 0) throw new IOException(failed == lights.Count ? "the bridge stayed too busy to take it" : $"{failed} of {lights.Count} lights didn't take it");
+    }
+
+    public async Task GiveBackAsync(ILightNetwork net, PairedLight light, string saved, CancellationToken ct)
+    {
+        List<SavedLight>? was;
+        try { was = JsonSerializer.Deserialize<List<SavedLight>>(saved); }
+        catch (JsonException) { was = null; }
+        if (was is null) throw new InvalidOperationException("What the Hue lights showed before couldn't be read.");
+        var key = light.RequireSecret("token");
+        var tls = RuleFor(light);
+        var failed = 0;
+        for (var i = 0; i < was.Count; i++)
+        {
+            if (i > 0) await Wait(TimeSpan.FromMilliseconds(100), ct).ConfigureAwait(false);
+            var w = was[i];
+            var body = RestoreBody(new HueLight(w.Id, "", "", w.On, w.Brightness, w.X, w.Y, w.Mirek, null));
+            if (!await PutLightAsync(net, light.Address, key, tls, w.Id, body, Wait, ct).ConfigureAwait(false)) failed++;
+        }
+        if (failed > 0) throw new IOException($"{failed} of {was.Count} lights didn't take their old state back");
+    }
+
+    /// <summary>The command for one change: off, or on with a brightness (1-100) and a colour as Hue's x and y.</summary>
+    internal static string ChangeBody(LightChange change, double[]? gamut)
+    {
+        if (change.TurnsOff) return "{\"on\":{\"on\":false}}";
+        var parts = new List<string> { "\"on\":{\"on\":true}" };
+        if (change.Brightness is { } b) parts.Add($"\"dimming\":{{\"brightness\":{N(Math.Clamp(b, 1, 100))}}}");
+        if (change.Colour is { } c)
+        {
+            var (x, y) = ToXy(LightColour.Full(c), gamut);
+            parts.Add($"\"color\":{{\"xy\":{{\"x\":{N(x)},\"y\":{N(y)}}}}}");
+        }
+        return "{" + string.Join(",", parts) + "}";
+    }
+
+    /// <summary>One PUT to one light. True when it took it (or the light is gone); false when the bridge stayed too busy.</summary>
+    private static async Task<bool> PutLightAsync(ILightNetwork net, string address, BoundSecret key, TlsRule tls, string id, string body,
+        Func<TimeSpan, CancellationToken, Task> wait, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var reply = await ClipAsync(net, address, key, tls, "PUT", "light/" + Uri.EscapeDataString(id), body, ct).ConfigureAwait(false);
+            if (reply.Ok) return true;
+            if (reply.Status == 404) return true; // the light was removed from the bridge
+            // Too many commands at once: give the bridge a moment and carry on.
+            if (reply.Status is 429 or 503) { await wait(TimeSpan.FromSeconds(1), ct).ConfigureAwait(false); continue; }
+            reply.EnsureOk();
+        }
+        return false;
+    }
+
+    /// <summary>Hue's x and y back to a screen colour at full strength (the inverse of <see cref="ToXy"/>).</summary>
+    internal static int FromXy(double x, double y)
+    {
+        if (y <= 1e-6) return 0xFFFFFF;
+        var bigY = 1.0;
+        var bigX = x / y;
+        var bigZ = (1 - x - y) / y;
+        var r = bigX * 3.2404542 - bigY * 1.5371385 - bigZ * 0.4985314;
+        var g = -bigX * 0.9692660 + bigY * 1.8760108 + bigZ * 0.0415560;
+        var b = bigX * 0.0556434 - bigY * 0.2040259 + bigZ * 1.0572252;
+        r = Math.Max(0, r);
+        g = Math.Max(0, g);
+        b = Math.Max(0, b);
+        var max = Math.Max(r, Math.Max(g, b));
+        if (max <= 1e-9) return 0xFFFFFF;
+        static int Gamma(double c) => (int)Math.Round(Math.Clamp(c <= 0.0031308 ? 12.92 * c : 1.055 * Math.Pow(c, 1 / 2.4) - 0.055, 0, 1) * 255);
+        return (Gamma(r / max) << 16) | (Gamma(g / max) << 8) | Gamma(b / max);
     }
 
     // ---- sending colours

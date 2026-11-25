@@ -611,11 +611,11 @@ public class HueProviderTests
         Assert.Equal("light", _provider.PointName);
         // A bridge can hold a whole house of lights: pairing alone touches none of them, and the page says who follows.
         Assert.False(_provider.FollowsWhenNotPlaced);
-        Assert.Contains("Nothing is touched until you place the bridge on the layout", _provider.Notes);
+        Assert.Contains("Effects leave it alone until you place the bridge on the layout", _provider.Notes);
         Assert.Contains("entertainment area", _provider.Notes);
         Assert.Contains("switched on", _provider.Notes);
         Assert.Contains("every colour light on the bridge, in every room", _provider.Notes);
-        Assert.Contains(_provider.Pairing.Steps, s => s.Contains("Until then no Hue light is touched"));
+        Assert.Contains(_provider.Pairing.Steps, s => s.Contains("Until then no effect touches a Hue light"));
         Assert.Contains(NetworkLights.BuiltIn(), p => p is HueProvider);
     }
 }

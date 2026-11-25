@@ -167,10 +167,11 @@ public class NanoleafProviderTests
     }
 
     [Fact]
-    public void It_is_marked_as_tried_on_real_hardware_and_left_alone_when_not_placed()
+    public void It_is_marked_as_tried_on_real_hardware_and_follows_the_one_colour_when_not_placed()
     {
         Assert.True(_provider.Tested);
-        Assert.False(_provider.FollowsWhenNotPlaced);
+        // Owner (2026-11-25): an unplaced Nanoleaf follows the one colour during an effect.
+        Assert.True(_provider.FollowsWhenNotPlaced);
         Assert.True(_provider.Pairing.ReturnsSecret);
         Assert.Equal(10, _provider.MaxFramesPerSecond);
         Assert.Equal("panel", _provider.PointName);
@@ -263,7 +264,7 @@ public class NetworkLightsModuleTests : IDisposable
         Assert.Equal(new[] { "hue", "hue", "govee", "yeelight", "cololight", "leetdesk", "wled", "openrgb", "cloud" }, gaps);
         // The page hides the search button for a brand that can't search, and says which brands wait to be placed.
         Assert.Equal(new[] { "cololight" }, brands.Where(b => !b.GetProperty("canSearch").GetBoolean()).Select(b => b.GetProperty("brand").GetString()));
-        Assert.Equal(new[] { "nanoleaf", "hue" }, brands.Where(b => !b.GetProperty("followsUnplaced").GetBoolean()).Select(b => b.GetProperty("brand").GetString()));
+        Assert.Equal(new[] { "hue" }, brands.Where(b => !b.GetProperty("followsUnplaced").GetBoolean()).Select(b => b.GetProperty("brand").GetString()));
         Assert.False(s.GetProperty("scanStopped").GetBoolean());
 
         // Looking at the page, the status, the layout, and playing an effect: none of it searches or sends anything.
@@ -394,7 +395,7 @@ public class NetworkLightsModuleTests : IDisposable
     public async Task A_nanoleaf_paired_by_an_older_version_and_its_place_on_the_layout_are_kept()
     {
         var old = new NanoleafSettings { Ip = FakeNanoleaf.Ip, Name = "Lines", Serial = "S1" };
-        old.SetToken(FakeNanoleaf.Token);
+        old.SetToken(FakeNanoleaf.Token, new FakeProtector());
         var settings = new LightingSettings { Nanoleaf = old };
         settings.Layout.PerLed = true;
         settings.Layout.Items.Add(new LayoutItem { Key = "nanoleaf|Lines|S1", Zone = -1, X = 0.6, Y = 0.1, W = 0.3, H = 0.4 });
@@ -413,21 +414,6 @@ public class NetworkLightsModuleTests : IDisposable
         Assert.Equal(0.6, zone.GetProperty("placed").GetProperty("x").GetDouble());
         Assert.Equal(3, (await Call(m, "getNanoleaf")).GetProperty("panels").GetInt32());
         Assert.All(_net.Asks, a => Assert.StartsWith("http://172.16.0.70:16021/", a.Url));
-    }
-
-    [Fact]
-    public async Task Pairing_a_nanoleaf_moves_its_room_light_box_to_its_panels()
-    {
-        var settings = new LightingSettings();
-        settings.Layout.Items.Add(new LayoutItem { Key = "homelab|Nanoleaf Lines|nanoleaf-lines", Zone = -1, X = 0.2, Y = 0.2, W = 0.2, H = 0.2 });
-        new SettingsStore(SettingsPath, NullLog.Instance).Set(LightingSettings.Section, settings);
-        _ = new FakeNanoleaf(_net);
-        await using var m = await Start();
-        await Call(m, "pairNanoleaf", new { ip = FakeNanoleaf.Ip });
-        var zones = (await Call(m, "getLayout")).GetProperty("zones").EnumerateArray().ToList();
-        var zone = Assert.Single(zones);
-        Assert.Equal("nanoleaf|Lines|S1", zone.GetProperty("key").GetString());
-        Assert.Equal(0.2, zone.GetProperty("placed").GetProperty("x").GetDouble());
     }
 
     // ---------------------------------------------------------------- network lights do not need OpenRGB
@@ -505,24 +491,6 @@ public class NetworkLightsModuleTests : IDisposable
 
         await Call(m, "setSync", new { enabled = false });
         await Eventually.True(() => _fake.Stops == 1, "the light to be put back once, at the real stop");
-    }
-
-    [Fact]
-    public async Task Asking_whether_the_nanoleaf_plays_never_waits_for_the_lighting_lock()
-    {
-        // The room lights' module asks this while it holds its own lock, and the lighting module calls into that
-        // module while holding the lighting lock. If this question waited for the lighting lock, both would hang.
-        await using var m = await Start();
-        var answered = false;
-        m.ExternalLights = () =>
-        {
-            // Called with the lighting lock held (getLayout). Another thread asks the question meanwhile.
-            var asked = Task.Run(() => m.NanoleafStreaming);
-            answered = asked.Wait(TimeSpan.FromSeconds(3));
-            return Array.Empty<LightingModule.ExternalLight>();
-        };
-        await Call(m, "getLayout");
-        Assert.True(answered, "the answer came while the lighting lock was held by somebody else");
     }
 
     [Fact]

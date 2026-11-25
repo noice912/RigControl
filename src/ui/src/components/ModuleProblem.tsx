@@ -1,11 +1,24 @@
-import { useApp, useModule } from "../appContext";
+import { notOnThisSystem, useApp, useModule } from "../appContext";
 import { Notice } from "./controls";
+
+/**
+ * The one calm panel for a feature that has no version for this system (the Linux and macOS app).
+ * It is not an error: nothing is broken and there is nothing to fix.
+ */
+export function NotOnThisSystem({ title, message }: { title: string; message?: string | null }) {
+  return (
+    <Notice title={title}>
+      {message || "Not available on this system."}
+    </Notice>
+  );
+}
 
 /** Shows why a feature area is not fully working, if it isn't. Renders nothing when the module is ready. */
 export function ModuleProblem({ name }: { name: string }) {
   const m = useModule(name);
   const { info, restartAsAdmin } = useApp();
   if (!m || m.state === "ready" || m.state === "notStarted") return null;
+  if (notOnThisSystem(m)) return <NotOnThisSystem title={m.displayName} message={m.message} />;
   if (m.state === "starting") return <Notice title={`${m.displayName} is starting`}>This takes a few seconds.</Notice>;
   const needsAdmin = !info?.isElevated && /administrator/i.test(m.message ?? "");
   return (

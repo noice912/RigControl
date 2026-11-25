@@ -1,0 +1,33 @@
+<Project>
+  <!--
+    The web UI (src/ui) is built with npm and embedded in RigControl.Hosting.dll; UiAssets.cs serves it from memory
+    to whichever host shows it (WebView2 on Windows, the Linux/macOS window).
+    The build runs automatically when the UI sources are newer than the last build.
+      -p:SkipUiBuild=true   skips the npm step and embeds whatever src/ui/dist already holds (nothing, if it is empty:
+                            the app then shows a page saying the interface was not included).
+    Items are added inside the target (not by a static glob) so files produced by this very build are included.
+    Paths use forward slashes so the same file works on Windows, Linux and macOS.
+  -->
+  <PropertyGroup>
+    <UiDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'ui'))</UiDir>
+    <UiDist>$(UiDir)dist</UiDist>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <UiSource Include="$(UiDir)src/**/*;$(UiDir)index.html;$(UiDir)package.json;$(UiDir)vite.config.ts;$(UiDir)tsconfig.json" />
+  </ItemGroup>
+
+  <Target Name="BuildWebUi" BeforeTargets="BeforeBuild" Condition="'$(SkipUiBuild)' != 'true'"
+          Inputs="@(UiSource)" Outputs="$(UiDist)/index.html">
+    <Error Condition="!Exists('$(UiDir)node_modules')" Text="The web UI's packages are missing. Run 'npm install' in $(UiDir) once, or build with -p:SkipUiBuild=true." />
+    <Exec Command="npm run build" WorkingDirectory="$(UiDir)" />
+  </Target>
+
+  <Target Name="EmbedWebUi" AfterTargets="BuildWebUi" BeforeTargets="PrepareForBuild;BeforeBuild">
+    <Error Condition="!Exists('$(UiDist)/index.html') and '$(SkipUiBuild)' != 'true'" Text="The web UI was not built: $(UiDist)/index.html is missing." />
+    <ItemGroup>
+      <_UiFile Include="$(UiDist)/**/*" />
+      <EmbeddedResource Include="@(_UiFile)" LogicalName="ui/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" Visible="false" />
+    </ItemGroup>
+  </Target>
+</Project>

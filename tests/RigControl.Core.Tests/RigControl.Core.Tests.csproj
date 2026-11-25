@@ -1,6 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Platform-neutral: these tests also run on Linux and macOS (docs/PORTING.md). -->
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>

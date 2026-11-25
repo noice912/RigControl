@@ -1,11 +1,13 @@
-using System.IO;
 using System.Reflection;
 using System.Text;
 
-namespace RigControl.App;
+namespace RigControl.Hosting;
 
-/// <summary>Serves the web UI that was embedded into the exe at build time (resources named "ui/...").</summary>
-internal static class UiAssets
+/// <summary>
+/// Serves the web UI that was embedded into RigControl.Hosting.dll at build time (resources named "ui/...").
+/// Every host shows the same files; nothing is read from disk or from the network.
+/// </summary>
+public static class UiAssets
 {
     private static readonly Assembly Asm = typeof(UiAssets).Assembly;
     private static readonly Dictionary<string, string> Map = BuildMap();
@@ -23,6 +25,9 @@ internal static class UiAssets
     }
 
     public static bool HasUi => Map.ContainsKey("index.html");
+
+    /// <summary>Every file of the UI, as the path after the origin ("index.html", "assets/index-abc.js").</summary>
+    public static IReadOnlyCollection<string> Paths => Map.Keys;
 
     /// <summary>Opens the asset for a URL path such as "/assets/index-abc.js". "/" maps to index.html.</summary>
     public static bool TryOpen(string urlPath, out Stream stream, out string contentType)
@@ -59,7 +64,7 @@ internal static class UiAssets
         return true;
     }
 
-    private static string ContentTypeFor(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    public static string ContentTypeFor(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
         ".html" or ".htm" => "text/html; charset=utf-8",
         ".js" or ".mjs" => "text/javascript; charset=utf-8",

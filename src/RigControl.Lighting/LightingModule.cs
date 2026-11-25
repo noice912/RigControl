@@ -121,8 +121,12 @@ public sealed class SyncSettings
 ///    user sets it (setZoneSize, for a header with a strip or daisy-chained fans); OpenRGB remembers that itself.
 ///  - Every mode change is built from the mode exactly as the device reported it, changing only colour, speed
 ///    and brightness, within the device's own limits.
+///
+/// On Linux and macOS (the flavour built without Windows) OpenRGB is never looked for or started: RigControl only
+/// talks to an OpenRGB the user runs with its SDK server on. The screen, capture cards, sound and GIGABYTE Control
+/// Center are not offered there; see <see cref="LightingSystem"/>.
 /// </summary>
-public sealed class LightingModule : IAppModule
+public sealed class LightingModule : IAppModule, IModuleCapabilities
 {
     private const string DownloadPage = "https://openrgb.org/";
 
@@ -164,7 +168,12 @@ public sealed class LightingModule : IAppModule
     /// <summary>The newest picture the sync read (48x27 BGRA copy), for the layout page's preview.</summary>
     private volatile byte[]? _previewGrid;
 
+#if WINDOWS
     public LightingModule() : this(new OpenRgbServer(), name => Process.GetProcessesByName(name).Length > 0, background: true, new GigabyteControlCenter()) { }
+#else
+    // The programs watched for (other lighting programs, streaming programs) are Windows programs: nothing is looked for.
+    public LightingModule() : this(new OpenRgbClient(), _ => false, background: true, new NoGigabyteControlCenter()) { }
+#endif
 
     /// <param name="network">How network lights are reached; tests pass a fake so nothing leaves the PC.</param>
     /// <param name="providers">The light brands; null = every provider built into the program.</param>
@@ -178,8 +187,24 @@ public sealed class LightingModule : IAppModule
         _network = network ?? new RealLightNetwork();
         _providers = providers?.ToList();
         _netStore = new NetworkLightStore(() => _settings, SaveSettings, _gate, protector);
+        _ownProtector = protector is null;
         _net = new NetworkLights(_network, _netStore, NullLog.Instance, _providers);
     }
+
+    /// <summary>No protector was handed in: pairing keys are kept with the system's own, taken from the context at start.</summary>
+    private readonly bool _ownProtector;
+
+    /// <summary>What this system gives the lights to follow (a picture, the sound). Tests swap it to try the other flavour.</summary>
+    internal LightingSystem Here { get; init; } = LightingSystem.ThisBuild();
+
+    /// <summary>The parts of lighting that work on this system (sent to the interface in app.getInfo).</summary>
+    public IReadOnlyCollection<string> Capabilities => Here.Capabilities(_rgb.CanStartServer, HasGcc);
+
+    /// <summary>False with the stand-in that does nothing (Linux and macOS, and PCs set up without it).</summary>
+    private bool HasGcc => _gcc is not NoGigabyteControlCenter;
+
+    /// <summary>The effect that plays: the saved one, or a plain colour when the saved one isn't offered on this system.</summary>
+    private string EffectNow(SyncSettings s) => Here.EffectOr(s.Effect);
 
     private readonly IGigabyteControlCenter _gcc;
     private readonly ILightNetwork _network;
@@ -197,6 +222,8 @@ public sealed class LightingModule : IAppModule
         _ctx = context;
         _log = context.Log;
         _settings = context.Settings.Get<LightingSettings>(LightingSettings.Section);
+        // Windows: the same per-user protection as always. Linux and macOS: RigControl's own key file.
+        if (_ownProtector) _netStore.UseProtector(new PlatformProtector(context.Platform.Secrets));
         _net = new NetworkLights(_network, _netStore, _log, _providers);
         _status = new ModuleStatus(ModuleState.Starting);
         if (_background)
@@ -215,11 +242,35 @@ public sealed class LightingModule : IAppModule
     private void Loop()
     {
         AutoStart();
+        var ticks = 0;
         while (!_stop.Token.WaitHandle.WaitOne(2000))
         {
-            try { Poll(); }
+            try
+            {
+                // Where the user starts OpenRGB (Linux and macOS), it may be started after RigControl: look every 10 s.
+                if (!_rgb.CanStartServer && ++ticks % 5 == 0) ConnectIfStarted();
+                Poll();
+            }
             catch (Exception ex) { _log.Warn("Lighting update failed.", ex); }
         }
+    }
+
+    /// <summary>
+    /// Connects to an OpenRGB the user has started since. Only used where RigControl does not start OpenRGB itself;
+    /// it never starts anything, and does nothing while connected or while nothing answers on OpenRGB's port.
+    /// </summary>
+    internal void ConnectIfStarted()
+    {
+        LightingStatusDto status;
+        lock (_gate)
+        {
+            if (_rgb.CanStartServer || _rgb.Connected || !_rgb.IsListening()) return;
+            try { StartAndConnect(); }
+            catch (Exception ex) { _message = "OpenRGB could not be reached: " + Plain(ex); }
+            SetStatus();
+            status = BuildStatus();
+        }
+        PublishChanged(status);
     }
 
     /// <summary>Starts (or attaches to) OpenRGB at startup so the user never has to open it.</summary>
@@ -233,7 +284,7 @@ public sealed class LightingModule : IAppModule
         }
         finally
         {
-            // Lets the rest of the app (the room lights) pick up the PC's colours once RigControl is connected.
+            // Lets the rest of the app (the cooler screen's colour) pick up the PC's colours once RigControl is connected.
             if (connected is not null) PublishChanged(connected);
         }
     }
@@ -244,7 +295,7 @@ public sealed class LightingModule : IAppModule
         {
             try
             {
-                if (_rgb.FindExecutable() is null && !_rgb.IsListening())
+                if ((!_rgb.CanStartServer || _rgb.FindExecutable() is null) && !_rgb.IsListening())
                 {
                     SetStatus();
                     return;
@@ -289,10 +340,14 @@ public sealed class LightingModule : IAppModule
 
     private static string Plain(Exception ex) => ex is RpcException ? ex.Message : ex.Message.TrimEnd('.') + ".";
 
+    /// <summary>Said where RigControl does not start OpenRGB itself (Linux and macOS).</summary>
+    private const string StartItYourself = "OpenRGB is not running. Open OpenRGB, turn on its SDK server (port 6742), then press Start OpenRGB here.";
+
     private void StartAndConnect()
     {
         if (!_rgb.IsListening())
         {
+            if (!_rgb.CanStartServer) throw RpcException.Unavailable(StartItYourself);
             var exe = _rgb.FindExecutable() ?? throw RpcException.Unavailable("OpenRGB is not installed.");
             _log.Info("Starting OpenRGB hidden: " + exe);
             if (!_rgb.StartServer(exe)) throw RpcException.Unavailable("OpenRGB did not start. Open it once by hand to check that it works.");
@@ -306,6 +361,7 @@ public sealed class LightingModule : IAppModule
     private void SetStatus()
     {
         if (_rgb.Connected) _status = new ModuleStatus(ModuleState.Ready);
+        else if (!_rgb.CanStartServer) _status = new ModuleStatus(ModuleState.Degraded, _message ?? StartItYourself);
         else if (_rgb.FindExecutable() is null) _status = new ModuleStatus(ModuleState.Degraded, "OpenRGB is not installed.");
         else _status = new ModuleStatus(ModuleState.Degraded, _message ?? "OpenRGB is not running.");
     }
@@ -323,7 +379,7 @@ public sealed class LightingModule : IAppModule
             devices = devices.Select(d => IsLeftOut(d.Id) ? d : d with { Color = ColorMath.Hex(live) }).ToList();
         devices = devices.Select(d => IsLeftOut(d.Id) ? d with { LeftOut = true } : d).ToList();
         return new LightingStatusDto(
-            new OpenRgbDto(exe is not null || listening, exe, listening, _rgb.Connected, OpenRgbServer.Port, null, _message),
+            new OpenRgbDto(exe is not null || listening, exe, listening, _rgb.Connected, OpenRgbClient.Port, null, _message),
             devices, conflicts);
     }
 
@@ -371,9 +427,17 @@ public sealed class LightingModule : IAppModule
         if (method == "cancelNetworkScan") { _net.CancelScan(); return Task.FromResult<object?>(NetworkStatus()); }
         if (method == "pairNetworkLight") return PairNetworkLightAsync(RpcArgs.Require<NetPairArgs>(args), ct);
         if (method == "forgetNetworkLight") return ForgetNetworkLightAsync(RpcArgs.Require<NetForgetArgs>(args));
+        if (method == "setNetworkLight") return SetNetworkLightAsync(RpcArgs.Require<NetSetArgs>(args), ct);
+        if (method == "giveBackNetworkLight") return GiveBackNetworkLightAsync(RpcArgs.Require<NetForgetArgs>(args), ct);
         if (method == "getSyncPreview") return Task.FromResult<object?>(Preview());
         // Changing the lights by hand ends the sync (without putting the old lights back: the hand change wins).
         if (method is "setColor" or "setZoneColor" or "setMode" or "off" or "applyScene" && _settings.Sync.Enabled) StopSync(restore: false);
+        // "Everything at once" and "Turn all lights off" (no devices named) also reach the lights on the network.
+        if (method is "setColor" or "off")
+        {
+            var everything = method == "off" ? RpcArgs.Optional<ColorArgs>(args) : RpcArgs.Require<ColorArgs>(args);
+            if (everything.DeviceIds is null) return EverythingAsync(method == "off" ? "#000000" : everything.Color, ct);
+        }
         object? result;
         lock (_gate)
         {
@@ -431,6 +495,14 @@ public sealed class LightingModule : IAppModule
     /// </summary>
     private object InstallOpenRgb()
     {
+        if (!_rgb.CanStartServer)
+        {
+            // Linux and macOS: the user installs and starts OpenRGB; RigControl only shows where to get it.
+            if (_rgb.Connected || _rgb.IsListening()) return new { started = false, message = "OpenRGB is already running." };
+            if (!(_ctx?.Platform.Links.OpenHttpsUrl(DownloadPage) ?? false))
+                throw RpcException.Unavailable("The OpenRGB download page could not be opened. Go to openrgb.org in your browser.");
+            return new { started = true, message = "OpenRGB's download page is open in your browser. Install it, start it with its SDK server on, then press Start OpenRGB here." };
+        }
         if (_rgb.FindExecutable() is not null) return new { started = false, message = "OpenRGB is already installed." };
         try
         {
@@ -514,7 +586,7 @@ public sealed class LightingModule : IAppModule
         try
         {
             var result = action();
-            // Any change of colour or effect is announced, so the room lights can follow the PC.
+            // Any change of colour or effect is announced, so the rest of the app can follow the PC.
             if (result is LightingStatusDto status) PublishChanged(status);
             return result;
         }
@@ -688,9 +760,12 @@ public sealed class LightingModule : IAppModule
 
     // ---------------------------------------------------------------- GIGABYTE Control Center (user-triggered only)
 
+    private const string GccIsWindows = "GIGABYTE Control Center is a Windows program.";
+
     /// <summary>Closes GCC and turns its start-up task off, so it stops overriding the graphics card's lights.</summary>
     private object TakeOverGcc()
     {
+        if (!HasGcc) throw ModuleAvailability.Error(GccIsWindows);
         if (!(_ctx?.Environment.IsElevated ?? false))
             throw RpcException.NeedsAdmin("Taking over from GIGABYTE Control Center needs administrator rights.");
         _log.Info("Taking over from GIGABYTE Control Center at the user's request (closing it, turning its start-up task off).");
@@ -710,6 +785,7 @@ public sealed class LightingModule : IAppModule
     /// <summary>Lets GCC start with Windows again (only if RigControl turned that off). It is not started now.</summary>
     private object GiveBackGcc()
     {
+        if (!HasGcc) throw ModuleAvailability.Error(GccIsWindows);
         if (!(_ctx?.Environment.IsElevated ?? false))
             throw RpcException.NeedsAdmin("This needs administrator rights.");
         try { _gcc.SetStartsWithWindows(true); }
@@ -759,28 +835,6 @@ public sealed class LightingModule : IAppModule
         return hex is not null && int.TryParse(hex.TrimStart('#'), System.Globalization.NumberStyles.HexNumber, null, out var v) ? v : null;
     }
 
-    // ---------------------------------------------------------------- room lights on the layout
-
-    /// <summary>A light outside the PC (a room light an add-on knows) that can be placed on the layout.</summary>
-    public sealed record ExternalLight(string Key, string Name);
-
-    /// <summary>The room lights that can be placed (set by the app from an add-on; only lights that are online).</summary>
-    public Func<IReadOnlyList<ExternalLight>>? ExternalLights { get; set; }
-
-    /// <summary>A placed room light's colour (key, 0xRRGGBB), on every step of an effect; the receiver throttles.</summary>
-    public event Action<string, int>? ExternalLightColor;
-
-    private IReadOnlyList<ExternalLight> SafeExternalLights()
-    {
-        IReadOnlyList<ExternalLight> list;
-        try { list = ExternalLights?.Invoke() ?? Array.Empty<ExternalLight>(); }
-        catch { list = Array.Empty<ExternalLight>(); }
-        // A Nanoleaf paired directly is placed panel by panel; its one-colour room-light entry would be a second copy.
-        return _settings.Nanoleaf is null ? list : list.Where(l => !IsNanoleafName(l.Name)).ToList();
-    }
-
-    public static bool IsNanoleafName(string name) => name.Contains("nanoleaf", StringComparison.OrdinalIgnoreCase);
-
     // ---------------------------------------------------------------- network lights (Network/NetworkLights.cs)
 
     private NetworkLightsDto NetworkStatus()
@@ -817,12 +871,11 @@ public sealed class LightingModule : IAppModule
         {
             lock (_gate)
             {
-                // Where its one-colour room-light box was placed, its panels go now. The same Nanoleaf under an
-                // older name (it was renamed in the Nanoleaf app) keeps its place too: its key ends in its serial.
+                // The same Nanoleaf under an older name (it was renamed in the Nanoleaf app) keeps its place: its key
+                // ends in its serial.
                 foreach (var item in _settings.Layout.Items.Where(i =>
-                             (i.Key.StartsWith(ExternalKeyPrefix, StringComparison.Ordinal) && IsNanoleafName(i.Key))
-                             || (i.Key != light.LayoutKey && i.Key.StartsWith("nanoleaf|", StringComparison.Ordinal)
-                                 && i.Key.EndsWith("|" + light.Id, StringComparison.Ordinal))))
+                             i.Key != light.LayoutKey && i.Key.StartsWith("nanoleaf|", StringComparison.Ordinal)
+                             && i.Key.EndsWith("|" + light.Id, StringComparison.Ordinal)))
                     item.Key = light.LayoutKey;
                 _settings.Layout.Items = _settings.Layout.Items.GroupBy(i => (i.Key, i.Zone)).Select(g => g.Last()).ToList();
                 SaveSettings();
@@ -838,12 +891,75 @@ public sealed class LightingModule : IAppModule
         return NetworkStatus();
     }
 
+    /// <summary>"#RRGGBB" as 0xRRGGBB, or an error the page shows.</summary>
+    internal static int ParseNetColour(string? hex)
+    {
+        var s = (hex ?? "").Trim();
+        if (s.StartsWith('#')) s = s[1..];
+        if (s.Length != 6 || !s.All(Uri.IsHexDigit)) throw RpcException.InvalidArgs("Colours are #RRGGBB.");
+        return int.Parse(s, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// One colour (or off, for black) for every light: the PC's own through OpenRGB, and every paired light on the
+    /// network whose brand takes part (a Hue Bridge doesn't: it can be a whole house). Works without OpenRGB when
+    /// lights are paired on the network.
+    /// </summary>
+    private async Task<object?> EverythingAsync(string? color, CancellationToken ct)
+    {
+        var rgb = ParseNetColour(color);
+        LightingStatusDto status;
+        lock (_gate)
+        {
+            if (_rgb.Connected || !_net.Providers.Any() || _netStore.All().Count == 0) status = SetColor(new ColorArgs { Color = color });
+            else status = BuildStatus();
+        }
+        var change = rgb == 0 ? new LightChange(On: false) : new LightChange(Colour: rgb);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, _stop.Token);
+        var (tried, problems) = await _net.SetAllAsync(change, cts.Token).ConfigureAwait(false);
+        // Without OpenRGB the network lights are all there is: when none of them took it, that is an error.
+        if (!_rgb.Connected && tried > 0 && problems.Count == tried) throw RpcException.Unavailable(string.Join(" ", problems));
+        return status;
+    }
+
+    private async Task<object?> SetNetworkLightAsync(NetSetArgs a, CancellationToken ct)
+    {
+        var id = a.Id ?? "";
+        if (_netStore.Find(id) is null) throw RpcException.InvalidArgs("That light isn't paired.");
+        if (a.On is null && a.Brightness is null && a.Color is null) throw RpcException.InvalidArgs("Say what to change: on, brightness or colour.");
+        if (a.Brightness is { } b && (b < 0 || b > 100)) throw RpcException.InvalidArgs("Brightness is 0 to 100%.");
+        var change = new LightChange(a.On, a.Brightness, a.Color is null ? null : ParseNetColour(a.Color));
+        try { _net.Check(id, change); }
+        catch (ArgumentException ex) { throw RpcException.InvalidArgs(ex.Message); }
+        catch (InvalidOperationException ex) { throw RpcException.Unavailable(ex.Message); }
+        // A change by hand ends the light sync, as on the PC's own lights (the hand change wins).
+        if (_settings.Sync.Enabled) StopSync(restore: false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, _stop.Token);
+        try { await _net.SetAsync(id, change, cts.Token).ConfigureAwait(false); }
+        catch (ArgumentException ex) { throw RpcException.InvalidArgs(ex.Message); }
+        catch (InvalidOperationException ex) { throw RpcException.Unavailable(ex.Message); }
+        return NetworkStatus();
+    }
+
+    private async Task<object?> GiveBackNetworkLightAsync(NetForgetArgs a, CancellationToken ct)
+    {
+        var id = a.Id ?? "";
+        if (_netStore.Find(id) is null) throw RpcException.InvalidArgs("That light isn't paired.");
+        if (_net.Controls(id) is { GiveBack.Can: false } can) throw RpcException.Unavailable(can.GiveBack.Why ?? "This light can't be given back from here.");
+        if (_netStore.Before(id) is null) throw RpcException.InvalidArgs("RigControl hasn't changed this light, so there is nothing to give back.");
+        if (_settings.Sync.Enabled) StopSync(restore: false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, _stop.Token);
+        try { await _net.GiveBackAsync(id, cts.Token).ConfigureAwait(false); }
+        catch (ArgumentException ex) { throw RpcException.InvalidArgs(ex.Message); }
+        catch (InvalidOperationException ex) { throw RpcException.Unavailable(ex.Message); }
+        return NetworkStatus();
+    }
+
     // ---------------------------------------------------------------- Nanoleaf (the older calls, kept for the page that uses them)
 
     /// <summary>
-    /// True while the paired Nanoleaf takes a colour per panel from RigControl (the hub must leave it alone).
-    /// Takes no lock: the room lights' module asks this while it holds its own lock, and the lighting lock is
-    /// sometimes held while that module is called, so a lock here could stop both for good.
+    /// True while the paired Nanoleaf takes a colour per panel from RigControl. Takes no lock, so it can be asked
+    /// from anywhere, including while the lighting lock is held.
     /// </summary>
     public bool NanoleafStreaming => _net.IsStreaming(NetworkLightStore.NanoleafBrand);
 
@@ -888,37 +1004,50 @@ public sealed class LightingModule : IAppModule
     /// <summary>Devices whose light chip can't take fast updates: graphics cards (OpenRGB type 2).</summary>
     internal static bool IsGentle(RgbController dev) => dev.Type == 2;
 
-    /// <summary>Keys of room lights on the layout start with this.</summary>
-    public const string ExternalKeyPrefix = "homelab|";
-
-    /// <summary>The colour the room lights should follow; at most every 2 s so the hub isn't flooded.</summary>
-    private DateTime _lastRoomColor = DateTime.MinValue;
+    /// <summary>When the page was last told the sync's state and the lights' colours (at most every 2 s).</summary>
+    private DateTime _lastStatusPush = DateTime.MinValue;
 
     private volatile string? _bassProblem;
 
     private SyncDto SyncStatus()
     {
         var s = _settings.Sync;
+        // What this system doesn't offer (a capture card, the sound) is left out, whatever the settings file says.
+        var cards = Here.HasCaptureCard;
+        var audio = Here.Audio is not null;
+        var effect = EffectNow(s);
         var list = _captureDevices.ToList();
-        if (s.Source != "" && list.All(d => d.Id != s.Source))
+        if (cards && s.Source != "" && list.All(d => d.Id != s.Source))
             list.Add(new CaptureDeviceDto(s.Source, (s.SourceName != "" ? s.SourceName : "capture card") + " (not plugged in)", false));
-        return new SyncDto(s.Enabled, s.Source, s.SourceName == "" ? null : s.SourceName, s.Brightness, s.Enabled ? _syncStatus : "Off",
-            _syncColor is { } c ? ColorMath.Hex(c) : null, list, _captureSize, s.Vivid, s.Bass, s.BassStrength,
-            s.Enabled && (s.Bass || s.Mid || s.Treble || EffectRenderer.IsAudio(s.Effect)) ? _bassProblem : null, s.Treble, s.TrebleStrength, s.AudioGain,
-            s.Mid, s.MidStrength, s.Effect, EffectRenderer.Catalog,
-            EffectRenderer.Catalog.ToDictionary(e => e.Id, e => s.ParamsFor(e.Id)));
+        return new SyncDto(s.Enabled, cards ? s.Source : "", !cards || s.SourceName == "" ? null : s.SourceName, s.Brightness, s.Enabled ? _syncStatus : "Off",
+            _syncColor is { } c ? ColorMath.Hex(c) : null, list, _captureSize, s.Vivid, audio && s.Bass, s.BassStrength,
+            audio && s.Enabled && (s.Bass || s.Mid || s.Treble || EffectRenderer.IsAudio(effect)) ? _bassProblem : null, audio && s.Treble, s.TrebleStrength, s.AudioGain,
+            audio && s.Mid, s.MidStrength, effect, Here.Effects,
+            Here.Effects.ToDictionary(e => e.Id, e => s.ParamsFor(e.Id)));
     }
 
     private async Task<object?> ListSyncSourcesAsync()
     {
-        try { _captureDevices = await CaptureSource.ListAsync().ConfigureAwait(false); }
-        catch (Exception ex) { _log.Warn("Couldn't list capture devices: " + ex.Message); }
+        // No capture cards on this system: the answer simply has none.
+        if (Here.HasCaptureCard)
+        {
+            try { _captureDevices = await Here.CaptureDevices!().ConfigureAwait(false); }
+            catch (Exception ex) { _log.Warn("Couldn't list capture devices: " + ex.Message); }
+        }
         lock (_gate) return SyncStatus();
     }
 
     private SyncDto SetSync(SyncArgs a)
     {
         var s = _settings.Sync;
+        // Asked for something this system doesn't have: said so, and nothing is changed.
+        if (Here.Audio is null && (a.Bass == true || a.Mid == true || a.Treble == true))
+            throw ModuleAvailability.Error("The lights can't follow sound here in this version.");
+        if (a.Effect is { } wanted && EffectRenderer.Exists(wanted) && !Here.Offers(wanted))
+            throw ModuleAvailability.Error(wanted == EffectRenderer.Screen ? "The lights can't follow the screen here in this version."
+                : "The effects that follow sound don't work here in this version.");
+        if (!Here.HasCaptureCard && !string.IsNullOrEmpty(a.Source))
+            throw ModuleAvailability.Error("The lights can't follow a capture card here in this version.");
         if (a.Brightness is { } b)
         {
             if (b < 1 || b > 100) throw RpcException.InvalidArgs("Brightness is 1 to 100%.");
@@ -1011,8 +1140,8 @@ public sealed class LightingModule : IAppModule
             s.Enabled = true;
             SaveSettings();
             StartSync();
-            _log.Info(s.Effect == EffectRenderer.Screen ? "Lights follow " + (s.Source == "" ? "the screen" : s.SourceName) + "."
-                : "Lights play the effect " + EffectRenderer.Catalog.First(e => e.Id == s.Effect).Name + ".");
+            _log.Info(EffectNow(s) == EffectRenderer.Screen ? "Lights follow " + (s.Source == "" ? "the screen" : s.SourceName) + "."
+                : "Lights play the effect " + EffectRenderer.Catalog.First(e => e.Id == EffectNow(s)).Name + ".");
         }
         else if (a.Enabled == false && s.Enabled)
         {
@@ -1054,13 +1183,6 @@ public sealed class LightingModule : IAppModule
         // Lights paired over the network (a Nanoleaf panel by panel, WLED, Hue...) are one box each.
         foreach (var zone in _net.LayoutZones(layout.Items))
             if (seen.Add((zone.Key, zone.Zone))) zones.Add(zone);
-        // Room lights from an add-on are one box each.
-        foreach (var ext in SafeExternalLights())
-        {
-            if (!seen.Add((ext.Key, LedLayout.WholeDevice))) continue;
-            zones.Add(new LayoutZoneDto(ext.Key, ext.Name + " (room light)", LedLayout.WholeDevice, "Whole device", 1, 0, 0, null, true,
-                layout.Items.FirstOrDefault(i => i.Key == ext.Key && i.Zone == LedLayout.WholeDevice)));
-        }
         // Placed zones of devices that aren't connected right now stay on the layout.
         foreach (var item in layout.Items)
         {
@@ -1175,15 +1297,16 @@ public sealed class LightingModule : IAppModule
     {
         bool Live() => Volatile.Read(ref _syncGen) == gen && _disposed == 0;
         var s = _settings.Sync;
-        var source = s.Effect == EffectRenderer.Screen ? s.Source : "";
-        using var screen = new ScreenSource();
+        var sys = Here;
+        var source = EffectNow(s) == EffectRenderer.Screen && sys.HasCaptureCard ? s.Source : "";
+        using var screen = sys.Screen?.Invoke();
         var effects = new EffectRenderer();
         var effectGrid = new byte[ColorMath.GridW * ColorMath.GridH * 4];
         var clock = System.Diagnostics.Stopwatch.StartNew();
         float rawBass = 0, rawMid = 0, rawTreble = 0;
-        CaptureSource? capture = null;
-        ObsSource? obs = null;
-        BassMeter? bass = null;
+        ICapturePicture? capture = null;
+        IObsPicture? obs = null;
+        IAudioMeter? bass = null;
         var bassFactor = 1.0;
         var trebleLevel = 0f;
         var midLevel = 0f;
@@ -1237,7 +1360,7 @@ public sealed class LightingModule : IAppModule
             void OpenCapture(bool quiet)
             {
                 lastOpen = DateTime.UtcNow;
-                var c = new CaptureSource();
+                var c = sys.CaptureCard!();
                 try
                 {
                     c.StartAsync(source, allowExclusive: !streamerSeen).GetAwaiter().GetResult();
@@ -1259,7 +1382,7 @@ public sealed class LightingModule : IAppModule
             void OpenObs(bool quiet)
             {
                 lastOpen = DateTime.UtcNow;
-                var o = new ObsSource();
+                var o = sys.Obs!();
                 try
                 {
                     o.StartAsync(s.SourceName).GetAwaiter().GetResult();
@@ -1358,7 +1481,7 @@ public sealed class LightingModule : IAppModule
                             _log.Warn($"Light sync: {captureProblem}; following the screen and trying again every 10 s.");
                         }
                     }
-                    var effect = s.Effect;
+                    var effect = EffectNow(s);
                     var isScreen = effect == EffectRenderer.Screen;
                     var picking = isScreen;
                     if (!isScreen)
@@ -1367,7 +1490,7 @@ public sealed class LightingModule : IAppModule
                         target = effects.Render(effect, s.ParamsFor(effect), clock.Elapsed.TotalSeconds, rawBass, rawMid, rawTreble, effectGrid);
                         grid = effectGrid;
                     }
-                    else if (capture is null && obs is null)
+                    else if (capture is null && obs is null && screen is not null)
                     {
                         target = screen.Read();
                         grid = screen.Grid;
@@ -1379,9 +1502,9 @@ public sealed class LightingModule : IAppModule
                     if (vivid) target = ColorMath.Vivid(target);
                     cur = ColorMath.Smooth(cur, target, s.Brightness, follow);
                     var audioEffect = EffectRenderer.IsAudio(effect);
-                    if (s.Bass || s.Mid || s.Treble || audioEffect)
+                    if (sys.Audio is not null && (s.Bass || s.Mid || s.Treble || audioEffect))
                     {
-                        bass ??= new BassMeter();
+                        bass ??= sys.Audio();
                         rawBass = BandFollower.WithGain(bass.Level, s.AudioGain);
                         rawMid = BandFollower.WithGain(bass.MidLevel, s.AudioGain);
                         rawTreble = BandFollower.WithGain(bass.TrebleLevel, s.AudioGain);
@@ -1498,7 +1621,7 @@ public sealed class LightingModule : IAppModule
                               }
                               catch (Exception ex)
                               {
-                                // The PC's lights wait; everything below (room lights, lights on the network) carries on.
+                                // The PC's lights wait; the lights on the network below carry on.
                                 _log.Warn("Light sync: OpenRGB stopped answering. Lights on your network carry on; the PC's lights follow again once OpenRGB is back.", ex);
                                 try { _rgb.Disconnect(); } catch { /* asked for again below */ }
                                 _controllers = Array.Empty<RgbController>();
@@ -1511,19 +1634,6 @@ public sealed class LightingModule : IAppModule
                                 rgbTries = 0;
                                 rgbRetryAt = DateTime.UtcNow.AddSeconds(3);
                               }
-                            }
-                        }
-                        if (items.Count > 0 && grid is not null && ExternalLightColor is not null)
-                        {
-                            foreach (var item in items)
-                            {
-                                if (!item.Key.StartsWith(ExternalKeyPrefix, StringComparison.Ordinal)) continue;
-                                var rc = ColorMath.Region(grid, ColorMath.GridW, ColorMath.GridH, item.X, item.Y, item.W, item.H);
-                                if (vivid) rc = ColorMath.Vivid(rc);
-                                var k = s.Brightness / 100.0;
-                                var pc = Pulse((((rc >> 16) & 255) * k, ((rc >> 8) & 255) * k, (rc & 255) * k));
-                                var rgb = ((int)Math.Clamp(pc.R, 0, 255) << 16) | ((int)Math.Clamp(pc.G, 0, 255) << 8) | (int)Math.Clamp(pc.B, 0, 255);
-                                try { ExternalLightColor(item.Key, rgb); } catch { /* the room lights' problem stays theirs */ }
                             }
                         }
                         // Lights paired over the network: each light point takes the part of the picture under it,
@@ -1554,10 +1664,9 @@ public sealed class LightingModule : IAppModule
                         _syncStatus = rgbUp ? doing
                             : _netStore.All().Count > 0 ? doing + " (the PC's own lights are waiting for OpenRGB)"
                             : "Waiting for OpenRGB";
-                        if ((DateTime.UtcNow - _lastRoomColor).TotalSeconds >= 2)
+                        if ((DateTime.UtcNow - _lastStatusPush).TotalSeconds >= 2)
                         {
-                            _lastRoomColor = DateTime.UtcNow;
-                            _ctx?.Events.Publish("lighting.syncColor", ColorMath.Hex(hex));
+                            _lastStatusPush = DateTime.UtcNow;
                             _ctx?.Events.Publish("lighting.sync", SyncStatus());
                             LightingStatusDto? status = null;
                             lock (_gate) { if (Live()) status = BuildStatus(); }
@@ -1583,7 +1692,7 @@ public sealed class LightingModule : IAppModule
                     }
                 }
                 // With the bass on, twice as often (about 30 times a second) so short kicks aren't missed.
-                Thread.Sleep(s.Bass || s.Mid || s.Treble || s.Effect != EffectRenderer.Screen ? Math.Min(SyncIntervalMs, 33) : SyncIntervalMs);
+                Thread.Sleep(s.Bass || s.Mid || s.Treble || EffectNow(s) != EffectRenderer.Screen ? Math.Min(SyncIntervalMs, 33) : SyncIntervalMs);
             }
         }
         finally
@@ -1768,6 +1877,17 @@ public sealed class LightingModule : IAppModule
     {
         /// <summary>The light's id from getNetworkLights (also its key on the layout).</summary>
         public string? Id { get; set; }
+    }
+
+    private sealed class NetSetArgs
+    {
+        /// <summary>The light's id from getNetworkLights.</summary>
+        public string? Id { get; set; }
+        public bool? On { get; set; }
+        /// <summary>0-100.</summary>
+        public int? Brightness { get; set; }
+        /// <summary>"#RRGGBB".</summary>
+        public string? Color { get; set; }
     }
 
     private sealed class LayoutArgs

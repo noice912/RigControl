@@ -88,6 +88,48 @@ public sealed class LeetDeskProvider : INetworkLightProvider
         });
     }
 
+    // ---- direct control: only what the add-on RigControl follows does (on/off and brightness through the state page)
+
+    internal const string NoColour =
+        "LeetDesk publishes nothing about setting one colour on the desk, and the add-on RigControl follows only switches it on or off and sets its brightness. Effects can still colour it.";
+
+    public LightControls Controls(PairedLight light) =>
+        new(LightAbility.Yes, LightAbility.Yes, LightAbility.No(NoColour), LightAbility.Yes, LightAbility.Yes);
+
+    private static async Task<JsonElement> RequireStateAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        var all = (await net.HttpAsync(HttpAsk.Get(WledWire.Url(light.Address, WledWire.PortOf(light.Data), AllPath)), ct).ConfigureAwait(false)).EnsureOk();
+        if (WledWire.Object(all.Body) is { } root && root.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.Object) return state;
+        throw new IOException("its answer couldn't be read");
+    }
+
+    private static string StateUrl(PairedLight light) => WledWire.Url(light.Address, WledWire.PortOf(light.Data), Dialect.StatePath);
+
+    public async Task<LightReading> ReadAsync(ILightNetwork net, PairedLight light, CancellationToken ct) =>
+        WledWire.Reading(await RequireStateAsync(net, light, ct).ConfigureAwait(false), withColour: false);
+
+    public async Task<string> SaveAsync(ILightNetwork net, PairedLight light, CancellationToken ct)
+    {
+        var state = await RequireStateAsync(net, light, ct).ConfigureAwait(false);
+        if (!state.TryGetProperty("on", out var on) || on.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+            || !state.TryGetProperty("bri", out var bri) || !bri.TryGetInt32(out var brightness))
+            throw new InvalidOperationException("The desk didn't say whether it is on and how bright, so RigControl couldn't remember it.");
+        // The same body the sync puts back with.
+        return $"{{\"on\":{(on.GetBoolean() ? "true" : "false")},\"bri\":{Math.Clamp(brightness, 0, 255)},\"live\":false}}";
+    }
+
+    public async Task SetAsync(ILightNetwork net, PairedLight light, LightChange change, CancellationToken ct)
+    {
+        if (change.Colour is { } c && (c & 0xFFFFFF) != 0) throw new InvalidOperationException(NoColour);
+        (await net.HttpAsync(HttpAsk.Post(StateUrl(light), WledWire.ChangeBody(change, withColour: false)), ct).ConfigureAwait(false)).EnsureOk();
+    }
+
+    public async Task GiveBackAsync(ILightNetwork net, PairedLight light, string saved, CancellationToken ct)
+    {
+        if (WledWire.Object(saved) is null) throw new InvalidOperationException("What the desk showed before couldn't be read.");
+        (await net.HttpAsync(HttpAsk.Post(StateUrl(light), saved), ct).ConfigureAwait(false)).EnsureOk();
+    }
+
     /// <summary>A desk still called just "aura" is told apart by the end of its id.</summary>
     private static string NameOf(WledInfo info) =>
         info.Name == "aura" ? "aura-" + info.Mac[^6..]
