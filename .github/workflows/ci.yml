@@ -128,7 +128,7 @@ jobs:
           do
             echo "::group::test $project"
             # A test that hangs is stopped after 3 minutes and named in the log, instead of using up the job.
-            dotnet test "$project" -c Debug -f net8.0 --no-build --blame-hang-timeout 3m --blame-hang-dump-type none || failed="$failed $project"
+            dotnet test "$project" -c Debug -f net8.0 --no-build --blame-hang-timeout 3m --blame-hang-dump-type none --logger "console;verbosity=normal" || failed="$failed $project"
             echo "::endgroup::"
           done
           if [ -n "$failed" ]; then

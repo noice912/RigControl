@@ -880,7 +880,8 @@ public class NetworkLightsTests : IDisposable
         // The usual stop time in these tests is one second.
         _a.StopDelay = TimeSpan.FromMilliseconds(1600);
         _a.StopBudget = TimeSpan.FromSeconds(5);
-        _b.StopDelay = TimeSpan.FromMilliseconds(1600);
+        // Far longer than anything here waits, so the result doesn't depend on how fast the machine is.
+        _b.StopDelay = TimeSpan.FromSeconds(30);
         var lights = Lights();
         await lights.PairAsync("alpha", "172.16.0.20", null, default);
         await lights.PairAsync("beta", "172.16.0.21", null, default);

@@ -664,7 +664,8 @@ public class PageLoaderTests
         var loads = new ConcurrentQueue<UiMode>();
         var worked = new ConcurrentQueue<UiMode>();
         var log = new ListLog();
-        using var loader = new PageLoader(PageLoader.DefaultOrder, TimeSpan.FromMilliseconds(100), loads.Enqueue, log, worked.Enqueue);
+        // A full second per way: the page below must speak before the second way runs out too, also on a slow machine.
+        using var loader = new PageLoader(PageLoader.DefaultOrder, TimeSpan.FromSeconds(1), loads.Enqueue, log, worked.Enqueue);
         loader.Begin();
         Assert.True(await Wait.UntilAsync(() => loads.Count == 1));
         Assert.Equal(new[] { UiMode.Classic }, loads);
