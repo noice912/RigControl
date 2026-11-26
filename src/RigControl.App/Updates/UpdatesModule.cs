@@ -28,6 +28,13 @@ internal sealed class UpdateSettings
     /// although it is older ("Switch to the public version"). Cleared after an install or when "test" is chosen again.
     /// </summary>
     public bool SwitchBackPending { get; set; }
+
+    /// <summary>
+    /// The running version SwitchBackPending was set for. The flag only counts while that version runs, so a flag left
+    /// over from another version (an update that did not clear it, a settings file copied from elsewhere) never
+    /// allows a downgrade.
+    /// </summary>
+    public string? SwitchBackFor { get; set; }
 }
 
 /// <summary>
@@ -136,7 +143,7 @@ internal sealed class UpdatesModule : IRpcModule, IDisposable
                 channel = UpdateChannels.Effective(s, maintainer) == UpdateChannel.Test ? UpdateChannels.Test : UpdateChannels.Public,
                 // The choice is shown only to a GitHub account that may push to RigControl.
                 testChannelAllowed = maintainer,
-                switchBackPending = UpdateChannels.SwitchBack(s, maintainer),
+                switchBackPending = UpdateChannels.SwitchBack(s, maintainer, Current),
                 lastCheck = s.LastCheck?.ToString("o"),
                 checking = _busyChecking,
                 latest = _latest,
@@ -192,8 +199,8 @@ internal sealed class UpdatesModule : IRpcModule, IDisposable
             var settings = _services.Settings.Get<UpdateSettings>(UpdateSettings.Section);
             var maintainer = _maintainer.IsMaintainer;
             var channel = UpdateChannels.Effective(settings, maintainer);
-            var switchBack = UpdateChannels.SwitchBack(settings, maintainer);
             var current = Current;
+            var switchBack = UpdateChannels.SwitchBack(settings, maintainer, current);
             try
             {
                 result = await _checker.CheckAsync(current, channel, switchBack, ct).ConfigureAwait(false);
@@ -258,7 +265,7 @@ internal sealed class UpdatesModule : IRpcModule, IDisposable
         var maintainer = _maintainer.IsMaintainer;
         if (offer.Manifest.Version.IsPreRelease && UpdateChannels.Effective(settings, maintainer) != UpdateChannel.Test)
             throw RpcException.Unavailable("Development builds are only installed while \"Get development builds\" is on. Check for updates again.");
-        if (offer.IsDowngrade && !UpdateChannels.SwitchBack(settings, maintainer))
+        if (offer.IsDowngrade && !UpdateChannels.SwitchBack(settings, maintainer, Current))
             throw RpcException.Unavailable("Going back to an older version is only offered right after turning development builds off. Check for updates again.");
         var install = InstallFolder
             ?? throw RpcException.Unavailable("This copy of RigControl isn't installed, so it can't update itself. Install RigControl with its setup to get updates automatically.");

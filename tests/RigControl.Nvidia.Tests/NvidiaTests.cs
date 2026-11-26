@@ -180,6 +180,40 @@ public class NvidiaModuleTests : IDisposable
     }
 
     [Fact]
+    public async Task A_slow_windows_read_never_holds_up_the_other_calls()
+    {
+        // WMI hangs: every other call must still answer at once, and getInfo after a short wait with the start version.
+        using var release = new ManualResetEventSlim(false);
+        var m = new NvidiaModule(_ => _backend, installedVersion: () => { release.Wait(TimeSpan.FromSeconds(30)); return "621.40"; });
+        await m.StartAsync(new ModuleContext(new EventBus(), NullLog.Instance,
+            new SettingsStore(Path.Combine(_dir, "settings.json"), NullLog.Instance),
+            new AppEnvironment(_dir, _dir, false, "1.0.0", "x.exe")), CancellationToken.None);
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            await Call(m, "getDriverSettings");
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), "a call waited for Windows: " + clock.Elapsed);
+            clock.Restart();
+            Assert.Equal("621.24", (await Call(m, "getInfo")).GetProperty("driverVersion").GetString());
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), "getInfo waited too long: " + clock.Elapsed);
+            // Once Windows answers, the next getInfo shows it.
+            release.Set();
+            var shown = "621.24";
+            for (var i = 0; i < 50 && shown != "621.40"; i++)
+            {
+                await Task.Delay(50);
+                shown = (await Call(m, "getInfo")).GetProperty("driverVersion").GetString()!;
+            }
+            Assert.Equal("621.40", shown);
+        }
+        finally
+        {
+            release.Set();
+            await m.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task Info_and_settings_match_the_contract()
     {
         await using var m = await Start();

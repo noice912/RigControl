@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using RigControl.App.Install;
 using RigControl.Bundled;
@@ -19,6 +20,18 @@ namespace RigControl.App;
 /// pointing at a folder only administrators can change (&lt;install&gt;\runtime), and ends. The check runs from
 /// <see cref="Program.Main"/> before any WPF or WebView2 type is touched, so nothing has been loaded from the open
 /// folder yet. A copy without administrator rights gains nothing from a planted DLL and is left alone.
+///
+/// The same first check also covers two more ways in for a program running as the same user:
+/// - Environment variables .NET reads at start to load extra code (a profiler DLL, a startup hook, another GC or
+///   JIT, a diagnostics connection). An administrator's copy that finds one starts itself again without them (see
+///   <see cref="LoadsCode"/>). A profiler named that way has already been loaded into this first process by .NET
+///   before Main runs; nothing here can undo that, it only makes sure no administrator's RigControl keeps running
+///   with it (SECURITY.md, "Known limits").
+/// - Setup, update or uninstall run as administrator from a folder other programs can change (setup started from
+///   Downloads): Windows looks for DLLs in the exe's own folder first, and the file itself could be swapped. Such a
+///   copy copies itself into a new folder only administrators can change (&lt;install&gt;\updates\setup-&lt;random&gt;),
+///   checks the copy, and carries on from there (see <see cref="StageCopy"/>).
+/// All of these are done in one restart, and a copy started by this check never starts another one.
 /// </summary>
 internal static class NativeFolderGuard
 {
@@ -30,6 +43,9 @@ internal static class NativeFolderGuard
 
     /// <summary>Set on the copy started by this check, so it never starts another one.</summary>
     public const string RelaunchedVariable = "RIGCONTROL_NATIVE_RELAUNCHED";
+
+    /// <summary>The name of a setup's admin-only copy folder under &lt;install&gt;\updates starts with this.</summary>
+    public const string StagePrefix = "setup-";
 
     public enum Step { Continue, Relaunch, Refuse }
 
@@ -72,6 +88,83 @@ internal static class NativeFolderGuard
         return new Decision(Step.Relaunch, "programs without administrator rights can change " + open);
     }
 
+    // Read by .NET itself (the runtime or its start-up code) as DOTNET_<name> or COMPlus_<name>, and each one makes it
+    // load or connect to code from elsewhere: startup hooks, extra dependency files, a package store, a profiler, a
+    // different garbage collector or JIT, a diagnostics connection that can attach a profiler.
+    private static readonly string[] RuntimeKnobs = { "STARTUP_HOOKS", "ADDITIONAL_DEPS", "SHARED_STORE", "GCName", "GCPath", "JitPath", "JitName", "DiagnosticPorts" };
+    private static readonly string[] RuntimeKnobPrefixes = { "PROFILER", "AltJit" };
+    private static readonly string[] RuntimePrefixes = { "DOTNET_", "COMPlus_" };
+
+    /// <summary>
+    /// True for an environment variable that makes .NET load extra code into this process at start (case does not
+    /// matter, as in Windows): every CORECLR_* (CORECLR_ENABLE_PROFILING, CORECLR_PROFILER, CORECLR_PROFILER_PATH…),
+    /// COR_ENABLE_PROFILING and COR_PROFILER*, and DOTNET_/COMPlus_ STARTUP_HOOKS, ADDITIONAL_DEPS, SHARED_STORE,
+    /// PROFILER*, GCName, GCPath, AltJit*, JitPath, JitName and DiagnosticPorts.
+    /// </summary>
+    public static bool LoadsCode(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        const StringComparison i = StringComparison.OrdinalIgnoreCase;
+        if (name.StartsWith("CORECLR_", i) || name.Equals("COR_ENABLE_PROFILING", i) || name.StartsWith("COR_PROFILER", i)) return true;
+        foreach (var prefix in RuntimePrefixes)
+        {
+            if (!name.StartsWith(prefix, i)) continue;
+            var knob = name[prefix.Length..];
+            if (RuntimeKnobs.Any(k => knob.Equals(k, i)) || RuntimeKnobPrefixes.Any(k => knob.StartsWith(k, i))) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The names among these that <see cref="LoadsCode"/>, sorted, each once.</summary>
+    public static IReadOnlyList<string> CodeLoadingVariables(IEnumerable<string> names)
+        => names.Where(LoadsCode).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>Takes every variable that <see cref="LoadsCode"/> out of an environment for a program about to be started.</summary>
+    public static void RemoveCodeLoading(IDictionary<string, string?> environment)
+    {
+        foreach (var name in environment.Keys.Where(LoadsCode).ToList()) environment.Remove(name);
+    }
+
+    /// <summary>
+    /// What to do about code-loading variables (see <see cref="LoadsCode"/>). Pure, so the rules can be tested.
+    /// </summary>
+    /// <param name="found">The ones this process was started with.</param>
+    /// <param name="relaunched">This copy was started by the check already (and so without them).</param>
+    public static Decision DecideEnvironment(bool elevated, IReadOnlyList<string> found, bool relaunched)
+    {
+        if (!elevated || found.Count == 0) return new Decision(Step.Continue);
+        var names = string.Join(", ", found);
+        if (relaunched) return new Decision(Step.Refuse, "it was started again without " + names + ", but they were set once more");
+        return new Decision(Step.Relaunch, "it was started with " + names + " set, which make .NET load other code");
+    }
+
+    /// <summary>
+    /// Whether an administrator's setup, update or uninstall runs from a folder other programs can change, and so must
+    /// carry on from an admin-only copy of itself (see <see cref="StageCopy"/>). Pure, so the rules can be tested.
+    /// RigControl itself (not setup) started from such a folder is left as it was: it warns in the log and on the
+    /// Health page, and "Start with Windows" must keep pointing at the exe the user chose.
+    /// </summary>
+    /// <param name="installAction">Started as setup, update or uninstall (<see cref="InstallCommand.ActionAt"/>).</param>
+    /// <param name="exeFolderOpen">FolderGuard.FirstOpen of the exe's own folder.</param>
+    /// <param name="safeFolder">An admin-only folder to copy into exists (or can be made).</param>
+    public static Decision DecideStage(bool elevated, bool bundle, bool installAction, string? exeFolderOpen, bool relaunched, bool safeFolder)
+    {
+        // A build that is not one file can't be copied as one file; development builds are never run like this.
+        if (!elevated || !bundle || !installAction || exeFolderOpen is null) return new Decision(Step.Continue);
+        if (relaunched) return new Decision(Step.Refuse, "its copy in a safe folder still runs from " + exeFolderOpen + ", which programs without administrator rights can change");
+        if (!safeFolder) return new Decision(Step.Refuse, "it runs from " + exeFolderOpen + ", which programs without administrator rights can change, and there is no safe folder to copy it to");
+        return new Decision(Step.Relaunch, "it runs from " + exeFolderOpen + ", which programs without administrator rights can change");
+    }
+
+    /// <summary>One answer from several: any refusal wins, then any restart (one restart fixes them all), else carry on.</summary>
+    public static Decision Combine(params Decision[] decisions)
+    {
+        if (decisions.FirstOrDefault(d => d.Step == Step.Refuse) is { } refuse) return refuse;
+        var restarts = decisions.Where(d => d.Step == Step.Relaunch).ToList();
+        if (restarts.Count == 0) return new Decision(Step.Continue);
+        return new Decision(Step.Relaunch, string.Join("; ", restarts.Select(d => d.Reason).Where(r => !string.IsNullOrEmpty(r))));
+    }
+
     /// <summary>
     /// The folder an administrator's copy unpacks into: &lt;install&gt;\runtime when RigControl is installed (the
     /// install folder comes from Windows' Installed apps entry, which only administrators can write), otherwise
@@ -92,14 +185,44 @@ internal static class NativeFolderGuard
         var extractDirs = ExtractDirs();
         var relaunched = Environment.GetEnvironmentVariable(RelaunchedVariable) == "1";
         var fromEnvironment = Environment.GetEnvironmentVariable(ExtractBaseVariable);
-        string? expected = null;
-        try { expected = ExpectedBase(UninstallEntry.Find()?.Layout, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)); }
+        var found = CodeLoadingVariables(Environment.GetEnvironmentVariables().Keys.Cast<object>().Select(k => k.ToString() ?? string.Empty));
+        // Whatever is decided below, nothing this process starts (the elevated setup, the installed copy, an update,
+        // the copy started by this check) inherits them. A profiler named by them is already loaded into this
+        // process: .NET did that before Main, and only a restart without them gets rid of it.
+        foreach (var name in found) Environment.SetEnvironmentVariable(name, null);
+
+        InstalledCopy? installed = null;
+        try { installed = UninstallEntry.Find(); }
+        catch { /* not installed, as far as this copy can tell */ }
+        InstallLayout? safeLayout = null;
+        try
+        {
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            if (installed is not null || !string.IsNullOrEmpty(programFiles))
+                safeLayout = installed?.Layout ?? new InstallLayout(InstallLayout.DefaultRoot(programFiles));
+        }
         catch { /* no Program Files: nothing safe to offer */ }
+        var expected = safeLayout?.RuntimeDir;
+
+        var exe = Environment.ProcessPath;
+        var installAction = InstallCommand.ActionAt(args, exe, installed) != StartAction.RunApp;
+        string? exeFolderOpen = null;
+        if (elevated && bundle && installAction)
+            exeFolderOpen = Path.GetDirectoryName(exe) is { Length: > 0 } exeDir ? FolderGuard.FirstOpen(exeDir) : "(an unknown folder)";
+
+        var envDecision = DecideEnvironment(elevated, found, relaunched);
+        var stageDecision = DecideStage(elevated, bundle, installAction, exeFolderOpen, relaunched, safeLayout is not null);
+        var nativeDecision = Decide(elevated, bundle, extractDirs, FolderGuard.FirstOpen, relaunched, fromEnvironment, expected);
+        var decision = Combine(envDecision, stageDecision, nativeDecision);
 
         if (args.Any(a => string.Equals(a, PrintSwitch, StringComparison.OrdinalIgnoreCase)))
-            return Print(elevated, bundle, extractDirs, expected);
+            return Print(elevated, bundle, extractDirs, expected, found, exeFolderOpen, decision);
 
-        var decision = Decide(elevated, bundle, extractDirs, FolderGuard.FirstOpen, relaunched, fromEnvironment, expected);
+        if (found.Count > 0)
+            Log((elevated ? "WARNING: started as administrator with " : "Started with ") + string.Join(", ", found) +
+                " set. These make .NET load other code into RigControl; a profiler named by them was already loaded into this process" +
+                (elevated ? ", so RigControl starts again without them." : ". They are removed for every program RigControl starts."), warn: elevated);
+
         switch (decision.Step)
         {
             case Step.Continue:
@@ -111,31 +234,50 @@ internal static class NativeFolderGuard
                 }
                 return null;
             case Step.Relaunch:
-                return Relaunch(args, expected!, decision.Reason);
+                // A one-file exe started again always unpacks into the admin-only folder, whatever the reason for the
+                // restart: the copy started here checks that strictly and refuses rather than start yet another one.
+                if (bundle && expected is null) return Refuse("there is no folder only administrators can change to unpack into");
+                return Relaunch(args, bundle ? expected : null, stageDecision.Step == Step.Relaunch ? safeLayout : null, decision.Reason);
             default:
                 return Refuse(decision.Reason);
         }
     }
 
-    private static int Relaunch(string[] args, string baseDir, string? reason)
+    /// <summary>The folders this process's native parts were unpacked to (empty when nothing was unpacked).</summary>
+    public static IReadOnlyList<string> CurrentExtractDirs() => ExtractDirs();
+
+    /// <param name="baseDir">Where the new copy unpacks its native parts, or null (not a one-file exe).</param>
+    /// <param name="stageIn">When set, the new copy runs from an admin-only copy of this exe under its updates folder.</param>
+    private static int Relaunch(string[] args, string? baseDir, InstallLayout? stageIn, string? reason)
     {
-        if (PrepareFolder(baseDir) is { } problem) return Refuse(problem);
+        if (baseDir is not null && PrepareFolder(baseDir) is { } problem) return Refuse(problem);
         var exe = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exe)) return Refuse("RigControl could not tell where its own exe is");
+        var runFrom = exe;
+        if (stageIn is not null)
+        {
+            if (StageCopy(exe, stageIn.UpdatesDir, out var stageProblem) is not { } staged) return Refuse(stageProblem);
+            runFrom = staged;
+        }
         try
         {
             // UseShellExecute=false: the new copy gets this process's administrator rights without another prompt.
-            var psi = new ProcessStartInfo(exe)
+            var psi = new ProcessStartInfo(runFrom)
             {
                 UseShellExecute = false,
-                WorkingDirectory = Path.GetDirectoryName(exe) ?? Environment.SystemDirectory,
+                WorkingDirectory = Path.GetDirectoryName(runFrom) ?? Environment.SystemDirectory,
             };
             foreach (var a in args) psi.ArgumentList.Add(a);
-            psi.Environment[ExtractBaseVariable] = baseDir;
+            // Check already took them out of this process; done again here so no restart can ever pass one on.
+            RemoveCodeLoading(psi.Environment);
+            if (baseDir is not null) psi.Environment[ExtractBaseVariable] = baseDir;
+            else psi.Environment.Remove(ExtractBaseVariable);
             psi.Environment[RelaunchedVariable] = "1";
             using var child = Process.Start(psi);
             if (child is null) return Refuse("RigControl could not start itself again");
-            Log($"Native parts were unpacked to a folder other programs can change ({reason}); started again (process {child.Id}) unpacking into {baseDir}.");
+            Log($"Started again (process {child.Id}) because {reason}" +
+                (baseDir is null ? "" : $"; unpacking into {baseDir}") +
+                (stageIn is null ? "" : $"; running from {runFrom}") + ".");
             // The start-up task helpers report success through their exit code, so their caller gets the real one.
             if (args.Any(a => string.Equals(a, Autostart.InstallSwitch, StringComparison.OrdinalIgnoreCase)
                               || string.Equals(a, Autostart.RemoveSwitch, StringComparison.OrdinalIgnoreCase)))
@@ -148,6 +290,60 @@ internal static class NativeFolderGuard
         catch (Exception ex)
         {
             return Refuse("RigControl could not start itself again: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Copies the running exe into a new folder of its own under <paramref name="updatesDir"/> (which only
+    /// administrators can change), checks that the copy has the same bytes and is closed to other programs, and
+    /// returns its path; null with <paramref name="problem"/> when that did not work. The copy is named RigControl.exe
+    /// so it unpacks its native parts into the same folder as the installed exe. The installed copy removes these
+    /// folders once they are no longer in use (<see cref="StartupCleanup"/>); the uninstaller removes updates\ whole.
+    /// </summary>
+    public static string? StageCopy(string exe, string updatesDir, out string? problem)
+    {
+        problem = PrepareFolder(updatesDir);
+        if (problem is not null) return null;
+        try
+        {
+            var dir = Path.Combine(updatesDir, StagePrefix + RandomNumberGenerator.GetHexString(16, lowercase: true));
+            // A folder made here and now, so nothing can have been put in it beforehand.
+            if (Directory.Exists(dir) || File.Exists(dir)) { problem = dir + " is there already"; return null; }
+            var info = Directory.CreateDirectory(dir);
+            if (info.Attributes.HasFlag(FileAttributes.ReparsePoint)) { problem = dir + " is a link to another folder"; return null; }
+            if (FolderGuard.FirstOpen(dir) is { } openDir) { problem = "programs without administrator rights can change " + openDir; return null; }
+
+            var target = Path.Combine(dir, InstallLayout.ExeName);
+            byte[] sourceHash;
+            // The source is held open without letting anyone write to, rename or delete it while it is copied.
+            using (var source = new FileStream(exe, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var copy = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            {
+                var buffer = new byte[1 << 20];
+                int n;
+                while ((n = source.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    hash.AppendData(buffer, 0, n);
+                    copy.Write(buffer, 0, n);
+                }
+                sourceHash = hash.GetHashAndReset();
+            }
+            byte[] copyHash;
+            using (var check = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.Read)) copyHash = SHA256.HashData(check);
+            if (!sourceHash.AsSpan().SequenceEqual(copyHash))
+            {
+                try { Directory.Delete(dir, recursive: true); } catch { /* removed with the next clean-up */ }
+                problem = "its copy in " + dir + " does not match the original";
+                return null;
+            }
+            if (FolderGuard.FirstOpen(target) is { } openFile) { problem = "programs without administrator rights can change " + openFile; return null; }
+            return target;
+        }
+        catch (Exception ex)
+        {
+            problem = "it could not copy itself to " + updatesDir + ": " + ex.Message;
+            return null;
         }
     }
 
@@ -198,7 +394,8 @@ internal static class NativeFolderGuard
         return 3;
     }
 
-    private static int Print(bool elevated, bool bundle, IReadOnlyList<string> extractDirs, string? expected)
+    private static int Print(bool elevated, bool bundle, IReadOnlyList<string> extractDirs, string? expected,
+        IReadOnlyList<string> codeLoading, string? exeFolderOpen, Decision decision)
     {
         try { AttachConsole(-1); } catch { /* output may be redirected instead */ }
         var lines = new List<string>
@@ -208,6 +405,8 @@ internal static class NativeFolderGuard
             "NATIVE_DLL_SEARCH_DIRECTORIES: " + (AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") as string ?? "(none)"),
             ExtractBaseVariable + ": " + (Environment.GetEnvironmentVariable(ExtractBaseVariable) ?? "(not set)"),
             "Admin-only folder this copy would use: " + (expected ?? "(none)"),
+            "Variables that load other code (removed for every program this copy starts): " + (codeLoading.Count == 0 ? "(none)" : string.Join(", ", codeLoading)),
+            "Setup, update or uninstall from a folder other programs can change: " + (exeFolderOpen ?? "no"),
         };
         if (extractDirs.Count == 0) lines.Add("Native parts unpacked to: (nowhere; nothing is unpacked)");
         foreach (var dir in extractDirs)
@@ -222,8 +421,6 @@ internal static class NativeFolderGuard
         }
         catch (Exception ex) { loaded.Add("(could not be listed: " + ex.Message + ")"); }
         lines.Add("Loaded from the unpack folder so far: " + (loaded.Count == 0 ? "(nothing)" : string.Join(", ", loaded)));
-        var decision = Decide(elevated, bundle, extractDirs, FolderGuard.FirstOpen,
-            Environment.GetEnvironmentVariable(RelaunchedVariable) == "1", Environment.GetEnvironmentVariable(ExtractBaseVariable), expected);
         lines.Add("Decision: " + decision.Step + (decision.Reason is null ? "" : " (" + decision.Reason + ")"));
         Console.Out.WriteLine(string.Join(Environment.NewLine, lines));
         Console.Out.Flush();
@@ -265,12 +462,14 @@ internal static class NativeFolderGuard
         return list;
     }
 
-    private static void Log(string message)
+    private static void Log(string message, bool warn = false)
     {
         try
         {
             var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RigControl", "logs");
-            new RigControl.Core.Logging.FileLog(dir).For("native").Info(message);
+            var log = new RigControl.Core.Logging.FileLog(dir).For("native");
+            if (warn) log.Warn(message);
+            else log.Info(message);
         }
         catch
         {

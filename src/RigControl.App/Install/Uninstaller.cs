@@ -26,8 +26,8 @@ internal static class Uninstaller
             userData = UserDataFolder(userSid, log);
             if (userData is null) notes.Add("Your settings were kept: RigControl could not be sure which folder is yours.");
         }
+        // The user's own data folder is deleted here, not by that line (see DeleteUserData).
         var candidates = new List<string>(layout.OwnFolders) { layout.Root };
-        if (userData is not null) candidates.Add(userData);
         var unsafeForCleanup = candidates.Where(p => !CleanupScript.CanQuote(p)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var path in unsafeForCleanup)
             notes.Add($"{path} has characters the command prompt would change, so it is not removed after closing. Delete it yourself.");
@@ -87,8 +87,7 @@ internal static class Uninstaller
 
         var script = CleanupScript.Build(later.Where(d => !unsafeForCleanup.Contains(d)),
             unsafeForCleanup.Contains(layout.Root) ? null : layout.Root,
-            userData is not null && !unsafeForCleanup.Contains(userData) ? userData : null,
-            Environment.ProcessId, Environment.SystemDirectory);
+            userData: null, Environment.ProcessId, Environment.SystemDirectory);
         if (script is not null)
         {
             try
@@ -104,6 +103,9 @@ internal static class Uninstaller
                     Arguments = script,
                 };
                 psi.Environment["NoDefaultCurrentDirectoryInExePath"] = "1";
+                // The line's own marker starts empty (it resets it too), and nothing that loads code is passed on.
+                psi.Environment.Remove("done");
+                NativeFolderGuard.RemoveCodeLoading(psi.Environment);
                 Process.Start(psi)?.Dispose();
                 log("The last files are removed once this window has closed.");
             }
@@ -113,7 +115,41 @@ internal static class Uninstaller
             }
         }
         log("RigControl uninstalled from " + layout.Root + ".");
+        // Last, and with nothing logged after it: the log itself lives in that folder and would only be made again.
+        if (userData is not null && DeleteUserData(userSid, userData, log) is { } kept) notes.Add(kept);
         return new UninstallResult(notes);
+    }
+
+    /// <summary>
+    /// Deletes the user's data folder in this (elevated) process, after checking it again with the same rules as at the
+    /// start: the user owns that folder and could have swapped it for a link to somewhere else meanwhile. RigControl
+    /// has closed by now, but its browser views may let go of their files a moment later, so it tries a few times.
+    /// Returns a note for the user when something was left, else null. A link inside the folder is removed as a link,
+    /// never followed (.NET's recursive delete does not go through links).
+    /// </summary>
+    private static string? DeleteUserData(string userSid, string expected, Action<string> log)
+    {
+        log("Deleting your settings, logs and Discord sign-in in " + expected + ".");
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            if (UserDataFolder(userSid, _ => { }) is not { } folder || !InstallLayout.SamePath(folder, expected))
+                return "Your settings were kept: their folder changed during the uninstall, so RigControl did not delete it.";
+            try
+            {
+                if (!Directory.Exists(folder)) return null;
+                Directory.Delete(folder, recursive: true);
+                return null;
+            }
+            catch when (attempt < 5)
+            {
+                Thread.Sleep(1000);
+            }
+            catch (Exception ex)
+            {
+                return $"Some of your settings could not be deleted ({ex.Message}). Delete {folder} yourself.";
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -219,7 +255,8 @@ internal static class CleanupScript
         // rounds do nothing.
         // "for" and "if" each take the rest of the line as their command, so both are wrapped in brackets: otherwise
         // every later "& …" would run inside the loop, or be skipped along with a false "if".
-        var wait = $"(for /l %i in (1,1,{MaxWaitRounds}) do @if not defined done ({tasklist} /FI \"PID eq {waitForPid}\" /NH | {find} \" {waitForPid} \" >nul && {ping} -n 2 127.0.0.1 >nul || set done=1))";
+        // "done" is emptied first, so a "done" this command prompt was given from outside can't skip the wait.
+        var wait = $"set \"done=\" & (for /l %i in (1,1,{MaxWaitRounds}) do @if not defined done ({tasklist} /FI \"PID eq {waitForPid}\" /NH | {find} \" {waitForPid} \" >nul && {ping} -n 2 127.0.0.1 >nul || set done=1))";
         var pause = $"{ping} -n 3 127.0.0.1 >nul";
         var parts = new List<string> { wait };
         foreach (var f in all) parts.Add($"rmdir /s /q \"{f}\" 2>nul");

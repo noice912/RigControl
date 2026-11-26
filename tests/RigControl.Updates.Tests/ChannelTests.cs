@@ -205,6 +205,20 @@ public sealed class ChannelTests : IDisposable
     }
 
     [Fact]
+    public async Task An_older_release_from_before_signed_updates_just_means_up_to_date()
+    {
+        // GitHub's newest release is v0.1.1, made before updates were signed; this copy is 1.1.2.
+        var net = Repo("0.1.1", new Fake("0.1.1", Unsigned: true), new Fake("0.1.0", Unsigned: true));
+        foreach (var channel in new[] { UpdateChannel.Public, UpdateChannel.Test })
+        {
+            var result = await Checker(net).CheckAsync(V("1.1.2"), channel, switchBack: false, default);
+            Assert.Null(result.Offer);
+            Assert.Null(result.Note);
+            Assert.Equal("0.1.1", result.LatestVersion);
+        }
+    }
+
+    [Fact]
     public async Task The_public_channel_ignores_pre_releases()
     {
         var net = Repo("1.1.2", new Fake("1.1.3-rc.1", Prerelease: true), new Fake("1.1.2"));

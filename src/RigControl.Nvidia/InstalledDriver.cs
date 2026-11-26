@@ -25,13 +25,21 @@ public static class InstalledDriver
         return $"{number / 100}.{number % 100:00}";
     }
 
-    /// <summary>The newest NVIDIA display driver Windows lists for a graphics card that is present now, or null.</summary>
+    /// <summary>How long WMI may take to answer before the read gives up.</summary>
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// The newest NVIDIA display driver Windows lists for a graphics card that is present now, or null. Can take up to
+    /// <see cref="Timeout"/> (WMI busy), so callers read it on a background thread.
+    /// </summary>
     public static string? Read()
     {
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT Name, DriverVersion, AdapterCompatibility FROM Win32_VideoController");
+                new ManagementScope(@"root\cimv2"),
+                new ObjectQuery("SELECT Name, DriverVersion, AdapterCompatibility FROM Win32_VideoController"),
+                new System.Management.EnumerationOptions { Timeout = Timeout, ReturnImmediately = true, Rewindable = false });
             string? best = null;
             decimal bestValue = 0;
             foreach (ManagementObject o in searcher.Get())

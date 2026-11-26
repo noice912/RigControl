@@ -68,15 +68,17 @@ public sealed class UpdateChannelTests : IDisposable
     public void Choosing_public_on_a_test_build_allows_the_switch_back_and_test_clears_it()
     {
         UpdateChannels.Choose(_settings, "test", maintainer: true, V("1.1.2"));
-        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true));
+        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.2")));
 
         UpdateChannels.Choose(_settings, "public", maintainer: true, V("1.1.3-rc.1"));
         Assert.True(Saved.SwitchBackPending);
-        Assert.True(UpdateChannels.SwitchBack(Saved, maintainer: true));
+        Assert.Equal("1.1.3-rc.1", Saved.SwitchBackFor);
+        Assert.True(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.3-rc.1")));
 
         UpdateChannels.Choose(_settings, "test", maintainer: true, V("1.1.3-rc.1"));
         Assert.False(Saved.SwitchBackPending);
-        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true));
+        Assert.Null(Saved.SwitchBackFor);
+        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.3-rc.1")));
     }
 
     [Fact]
@@ -85,7 +87,20 @@ public sealed class UpdateChannelTests : IDisposable
         // A public build that never left the public channel.
         UpdateChannels.Choose(_settings, "public", maintainer: false, V("1.1.2"));
         Assert.False(Saved.SwitchBackPending);
-        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: false));
+        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: false, V("1.1.2")));
+    }
+
+    [Fact]
+    public void The_switch_back_flag_only_counts_for_the_version_it_was_set_on()
+    {
+        UpdateChannels.Choose(_settings, "public", maintainer: true, V("1.1.3-rc.1"));
+        Assert.True(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.3-rc.1")));
+        // Another version runs now (an update that did not clear the flag): no downgrade.
+        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.3-rc.2")));
+        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.3")));
+        // A flag without a version (an older settings file) never counts.
+        _settings.Update<UpdateSettings>(UpdateSettings.Section, s => s.SwitchBackFor = null);
+        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.3-rc.1")));
     }
 
     [Fact]
@@ -95,10 +110,11 @@ public sealed class UpdateChannelTests : IDisposable
         {
             s.Channel = "test";
             s.SwitchBackPending = true;
+            s.SwitchBackFor = "1.1.3-rc.1";
         });
-        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true));
+        Assert.False(UpdateChannels.SwitchBack(Saved, maintainer: true, V("1.1.3-rc.1")));
         // Signed out, the same file means public, and the flag (set by an explicit choice) counts.
-        Assert.True(UpdateChannels.SwitchBack(Saved, maintainer: false));
+        Assert.True(UpdateChannels.SwitchBack(Saved, maintainer: false, V("1.1.3-rc.1")));
     }
 
     [Theory]

@@ -61,7 +61,12 @@ public sealed class UpdateChecker
         var manifestAsset = release.Assets.FirstOrDefault(a => a.Name == UpdateManifest.FileName);
         var sigAsset = release.Assets.FirstOrDefault(a => a.Name == UpdateManifest.SignatureFileName);
         if (manifestAsset is null || sigAsset is null)
+        {
+            // An older release from before signed updates (v0.1.x) is simply not newer: nothing to say about it.
+            if (!switchBack && AppVersion.TryParse(release.Tag, out var tagged) && tagged <= current)
+                return new UpdateCheckResult(null, Clean(release.Tag), null);
             return new UpdateCheckResult(null, Clean(release.Tag), "The newest release has no signed update information, so it is not offered.");
+        }
 
         var manifest = await ReadManifestAsync(release, manifestAsset, sigAsset, ct).ConfigureAwait(false);
         if (manifest.Version.IsPreRelease)
@@ -94,8 +99,11 @@ public sealed class UpdateChecker
         if (candidates.Count == 0) return new UpdateCheckResult(null, null, "There is no release on GitHub yet.");
 
         string? skipped = null;
-        foreach (var (release, _) in candidates)
+        foreach (var (release, tagged) in candidates)
         {
+            // Newest first: once the tags are no newer than this copy, there is nothing newer to look at. The tag is only
+            // used to stop looking here; anything offered is still checked against its signed version.
+            if (tagged <= current) return new UpdateCheckResult(null, Clean(release.Tag), null);
             var manifestAsset = release.Assets.FirstOrDefault(a => a.Name == UpdateManifest.FileName);
             var sigAsset = release.Assets.FirstOrDefault(a => a.Name == UpdateManifest.SignatureFileName);
             if (manifestAsset is null || sigAsset is null)

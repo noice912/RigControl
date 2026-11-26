@@ -154,3 +154,12 @@ under "Safety" in the [README](README.md).
 - Hardware control was tested on one PC. On other hardware a wrong assumption is possible; the README says which
   parts are untested.
 - The log folder is plain text. Look through a log before you attach it to a public issue.
+- What RigControl cannot defend against: code that already runs as you can set environment variables a .NET
+  program reads at start (a profiler DLL through `CORECLR_PROFILER_PATH`, `DOTNET_STARTUP_HOOKS`, another garbage
+  collector or JIT, a diagnostics connection). RigControl refuses to keep running elevated with them and restarts
+  without them, and startup hooks are switched off in the build, but a profiler DLL named that way has already been
+  loaded into the first process by .NET before any of RigControl's own code runs.
+- Setup run as administrator from a folder any program can change (such as Downloads) copies itself into a new
+  folder only administrators can change (`<install>\updates\setup-<random>`), checks the copy and carries on from
+  there. The same limit applies: whatever Windows itself loaded from that folder before RigControl's code ran (a DLL
+  placed next to the exe) is out of its reach. Run setup from a folder you trust.

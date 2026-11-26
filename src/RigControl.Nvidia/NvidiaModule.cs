@@ -133,10 +133,13 @@ public sealed class NvidiaModule : IAppModule
     private ILog _log = NullLog.Instance;
     private volatile ModuleStatus _status = ModuleStatus.NotStarted;
     private DriverInfo _info = new(false, null, null, Array.Empty<GpuInfo>(), "Starting.");
-    // What Windows says is installed now (see InstalledDriver), read at most every few seconds. Guarded by _gate.
-    private string? _windowsVersion;
-    private DateTime _windowsVersionReadUtc;
-    private string? _loggedNewDriver;
+    // What Windows says is installed now (see InstalledDriver). Read on a background thread at most every few
+    // seconds, never while _gate is held: WMI can take seconds (or hang) and every other call waits on _gate.
+    private volatile string? _windowsVersion;
+    private long _windowsVersionReadTicks; // UtcNow.Ticks of the last read started; Interlocked
+    private int _readingWindowsVersion;    // 1 while a read runs; Interlocked
+    private volatile Task _windowsVersionRead = Task.CompletedTask;
+    private string? _loggedNewDriver; // guarded by _gate
     private HashSet<string> _knownKeys = new();
     private int _disposed;
 
@@ -146,7 +149,7 @@ public sealed class NvidiaModule : IAppModule
     private ModeInfo? _pendingMode;
     private Timer? _revertTimer;
 
-    public NvidiaModule() : this(dataDir => new NvidiaBackend(dataDir), installedVersion: InstalledDriver.Read) { }
+    public NvidiaModule() : this(dataDir => new NvidiaBackend(dataDir), installedVersion: () => InstalledDriver.Read()) { }
 
     /// <param name="installedVersion">What Windows has installed now (null: not known); none means only the version read at start is used.</param>
     public NvidiaModule(Func<string, INvidiaBackend> backendFactory, int revertSeconds = 15, Func<string?>? installedVersion = null)
@@ -223,6 +226,7 @@ public sealed class NvidiaModule : IAppModule
                 _oc = _ctx!.Settings.Get<OverclockSettings>(OverclockSettings.Section);
                 ApplyOverclockAtStart();
                 _log.Info($"NVIDIA driver {_info.Version}, {_info.Gpus.FirstOrDefault()?.Name}.");
+                RefreshWindowsVersion(force: true);
                 return true;
             }
             _status = new ModuleStatus(ModuleState.Failed, _info.Problem ?? "No NVIDIA graphics card was found.");
@@ -239,6 +243,9 @@ public sealed class NvidiaModule : IAppModule
 
     public async Task<object?> InvokeAsync(string method, JsonElement? args, CancellationToken ct)
     {
+        // The first answer after start waits (briefly) for Windows' version, so the page never shows the old one
+        // first; later answers use what was read last and start a new read in the background when it is due.
+        if (method is "getInfo" or "checkDriverUpdate") await WaitForWindowsVersionAsync(ct).ConfigureAwait(false);
         if (method == "checkDriverUpdate") return await CheckDriverUpdate(ct).ConfigureAwait(false);
         if (method == "installDriver") return await InstallDriver(ct).ConfigureAwait(false);
         lock (_gate)
@@ -660,17 +667,54 @@ public sealed class NvidiaModule : IAppModule
         }
     }
 
+    /// <summary>How long a getInfo / checkDriverUpdate waits for a Windows read that is under way.</summary>
+    private static readonly TimeSpan WindowsVersionWait = TimeSpan.FromSeconds(3);
+
     /// <summary>
-    /// The driver version to show: what Windows has installed now when it can be read, otherwise what the driver said
-    /// at start. Call with _gate held.
+    /// Starts reading what Windows has installed on a background thread, unless a read runs already or the last one
+    /// started less than five seconds ago (<paramref name="force"/> skips that wait). Never blocks; safe with or
+    /// without _gate held.
+    /// </summary>
+    private void RefreshWindowsVersion(bool force = false)
+    {
+        var now = DateTime.UtcNow.Ticks;
+        if (!force && now - Interlocked.Read(ref _windowsVersionReadTicks) < TimeSpan.FromSeconds(5).Ticks) return;
+        if (Interlocked.Exchange(ref _readingWindowsVersion, 1) != 0) return;
+        Interlocked.Exchange(ref _windowsVersionReadTicks, now);
+        _windowsVersionRead = Task.Run(() =>
+        {
+            try
+            {
+                // Null (WMI busy or broken) keeps the last good answer.
+                if (_installedVersion() is { } v) _windowsVersion = v;
+            }
+            catch
+            {
+                // Same: the last answer, or the version read at start, is shown.
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _readingWindowsVersion, 0);
+            }
+        });
+    }
+
+    /// <summary>Waits up to <see cref="WindowsVersionWait"/> for a read that is under way. Never holds _gate.</summary>
+    private async Task WaitForWindowsVersionAsync(CancellationToken ct)
+    {
+        var read = _windowsVersionRead;
+        if (read.IsCompleted) return;
+        try { await read.WaitAsync(WindowsVersionWait, ct).ConfigureAwait(false); }
+        catch (TimeoutException) { /* the version from before is shown */ }
+    }
+
+    /// <summary>
+    /// The driver version to show: what Windows has installed now as last read in the background, otherwise what the
+    /// driver said at start. Only reads cached values (and maybe starts a new read), so it is quick with _gate held.
     /// </summary>
     private string? CurrentVersionLocked()
     {
-        if (DateTime.UtcNow - _windowsVersionReadUtc > TimeSpan.FromSeconds(5))
-        {
-            _windowsVersion = _installedVersion();
-            _windowsVersionReadUtc = DateTime.UtcNow;
-        }
+        RefreshWindowsVersion();
         var version = _windowsVersion ?? _info.Version;
         if (_info.Version is not null && version != _info.Version && version != _loggedNewDriver)
         {
@@ -693,12 +737,12 @@ public sealed class NvidiaModule : IAppModule
                 try { code = installer.ExitCode; } catch { /* not ours to read */ }
                 // Windows finishes registering the new driver a moment after the installer window closes.
                 await Task.Delay(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                // Read outside the lock, then only the cached answer is used under it.
+                await WaitForWindowsVersionAsync(CancellationToken.None).ConfigureAwait(false);
+                RefreshWindowsVersion(force: true);
+                await WaitForWindowsVersionAsync(CancellationToken.None).ConfigureAwait(false);
                 string? version;
-                lock (_gate)
-                {
-                    _windowsVersionReadUtc = DateTime.MinValue;
-                    version = CurrentVersionLocked();
-                }
+                lock (_gate) version = CurrentVersionLocked();
                 _log.Info($"NVIDIA's installer closed (exit code {code?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}); installed driver: {version ?? "unknown"}.");
                 _ctx?.Events.Publish("nvidia.driverChanged", new { driverVersion = version });
             }

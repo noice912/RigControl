@@ -85,6 +85,21 @@ internal sealed record InstallCommand(InstallMode Mode, int? AfterPid, bool Mini
         _ => StartAction.RunApp,
     };
 
+    /// <summary>
+    /// What this exe does with these arguments, from where it runs. Touches no WPF type, so the first check in
+    /// <see cref="NativeFolderGuard"/> can ask it too.
+    /// </summary>
+    public static StartAction ActionAt(IReadOnlyList<string> args, string? exe, InstalledCopy? installed)
+    {
+#if DEBUG
+        const bool development = true;
+#else
+        const bool development = false;
+#endif
+        var runsInstalled = installed is not null && installed.Layout.IsAppExe(exe);
+        return Parse(args).Decide(args.Count, runsInstalled, development);
+    }
+
     /// <summary>The arguments for the elevated copy of a setup started without administrator rights.</summary>
     public static string ElevatedInstallArgs(string userSid, bool reinstall) =>
         InstallSwitch + " " + UserSwitch + " " + userSid + (reinstall ? " " + ReinstallSwitch : "");

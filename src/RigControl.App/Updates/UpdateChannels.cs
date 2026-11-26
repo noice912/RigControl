@@ -52,9 +52,13 @@ internal static class UpdateChannels
     public static UpdateChannel Effective(UpdateSettings s, bool maintainer)
         => maintainer && string.Equals(s.Channel, Test, StringComparison.Ordinal) ? UpdateChannel.Test : UpdateChannel.Public;
 
-    /// <summary>Whether a check may offer the public release as a downgrade: only on the public channel, right after leaving test.</summary>
-    public static bool SwitchBack(UpdateSettings s, bool maintainer)
-        => s.SwitchBackPending && Effective(s, maintainer) == UpdateChannel.Public;
+    /// <summary>
+    /// Whether a check may offer the public release as a downgrade: only on the public channel, right after leaving
+    /// test, and only on the version that was running when the choice was made.
+    /// </summary>
+    public static bool SwitchBack(UpdateSettings s, bool maintainer, AppVersion running)
+        => s.SwitchBackPending && Effective(s, maintainer) == UpdateChannel.Public
+           && string.Equals(s.SwitchBackFor, running.ToString(), StringComparison.Ordinal);
 
     /// <summary>
     /// Saves the user's choice. "test" is refused unless <paramref name="maintainer"/>. Choosing "public" while running a
@@ -75,6 +79,7 @@ internal static class UpdateChannels
                 {
                     s.Channel = Test;
                     s.SwitchBackPending = false;
+                    s.SwitchBackFor = null;
                 });
                 return wasEffective != UpdateChannel.Test;
             case Public:
@@ -82,7 +87,11 @@ internal static class UpdateChannels
                 {
                     var wasTest = string.Equals(s.Channel, Test, StringComparison.Ordinal);
                     s.Channel = Public;
-                    if (running.IsPreRelease || wasTest) s.SwitchBackPending = true;
+                    if (running.IsPreRelease || wasTest)
+                    {
+                        s.SwitchBackPending = true;
+                        s.SwitchBackFor = running.ToString();
+                    }
                 });
                 return wasEffective != UpdateChannel.Public || running.IsPreRelease;
             default:

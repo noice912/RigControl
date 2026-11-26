@@ -19,15 +19,15 @@ internal static class InstallEntry
         var command = InstallCommand.Parse(args);
         var installed = UninstallEntry.Find();
         var runsInstalled = installed is not null && installed.Layout.IsAppExe(exe);
-#if DEBUG
-        const bool development = true;
-#else
-        const bool development = false;
-#endif
-        var action = command.Decide(args.Length, runsInstalled, development);
+        var action = InstallCommand.ActionAt(args, exe, installed);
 
-        // An installed RigControl keeps FFmpeg in its own folder, which only administrators can change.
-        if (runsInstalled && action == StartAction.RunApp) AudioHost.FfmpegRoot = installed!.Layout.FfmpegDir;
+        if (runsInstalled && action == StartAction.RunApp)
+        {
+            // An installed RigControl keeps FFmpeg in its own folder, which only administrators can change.
+            AudioHost.FfmpegRoot = installed!.Layout.FfmpegDir;
+            // Old unpacked native parts and setup's copies are removed once this copy is up and running.
+            if (AppEnvironment.DetectElevated()) StartupCleanup.Schedule(installed.Layout, NativeFolderGuard.CurrentExtractDirs(), exe, log);
+        }
 
         try
         {
@@ -140,6 +140,8 @@ internal static class InstallEntry
     {
         try
         {
+            // The elevated copy gets this process's environment, from which NativeFolderGuard.Check has already taken
+            // every variable that makes .NET load other code (it checks again on its own side).
             using var p = Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, Verb = "runas", Arguments = arguments });
             return 0;
         }

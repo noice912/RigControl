@@ -325,7 +325,7 @@ public class InstallTests
     public void The_cleanup_line_deletes_the_folders_and_the_root_only_when_empty()
     {
         var script = CleanupScript.Build(new[] { InstalledExe[..InstalledExe.LastIndexOf('\\')] }, Root, null, 4242, Sys)!;
-        Assert.StartsWith("/d /s /c \"(for /l %i in (1,1," + CleanupScript.MaxWaitRounds + ") do @if not defined done (", script);
+        Assert.StartsWith("/d /s /c \"set \"done=\" & (for /l %i in (1,1," + CleanupScript.MaxWaitRounds + ") do @if not defined done (", script);
         Assert.Contains(" & (if exist \"" + Root + "\\app\" rmdir /s /q \"" + Root + "\\app\" 2>nul) & ", script);
         Assert.Contains(" & rmdir /s /q \"" + Root + "\\app\" 2>nul", script);
         Assert.EndsWith("& rmdir \"" + Root + "\" 2>nul\"", script);
@@ -350,6 +350,13 @@ public class InstallTests
 
     [Fact]
     public void The_cleanup_line_really_waits_then_deletes_in_the_command_prompt()
+        => RunCleanupLine(inheritedDone: null);
+
+    [Fact]
+    public void An_inherited_done_variable_does_not_skip_the_wait()
+        => RunCleanupLine(inheritedDone: "1");
+
+    private static void RunCleanupLine(string? inheritedDone)
     {
         // Runs the real line in cmd.exe on a throwaway folder (brackets and & in its name), waiting for a short ping.
         var root = Path.Combine(Path.GetTempPath(), "rc-cleanup (x86) & co " + Guid.NewGuid().ToString("N")[..8]);
@@ -363,10 +370,13 @@ public class InstallTests
         try
         {
             var args = CleanupScript.Build(new[] { Path.Combine(root, "app") }, root, null, waitFor.Id, sys)!;
-            using var cmd = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(sys, "cmd.exe"), args)
+            var psi = new System.Diagnostics.ProcessStartInfo(Path.Combine(sys, "cmd.exe"), args)
             {
                 UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = sys,
-            })!;
+            };
+            // A "done" handed down from whoever started the command prompt must not count as "already ended".
+            if (inheritedDone is not null) psi.Environment["done"] = inheritedDone;
+            using var cmd = System.Diagnostics.Process.Start(psi)!;
             Thread.Sleep(1000);
             Assert.False(waitFor.HasExited);
             Assert.True(Directory.Exists(Path.Combine(root, "app")), "deleted before the waited-for process ended");
