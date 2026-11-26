@@ -159,6 +159,27 @@ public class NvidiaModuleTests : IDisposable
         => (await Assert.ThrowsAsync<RpcException>(() => Call(m, method, args))).Code;
 
     [Fact]
+    public async Task After_a_driver_update_the_version_Windows_has_installed_is_shown()
+    {
+        // The driver session opened at start keeps saying 621.24; Windows already has 621.40 installed.
+        var installed = "621.40";
+        var m = new NvidiaModule(_ => _backend, installedVersion: () => installed);
+        await m.StartAsync(new ModuleContext(new EventBus(), NullLog.Instance,
+            new SettingsStore(Path.Combine(_dir, "settings.json"), NullLog.Instance),
+            new AppEnvironment(_dir, _dir, false, "1.0.0", "x.exe")), CancellationToken.None);
+        Assert.Equal("621.40", (await Call(m, "getInfo")).GetProperty("driverVersion").GetString());
+        await m.DisposeAsync();
+
+        // Windows could not be asked: the version from start is shown.
+        var unknown = new NvidiaModule(_ => _backend, installedVersion: () => null);
+        await unknown.StartAsync(new ModuleContext(new EventBus(), NullLog.Instance,
+            new SettingsStore(Path.Combine(_dir, "settings2.json"), NullLog.Instance),
+            new AppEnvironment(_dir, _dir, false, "1.0.0", "x.exe")), CancellationToken.None);
+        Assert.Equal("621.24", (await Call(unknown, "getInfo")).GetProperty("driverVersion").GetString());
+        await unknown.DisposeAsync();
+    }
+
+    [Fact]
     public async Task Info_and_settings_match_the_contract()
     {
         await using var m = await Start();

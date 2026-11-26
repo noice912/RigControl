@@ -116,6 +116,9 @@ internal static class InstallVersion
     /// <summary>True when the installed version is this one or newer. An unreadable installed version is not.</summary>
     public static bool InstalledIsSameOrNewer(string? installed, string? mine)
     {
+        // Full versions, test builds included (1.1.3-rc.1 is older than 1.1.3).
+        if (RigControl.Updates.AppVersion.TryParseLoose(installed, out var x) && RigControl.Updates.AppVersion.TryParseLoose(mine, out var y))
+            return x.Value >= y.Value;
         var a = Parse(installed);
         var b = Parse(mine);
         return a is not null && b is not null && a >= b;

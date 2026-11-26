@@ -25,6 +25,12 @@ public sealed class SettingsStore
 
     public string FilePath => _path;
 
+    /// <summary>The names of the sections in the file as it was read or last saved (for the start-up log).</summary>
+    public IReadOnlyList<string> SectionNames
+    {
+        get { lock (_gate) return _root.Select(p => p.Key).ToList(); }
+    }
+
     private JsonObject Load()
     {
         try

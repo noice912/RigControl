@@ -223,7 +223,10 @@ internal sealed class DeveloperModule : IRpcModule
     private async Task<object> PublishUpdateAsync(PublishArgs a, CancellationToken ct)
     {
         RequireUnlocked();
-        if (!AppVersion.TryParse(a.Version, out var version)) throw RpcException.InvalidArgs("The version must look like 1.2.3.");
+        if (!AppVersion.TryParse(a.Version, out var version))
+            throw RpcException.InvalidArgs("The version must look like 1.2.3 (or 1.2.3-rc.1 for a development build).");
+        var testBuild = a.TestBuild == true;
+        if (ReleasePublisher.ChannelProblem(version, testBuild) is { } channelProblem) throw RpcException.InvalidArgs(channelProblem);
         var exe = a.ExePath?.Trim() ?? "";
         if (exe.Length == 0 || !File.Exists(exe)) throw RpcException.InvalidArgs("Choose the RigControl.exe to publish.");
         CheckExeVersion(exe, version);
@@ -243,9 +246,9 @@ internal sealed class DeveloperModule : IRpcModule
             {
                 try { _services.Events.Publish("dev.publish", new { step }); } catch { /* page closing */ }
             });
-            var result = await new ReleasePublisher(_github.Api).PublishAsync(token, exe, version, a.Notes, pem, progress, ct).ConfigureAwait(false);
-            _log.Info("Published RigControl " + version + " on GitHub: " + result.ReleaseUrl);
-            return new { url = result.ReleaseUrl, version = version.ToString() };
+            var result = await new ReleasePublisher(_github.Api).PublishAsync(token, exe, version, a.Notes, pem, testBuild, progress, ct).ConfigureAwait(false);
+            _log.Info("Published RigControl " + version + (testBuild ? " (development build, pre-release)" : "") + " on GitHub: " + result.ReleaseUrl);
+            return new { url = result.ReleaseUrl, version = version.ToString(), testBuild };
         }
         catch (Exception ex) when (ex is GitHubException or UpdateException or CryptographicException or IOException or UnauthorizedAccessException)
         {
@@ -318,5 +321,8 @@ internal sealed class DeveloperModule : IRpcModule
         public string? Version { get; set; }
         public string? Notes { get; set; }
         public string? KeyPath { get; set; }
+
+        /// <summary>A test build: published as a GitHub pre-release, so only the test channel offers it.</summary>
+        public bool? TestBuild { get; set; }
     }
 }

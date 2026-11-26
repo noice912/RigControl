@@ -31,13 +31,15 @@ public sealed class DevGatingTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
         {
             var url = r.RequestUri!.AbsoluteUri;
-            var json = url switch
-            {
-                "https://github.com/login/oauth/access_token" => "{\"access_token\":\"ghu_x\",\"expires_in\":28800,\"refresh_token\":\"ghr_x\"}",
-                "https://api.github.com/user" => "{\"login\":\"octo\"}",
-                "https://api.github.com/repos/noice912/RigControl" => "{\"permissions\":{\"admin\":false,\"push\":" + (Push ? "true" : "false") + ",\"pull\":true}}",
-                _ => null,
-            };
+            // The maintainers' private repository: GitHub says "not found" to anyone without access to it.
+            var json = url == RigControl.Updates.GitHubHosts.MaintainersRepoApi
+                ? (Push ? "{\"private\":true,\"permissions\":{\"admin\":true,\"push\":true,\"pull\":true}}" : null)
+                : url switch
+                {
+                    "https://github.com/login/oauth/access_token" => "{\"access_token\":\"ghu_x\",\"expires_in\":28800,\"refresh_token\":\"ghr_x\"}",
+                    "https://api.github.com/user" => "{\"login\":\"octo\"}",
+                    _ => null,
+                };
             return Task.FromResult(json is null
                 ? new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{}") }
                 : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") });

@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Reflection;
 using AudioController.App.Hosting;
 using RigControl.Core.Logging;
 using RigControl.Core.Modules;
@@ -47,7 +46,8 @@ internal static class InstallEntry
         }
     }
 
-    private static string Version => Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+    /// <summary>This exe's version, with a test build's pre-release part ("1.1.3-rc.1").</summary>
+    private static string Version => Updates.RunningVersion.Text;
 
     private static int Setup(InstallCommand command, string exe, InstalledCopy? installed, ILog log)
     {

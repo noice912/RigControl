@@ -72,11 +72,12 @@ public static class DriverInstaller
         }
     }
 
-    /// <summary>Starts the installer. Windows shows its own permission prompt and NVIDIA's installer takes over.</summary>
-    public static void Start(string path)
-    {
-        using var p = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-    }
+    /// <summary>
+    /// Starts the installer. Windows shows its own permission prompt and NVIDIA's installer takes over. Returns its
+    /// process so RigControl can read the driver again once it closes (null when Windows gives none back).
+    /// </summary>
+    public static Process? Start(string path)
+        => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
     private static bool WindowsTrusts(string path)
     {

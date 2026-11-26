@@ -9,6 +9,7 @@ import { Licences } from "../components/Licences";
 import { UpdatesPanel } from "../components/Updates";
 import { GitHubAccountPanel, ReviewPanel, useGitHub } from "../components/GitHubAccount";
 import { DeveloperSettings } from "../components/DeveloperSettings";
+import { VersionLabel } from "../components/VersionLabel";
 
 const STATE: Record<ModuleState, { label: string; color: string }> = {
   ready: { label: "Working", color: "var(--ok)" },
@@ -48,7 +49,11 @@ export function Settings() {
     <div className="page">
       <div className="page-head">
         <h1>Settings</h1>
-        {info && <span className="sub">RigControl {info.version}</span>}
+        {info && (
+          <span className="sub">
+            <VersionLabel />
+          </span>
+        )}
       </div>
 
       <section className="panel">

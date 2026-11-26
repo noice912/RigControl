@@ -18,6 +18,20 @@ internal static class Uninstaller
     {
         var notes = new List<string>();
 
+        // Every folder the last clean-up may have to delete is checked before anything is removed: one whose name the
+        // command prompt would change is left out of the clean-up (and said), rather than found out half-way through.
+        string? userData = null;
+        if (deleteUserData)
+        {
+            userData = UserDataFolder(userSid, log);
+            if (userData is null) notes.Add("Your settings were kept: RigControl could not be sure which folder is yours.");
+        }
+        var candidates = new List<string>(layout.OwnFolders) { layout.Root };
+        if (userData is not null) candidates.Add(userData);
+        var unsafeForCleanup = candidates.Where(p => !CleanupScript.CanQuote(p)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in unsafeForCleanup)
+            notes.Add($"{path} has characters the command prompt would change, so it is not removed after closing. Delete it yourself.");
+
         progress("Closing RigControl…");
         if (!RunningCopy.CloseAndWait(layout.AppExe, log))
             notes.Add("RigControl was still running, so some of its files may be left. Restart the PC and delete " + layout.AppDir + ".");
@@ -53,8 +67,9 @@ internal static class Uninstaller
         var later = new List<string>();
         foreach (var dir in layout.OwnFolders)
         {
-            // The running uninstaller's own folder can only go once it has ended.
-            if (layout.Contains(runningExe) && new InstallLayout(dir).Contains(runningExe))
+            // The running uninstaller's own folder can only go once it has ended. The unpacked native parts go last
+            // too: this window may still load one of them (an administrator's copy of RigControl unpacks there).
+            if ((layout.Contains(runningExe) && new InstallLayout(dir).Contains(runningExe)) || InstallLayout.SamePath(dir, layout.RuntimeDir))
             {
                 later.Add(dir);
                 continue;
@@ -70,27 +85,27 @@ internal static class Uninstaller
             }
         }
 
-        string? userData = null;
-        if (deleteUserData)
-        {
-            userData = UserDataFolder(userSid);
-            if (userData is null) notes.Add("Your settings were kept: the uninstall runs as another Windows account, which can't tell which folder is yours.");
-        }
-
-        var script = CleanupScript.Build(later, layout.Root, userData);
+        var script = CleanupScript.Build(later.Where(d => !unsafeForCleanup.Contains(d)),
+            unsafeForCleanup.Contains(layout.Root) ? null : layout.Root,
+            userData is not null && !unsafeForCleanup.Contains(userData) ? userData : null,
+            Environment.ProcessId, Environment.SystemDirectory);
         if (script is not null)
         {
             try
             {
+                // Runs as administrator, so nothing may come from a folder other programs can write to: the command
+                // prompt and every program it starts are named by their full path in System32, it starts in System32,
+                // and NoDefaultCurrentDirectoryInExePath stops it looking in its current folder for programs at all.
                 var psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    WorkingDirectory = Path.GetTempPath(),
+                    WorkingDirectory = Environment.SystemDirectory,
                     Arguments = script,
                 };
+                psi.Environment["NoDefaultCurrentDirectoryInExePath"] = "1";
                 Process.Start(psi)?.Dispose();
-                log("The last files are removed a few seconds after this window closes.");
+                log("The last files are removed once this window has closed.");
             }
             catch (Exception ex)
             {
@@ -102,50 +117,116 @@ internal static class Uninstaller
     }
 
     /// <summary>
-    /// %LOCALAPPDATA%\RigControl (settings, logs, the embedded Discord sign-in) of the user the uninstall is for.
-    /// Null when this process runs as another account: its own folder would be the wrong one.
+    /// %LOCALAPPDATA%\RigControl (settings, logs, the embedded Discord sign-in) of the user the uninstall is for, or
+    /// null when it can't safely be deleted. This runs as administrator, but the user can point their own folders
+    /// anywhere (a redirected AppData, a link to another folder), so the folder is only used when it sits inside the
+    /// profile folder Windows itself records for this user and no folder on its path is a link.
     /// </summary>
-    private static string? UserDataFolder(string userSid)
+    private static string? UserDataFolder(string userSid, Action<string> log)
     {
         try
         {
+            // Another account's own folder would be the wrong one.
             if (!string.Equals(Autostart.CurrentUserSid(), userSid, StringComparison.OrdinalIgnoreCase)) return null;
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return string.IsNullOrEmpty(local) ? null : Path.Combine(local, "RigControl");
+            if (string.IsNullOrEmpty(local)) return null;
+            var folder = Path.Combine(local, "RigControl");
+            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\" + userSid);
+            var profile = key?.GetValue("ProfileImagePath") is string p ? Environment.ExpandEnvironmentVariables(p) : null;
+            if (UserDataProblem(folder, profile, HasLink) is { } problem)
+            {
+                log("Your settings folder was kept: " + problem);
+                return null;
+            }
+            return folder;
+        }
+        catch (Exception ex)
+        {
+            log("Your settings folder was kept: it could not be checked (" + ex.Message + ").");
+            return null;
+        }
+    }
+
+    /// <summary>Why this data folder must not be deleted, or null when it may. Pure, so it can be tested.</summary>
+    /// <param name="hasLink">True when this one folder (not its parents) is a link (reparse point).</param>
+    internal static string? UserDataProblem(string folder, string? profile, Func<string, bool> hasLink)
+    {
+        if (string.IsNullOrWhiteSpace(profile)) return "Windows does not say where this user's profile folder is.";
+        string full, home;
+        try
+        {
+            full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+            home = Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile));
         }
         catch
         {
-            return null;
+            return "its name is not a valid folder name.";
         }
+        if (!full.StartsWith(home + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return full + " is not inside the profile folder " + home + ".";
+        for (var dir = full; !string.IsNullOrEmpty(dir); dir = Path.GetDirectoryName(dir))
+        {
+            if (Path.GetPathRoot(dir) is { } root && InstallLayout.SamePath(root, dir)) break;
+            if (hasLink(dir)) return dir + " is a link to another folder.";
+        }
+        return null;
+    }
+
+    private static bool HasLink(string dir)
+    {
+        var info = new DirectoryInfo(dir);
+        return info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint);
     }
 }
 
 /// <summary>
 /// The command prompt line that finishes an uninstall after RigControl has ended (an exe can't delete its own
-/// folder while it runs). It waits a few seconds, deletes, and tries once more in case a file was still held.
+/// folder while it runs). It waits until the uninstaller's process is gone (at most about ten minutes: the finish
+/// window may stay open a while), deletes, and tries once more in case a file was still held.
 /// </summary>
 internal static class CleanupScript
 {
+    /// <summary>How many one-second rounds the line waits for the uninstaller to end.</summary>
+    public const int MaxWaitRounds = 600;
+
+    // Inside quotes cmd still changes %…% and (with delayed expansion) !…!, and a quote or line break would end the
+    // quoted name. & | < > ( ) are taken as they are between quotes, so "Program Files (x86)" is fine.
+    private static readonly char[] Special = { '"', '%', '!', '^', '\r', '\n' };
+
+    /// <summary>True when this folder name can be put in the command line safely: nothing cmd would change or split on.</summary>
+    public static bool CanQuote(string? path) => !string.IsNullOrWhiteSpace(path) && path.IndexOfAny(Special) < 0;
+
     /// <param name="folders">Folders to delete with everything in them.</param>
     /// <param name="rootIfEmpty">Removed only when nothing is left in it.</param>
     /// <param name="userData">The user's data folder, when they asked for it to go.</param>
-    /// <returns>The arguments for cmd.exe, or null when there is nothing left to do.</returns>
-    public static string? Build(IEnumerable<string> folders, string? rootIfEmpty, string? userData)
+    /// <param name="waitForPid">The process to wait for (the uninstaller itself).</param>
+    /// <param name="systemDir">System32: the programs the line starts are named by their full path there.</param>
+    /// <returns>The arguments for cmd.exe, or null when there is nothing left to do. A folder that can't be quoted
+    /// safely (see <see cref="CanQuote"/>) is left out, never half-quoted.</returns>
+    public static string? Build(IEnumerable<string> folders, string? rootIfEmpty, string? userData, int waitForPid, string systemDir)
     {
-        var all = folders.Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
-        if (userData is not null) all.Add(userData);
+        var all = folders.Where(CanQuote).ToList();
+        if (userData is not null && CanQuote(userData)) all.Add(userData);
+        if (rootIfEmpty is not null && !CanQuote(rootIfEmpty)) rootIfEmpty = null;
         if (all.Count == 0 && rootIfEmpty is null) return null;
-        foreach (var path in all.Append(rootIfEmpty ?? ""))
-            if (path.IndexOfAny(new[] { '"', '%', '!', '^', '\r', '\n' }) >= 0)
-                throw new ArgumentException("A folder name has characters the command prompt would change: " + path);
+        if (!CanQuote(systemDir) || systemDir.Contains(' ')) throw new ArgumentException("The system folder's name can't be used in the command prompt: " + systemDir);
 
+        var ping = Path.Combine(systemDir, "PING.EXE");
+        var tasklist = Path.Combine(systemDir, "tasklist.exe");
+        var find = Path.Combine(systemDir, "find.exe");
         // "ping" to this PC itself is the usual way to wait in a command prompt without a console (no port is opened).
-        const string pause = "ping -n 4 127.0.0.1 >nul";
-        var parts = new List<string> { pause };
+        // Each round asks whether the uninstaller still runs; once it has ended, "done" is set and the remaining
+        // rounds do nothing.
+        // "for" and "if" each take the rest of the line as their command, so both are wrapped in brackets: otherwise
+        // every later "& …" would run inside the loop, or be skipped along with a false "if".
+        var wait = $"(for /l %i in (1,1,{MaxWaitRounds}) do @if not defined done ({tasklist} /FI \"PID eq {waitForPid}\" /NH | {find} \" {waitForPid} \" >nul && {ping} -n 2 127.0.0.1 >nul || set done=1))";
+        var pause = $"{ping} -n 3 127.0.0.1 >nul";
+        var parts = new List<string> { wait };
         foreach (var f in all) parts.Add($"rmdir /s /q \"{f}\" 2>nul");
         parts.Add(pause);
-        foreach (var f in all) parts.Add($"if exist \"{f}\" rmdir /s /q \"{f}\" 2>nul");
+        foreach (var f in all) parts.Add($"(if exist \"{f}\" rmdir /s /q \"{f}\" 2>nul)");
         if (rootIfEmpty is not null) parts.Add($"rmdir \"{rootIfEmpty}\" 2>nul");
-        return "/d /c \"" + string.Join(" & ", parts) + "\"";
+        // /s: cmd takes everything between the first and the last quote as it is.
+        return "/d /s /c \"" + string.Join(" & ", parts) + "\"";
     }
 }

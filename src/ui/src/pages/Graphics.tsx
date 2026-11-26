@@ -17,6 +17,8 @@ function DriverPanel({ info }: { info: NvidiaInfo }) {
   const gpu = info.gpus[0];
 
   useEffect(() => on("nvidia.driverDownload", setProgress), []);
+  // A finished driver update makes the earlier "newer driver" answer out of date.
+  useEffect(() => setUpdate(null), [info.driverVersion]);
 
   const install = async () => {
     setProgress(null);
@@ -677,6 +679,9 @@ function DisplaysPanel() {
 
 export function Graphics() {
   const info = useQuery<NvidiaInfo>("nvidia.getInfo");
+  const { reload } = info;
+  // NVIDIA's installer closed: show the driver Windows has now.
+  useEffect(() => on("nvidia.driverChanged", () => void reload()), [reload]);
   return (
     <div className="page">
       <div className="page-head">

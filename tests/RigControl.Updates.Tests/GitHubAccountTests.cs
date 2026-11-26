@@ -142,6 +142,61 @@ public sealed class GitHubAccountTests : IDisposable
     }
 
     [Fact]
+    public async Task A_401_from_the_token_address_forgets_the_sign_in()
+    {
+        var i = 0;
+        var fake = new FakeGitHub().On(HttpMethod.Post, TokenUrl, _ => i++ == 0
+            ? FakeGitHub.Json(Tokens)
+            : FakeGitHub.Json("{\"message\":\"Bad credentials\"}", HttpStatusCode.Unauthorized));
+        fake.On(HttpMethod.Get, "https://api.github.com/user", _ => FakeGitHub.Json("{\"login\":\"octo\"}"));
+        var account = new GitHubAccount(Settings(), new XorProtector(), SignIn(fake), new GitHubApi(fake.Client()), NullLog.Instance, () => _now);
+        await account.CompleteSignInAsync(new DeviceCode("dc", "X", "https://github.com/login/device", _now.AddMinutes(15), TimeSpan.FromSeconds(1)), default);
+
+        _now += TimeSpan.FromHours(9);
+        await Assert.ThrowsAsync<GitHubException>(() => account.GetAccessTokenAsync(default));
+        Assert.Null(account.Login);
+    }
+
+    [Theory]
+    [InlineData("network")]
+    [InlineData("503")]
+    [InlineData("500")]
+    public async Task A_refresh_that_fails_for_network_reasons_keeps_the_sign_in(string failure)
+    {
+        var i = 0;
+        var fake = new FakeGitHub().On(HttpMethod.Post, TokenUrl, _ =>
+        {
+            if (i++ == 0) return FakeGitHub.Json(Tokens);
+            return failure switch
+            {
+                "network" => throw new HttpRequestException("No such host is known."),
+                "503" => FakeGitHub.Json("{}", HttpStatusCode.ServiceUnavailable),
+                _ => FakeGitHub.Json("{}", HttpStatusCode.InternalServerError),
+            };
+        });
+        fake.On(HttpMethod.Get, "https://api.github.com/user", _ => FakeGitHub.Json("{\"login\":\"octo\"}"));
+        var account = new GitHubAccount(Settings(), new XorProtector(), SignIn(fake), new GitHubApi(fake.Client()), NullLog.Instance, () => _now);
+        await account.CompleteSignInAsync(new DeviceCode("dc", "X", "https://github.com/login/device", _now.AddMinutes(15), TimeSpan.FromSeconds(1)), default);
+
+        _now += TimeSpan.FromHours(9);
+        await Assert.ThrowsAsync<GitHubException>(() => account.GetAccessTokenAsync(default));
+        Assert.Equal("octo", account.Login);
+    }
+
+    [Fact]
+    public void Only_GitHubs_own_refusal_counts_as_a_refusal()
+    {
+        Assert.True(GitHubAccount.RefusedByGitHub(new GitHubException("x", HttpStatusCode.BadRequest)));
+        Assert.True(GitHubAccount.RefusedByGitHub(new GitHubException("x", HttpStatusCode.Unauthorized)));
+        Assert.True(GitHubAccount.RefusedByGitHub(new GitHubException("x") { OAuthError = "bad_refresh_token" }));
+        Assert.True(GitHubAccount.RefusedByGitHub(new GitHubException("x") { OAuthError = "invalid_grant" }));
+        Assert.False(GitHubAccount.RefusedByGitHub(new GitHubException("GitHub could not be reached.")));
+        Assert.False(GitHubAccount.RefusedByGitHub(new GitHubException("x", HttpStatusCode.ServiceUnavailable)));
+        Assert.False(GitHubAccount.RefusedByGitHub(new GitHubException("x", HttpStatusCode.Forbidden)));
+        Assert.False(GitHubAccount.RefusedByGitHub(new GitHubException("x") { OAuthError = "slow_down" }));
+    }
+
+    [Fact]
     public void Reviews_carry_the_marker_and_nothing_else()
     {
         var (title, body) = Reviews.Compose(4, "  Works great on my rig. Fans are quiet now and the lights match.  ", AppVersion.Parse("1.1.2"));

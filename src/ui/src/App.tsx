@@ -19,6 +19,7 @@ import { Settings } from "./pages/Settings";
 import { Developer } from "./pages/Developer";
 import { UpdateBanner } from "./components/Updates";
 import { useGitHub } from "./components/GitHubAccount";
+import { isDevelopmentBuild, useRunningVersion } from "./components/VersionLabel";
 
 type Route = "overview" | "cooling" | "graphics" | "capture" | "lighting" | "drivers" | "cpu" | "games" | "audio" | "health" | "settings" | "developer";
 
@@ -59,6 +60,7 @@ function loadRoute(): Route {
 
 export function App() {
   const { info, modules, restartAsAdmin, can } = useApp();
+  const runningVersion = useRunningVersion();
   const [route, setRoute] = useState<Route>(loadRoute);
   const [setupOpen, setSetupOpen] = useState(false);
   const health = useHealth().report;
@@ -94,7 +96,7 @@ export function App() {
     if (name.startsWith("host.")) return !can(name);
     return notOnThisSystem(modules.find((x) => x.name === name));
   };
-  // The Developer page exists only for a signed-in GitHub account with push access; for anyone else there is no trace of it.
+  // The Developer page exists only for a signed-in GitHub account that may push to the maintainers' private repository; for anyone else there is no trace of it.
   const github = useGitHub().data;
   const devHere = !!info && can("host.updates") && !!github?.maintainer;
   const nav = NAV.filter((n) => !notForThisPc(n.module) && !notHere(n) && (n.route !== "developer" || devHere));
@@ -143,6 +145,11 @@ export function App() {
         <div className="brand">
           <div className="brand-name">RigControl</div>
           {info && <div className="brand-machine">{info.machineName}</div>}
+          {isDevelopmentBuild(runningVersion) && (
+            <div className="brand-machine" title="An unfinished version published for testing, not the public build.">
+              <span className="badge warn" style={{ marginLeft: 0 }}>Development build</span> {runningVersion}
+            </div>
+          )}
         </div>
         <div className="nav">
           {nav.map((n) => (

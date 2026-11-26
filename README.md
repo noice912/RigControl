@@ -6,6 +6,8 @@ screen, shows what you play on Discord and carries a soundboard, so you need few
 It is free software (GPL-3.0), made by one person and tested on one PC. Read "Will it work on my PC?" before you rely
 on it.
 
+**Not a competitor of any official product.** RigControl is a free, independent project by one person. It is not a competitor of, or offered against, any official product, such as SignalRGB, NZXT CAM, ASUS Armoury Crate, GIGABYTE Control Center or the makers' own apps, and none of their makers made, endorsed or support it. Where RigControl works alongside one of them or follows a familiar idea (for example a SignalRGB-style light layout), that is said only to describe what it does. If an official app does what you need, use it.
+
 - [Will it work on my PC?](#will-it-work-on-my-pc)
 - [What it installs and why it runs as administrator](#what-it-installs-and-why-it-runs-as-administrator)
 - [Installing](#installing)
@@ -170,7 +172,10 @@ folder is open to ordinary programs. See [SECURITY.md](SECURITY.md).
 
 **Updates.** RigControl checks GitHub for a new version (Settings > Updates, on by default). When one is there it
 says so; press **Update** and it downloads it, checks the author's signature and the file, closes, updates and starts
-again. Your settings are kept.
+again. Your settings are kept. Everyone gets the public build. People who may publish RigControl (their GitHub
+account may push to the maintainers' private repository) also see "Get development builds": unfinished versions marked as pre-releases on GitHub, with
+versions like 1.1.3-rc.1. Turning it off again offers the public version, even though it is older, so you can go back;
+your settings are kept then too.
 
 **Removing it.** Use Windows' "Installed apps", or run `RigControl.exe --uninstall`. See "Removing it" in
 [PRIVACY.md](PRIVACY.md).
@@ -370,8 +375,9 @@ RigControl stands on other people's work. The full list with versions and licenc
   [TVmaze](https://www.tvmaze.com) and Cinemeta, Genshin Impact profiles from [Enka.Network](https://enka.network).
 
 RigControl is not made, endorsed or supported by NVIDIA, NZXT, ASUS, GIGABYTE, Razer, Nanoleaf, Signify (Philips
-Hue), Govee, Yeelight, the WLED project, LifeSmart (Cololight), LeetDesk, Corsair, Thermaltake, Lian Li, Discord,
-Intel, AMD, Microsoft or any other company named here. Their names are used only to say what the app works with.
+Hue), Govee, Yeelight, the WLED project, LifeSmart (Cololight), LeetDesk, Corsair, Thermaltake, Lian Li, WhirlwindFX (SignalRGB), Discord,
+Intel, AMD, Microsoft or any other company named here, and it is not a competitor of their products. Their names are
+used only to say what the app works with.
 
 ## Licence
 

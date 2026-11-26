@@ -3,7 +3,7 @@ using RigControl.Core.Logging;
 namespace RigControl.Updates;
 
 /// <summary>
-/// Whether the signed-in GitHub account may push to noice912/RigControl. Only then does anything about dev mode exist
+/// Whether the signed-in GitHub account may push to the maintainers' private repository. Only then does anything about dev mode exist
 /// in the app (the Settings section, the Developer page, the "dev" calls). Asked at each start and after sign-in, kept
 /// for this run only; signed out or any failure means no.
 /// </summary>

@@ -18,7 +18,7 @@ public static class Reviews
     public const int MaxTextLength = 4000;
 
     private const string Footer = "\n\n---\nRigControl ";
-    private static readonly Regex Marker = new(@"<!--\s*rigcontrol-review v1 stars=([1-5]) version=([0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6})\s*-->",
+    private static readonly Regex Marker = new(@"<!--\s*rigcontrol-review v1 stars=([1-5]) version=([0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(?:-[0-9A-Za-z.-]{1,40})?)\s*-->",
         RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -84,9 +84,31 @@ public sealed class ReleasePublisher
         _now = now ?? (() => DateTimeOffset.UtcNow);
     }
 
-    public async Task<PublishResult> PublishAsync(string token, string exePath, AppVersion version, string? notes, string keyPem,
-        IProgress<string>? progress, CancellationToken ct)
+    /// <summary>The first line of a test build's release notes.</summary>
+    public const string TestBuildNote = "Development build (pre-release): only people with \"Get development builds\" on get it. Everyone else keeps the latest public build.";
+
+    /// <summary>
+    /// A test build must have a pre-release version ("1.1.3-rc.1") and a public update must not ("1.1.3"), so a test
+    /// build can never be offered as a public update and the other way round. Null when the pair is fine, else why not.
+    /// </summary>
+    public static string? ChannelProblem(AppVersion version, bool testBuild)
     {
+        if (testBuild && !version.IsPreRelease)
+            return "A development build needs a pre-release version, like " + version.Core + "-rc.1.";
+        if (!testBuild && version.IsPreRelease)
+            return version + " is a pre-release version, so it can only be published as a development build. Tick \"Development build\" or use a version like " + version.Core + ".";
+        return null;
+    }
+
+    public Task<PublishResult> PublishAsync(string token, string exePath, AppVersion version, string? notes, string keyPem,
+        IProgress<string>? progress, CancellationToken ct)
+        => PublishAsync(token, exePath, version, notes, keyPem, testBuild: false, progress, ct);
+
+    /// <param name="testBuild">Made as a GitHub pre-release (only the test channel offers it) with notes saying so.</param>
+    public async Task<PublishResult> PublishAsync(string token, string exePath, AppVersion version, string? notes, string keyPem,
+        bool testBuild, IProgress<string>? progress, CancellationToken ct)
+    {
+        if (ChannelProblem(version, testBuild) is { } problem) throw new UpdateException(problem);
         using var key = EcSignature.ImportPrivateKeyPem(keyPem);
         // A key that the app does not trust would make an update nobody can install: caught here, before GitHub.
         if (EcSignature.PublicKeyBase64(key) != _updatePublicKey)
@@ -100,7 +122,9 @@ public sealed class ReleasePublisher
 
             progress?.Report("Making a draft release");
             var body = string.IsNullOrWhiteSpace(notes) ? "RigControl " + version : notes.Trim();
-            var draft = await _api.CreateDraftReleaseAsync(token, version.Tag, "RigControl " + version.Tag, body, ct).ConfigureAwait(false);
+            if (testBuild) body = TestBuildNote + "\n\n" + body;
+            var name = "RigControl " + version.Tag + (testBuild ? " (development build)" : "");
+            var draft = await _api.CreateDraftReleaseAsync(token, version.Tag, name, body, ct, prerelease: testBuild).ConfigureAwait(false);
             try
             {
                 foreach (var file in files.All)
@@ -112,7 +136,7 @@ public sealed class ReleasePublisher
                     await _api.UploadAssetAsync(token, draft, file, type, ct).ConfigureAwait(false);
                 }
                 progress?.Report("Publishing");
-                var url = await _api.PublishReleaseAsync(token, draft.Id, ct).ConfigureAwait(false);
+                var url = await _api.PublishReleaseAsync(token, draft.Id, ct, prerelease: testBuild).ConfigureAwait(false);
                 return new PublishResult(string.IsNullOrEmpty(url) ? draft.HtmlUrl : url, version);
             }
             catch (Exception ex) when (ex is GitHubException or IOException or OperationCanceledException)

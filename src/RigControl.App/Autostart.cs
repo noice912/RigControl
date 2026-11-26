@@ -229,8 +229,18 @@ internal static class Autostart
         {
             if (!File.Exists(exePath)) return "The program file was not found: " + exePath;
             var xml = BuildTaskXml(exePath, userSid);
-            file = Path.Combine(Path.GetTempPath(), "rigcontrol-task-" + Guid.NewGuid().ToString("N") + ".xml");
-            File.WriteAllText(file, xml, Encoding.Unicode);
+            // schtasks reads the definition from a file in a separate process. In %TEMP% another program could swap
+            // that file in between and get a task of its own that runs as administrator, so the file goes in a folder
+            // only administrators can change, under a new name that must not exist yet.
+            var folder = NativeFolderGuard.AdminFolder(out var problem);
+            if (folder is null) return "No folder only administrators can change was found for the task definition (" + problem + ").";
+            var path = Path.Combine(folder, "rigcontrol-task-" + Guid.NewGuid().ToString("N") + ".xml");
+            using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+            {
+                file = path;
+                using var writer = new StreamWriter(stream, Encoding.Unicode);
+                writer.Write(xml);
+            }
             var (code, output, error) = RunSchtasks("/Create", "/TN", name, "/XML", file, "/F");
             if (code != 0) return FirstLine(error, output) ?? "Windows refused to create the startup task.";
             RemoveLegacyRunValue();

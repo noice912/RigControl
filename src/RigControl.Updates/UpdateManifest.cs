@@ -66,7 +66,7 @@ public sealed record UpdateManifest(AppVersion Version, string File, string Sha2
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) throw Bad("it is not a JSON object");
             var versionText = String(root, "version");
-            if (!AppVersion.TryParse(versionText, out var version)) throw Bad("the version is not like 1.1.2");
+            if (!AppVersion.TryParse(versionText, out var version)) throw Bad("the version is not like 1.1.2 or 1.1.3-rc.1");
             var file = String(root, "file");
             if (file != version.SetupFileName) throw Bad("the file name does not match the version");
             var sha = String(root, "sha256");

@@ -65,6 +65,12 @@ Some features use other companies' services, such as Discord for the Discord sta
 or the makers' own download servers for drivers. Their own terms apply when you use them. RigControl is not made or endorsed
 by any of those companies, or by the makers of your hardware.
 
+RigControl is an independent project and not a competitor of any official product, such as SignalRGB, NZXT CAM,
+ASUS Armoury Crate, GIGABYTE Control Center or other makers' apps. Their names appear only to describe what RigControl
+works with or resembles.
+
 ## 7. Changes to these terms
 
-A new version of RigControl may come with new terms. The installer and the updater show them before they apply.
+A new version of RigControl may come with new terms. Each version carries its terms: they are written to the
+`licenses` folder inside the install folder and shown in Settings > Licences. The setup window shows them on a fresh
+install.

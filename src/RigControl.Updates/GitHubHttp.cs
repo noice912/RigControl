@@ -9,6 +9,9 @@ public sealed class GitHubException : Exception
 {
     public HttpStatusCode? Status { get; }
 
+    /// <summary>The "error" code of GitHub's sign-in answer (such as bad_refresh_token), when GitHub gave one.</summary>
+    public string? OAuthError { get; init; }
+
     public GitHubException(string message, HttpStatusCode? status = null, Exception? inner = null) : base(message, inner)
     {
         Status = status;
@@ -22,6 +25,14 @@ public static class GitHubHosts
     public const string Repo = "RigControl";
     public const string ApiBase = "https://api.github.com";
     public const string RepoApi = ApiBase + "/repos/" + Owner + "/" + Repo;
+
+    /// <summary>
+    /// The maintainers' private repository, by GitHub's number for it (its name stays out of the public source). Dev
+    /// mode exists only for an account that may push there; everyone else gets "not found" from GitHub.
+    /// </summary>
+    public const long MaintainersRepoId = 1459510340;
+
+    public static readonly string MaintainersRepoApi = ApiBase + "/repositories/" + MaintainersRepoId.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>Where a release's files are downloaded from (GitHub then sends the download on to its file hosts).</summary>
     public const string ReleaseDownloadPrefix = "https://github.com/" + Owner + "/" + Repo + "/releases/download/";

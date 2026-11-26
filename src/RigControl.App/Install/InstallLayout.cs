@@ -4,7 +4,8 @@ namespace RigControl.App.Install;
 
 /// <summary>
 /// Where an installed RigControl keeps its files: <c>&lt;root&gt;\app\RigControl.exe</c>, the unpacked FFmpeg in
-/// <c>ffmpeg\</c>, the licence texts in <c>licenses\</c> and downloaded updates in <c>updates\</c>. The root may also
+/// <c>ffmpeg\</c>, the licence texts in <c>licenses\</c>, downloaded updates in <c>updates\</c> and the exe's unpacked
+/// native parts in <c>runtime\</c>. The root may also
 /// hold RigControl's own OpenRGB copy (<c>OpenRGB\</c>), which belongs to the helper programs and is never removed here.
 /// </summary>
 internal sealed class InstallLayout
@@ -23,8 +24,14 @@ internal sealed class InstallLayout
     public string LicensesDir => Path.Combine(Root, "licenses");
     public string UpdatesDir => Path.Combine(Root, "updates");
 
+    /// <summary>
+    /// Where the one-file exe unpacks the native parts it carries (WPF's and WebView2's DLLs) when it runs as
+    /// administrator, instead of the user's temp folder (see <see cref="NativeFolderGuard"/>).
+    /// </summary>
+    public string RuntimeDir => Path.Combine(Root, "runtime");
+
     /// <summary>The folders the installer makes, and the only ones the uninstaller removes.</summary>
-    public IReadOnlyList<string> OwnFolders => new[] { AppDir, FfmpegDir, LicensesDir, UpdatesDir };
+    public IReadOnlyList<string> OwnFolders => new[] { AppDir, FfmpegDir, LicensesDir, UpdatesDir, RuntimeDir };
 
     /// <summary>C:\Program Files\RigControl (on this PC's Program Files).</summary>
     public static string DefaultRoot() =>

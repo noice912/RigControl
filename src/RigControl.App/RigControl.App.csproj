@@ -12,6 +12,9 @@
     <!-- WPF takes its DPI awareness from app.manifest; the WinForms analyzer (pulled in for the tray icon) would rather it did not. -->
     <NoWarn>$(NoWarn);WFO0003;WFAC010</NoWarn>
     <ApplicationIcon Condition="Exists('Assets\rigcontrol.ico')">Assets\rigcontrol.ico</ApplicationIcon>
+    <!-- Program.Main, not WPF's generated Main: it checks where the native DLLs were unpacked before WPF loads any
+         (NativeFolderGuard.cs). -->
+    <StartupObject>RigControl.App.Program</StartupObject>
   </PropertyGroup>
 
   <!-- One self-contained exe: dotnet publish src\RigControl.App -c Release -->

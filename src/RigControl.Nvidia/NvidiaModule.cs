@@ -133,6 +133,10 @@ public sealed class NvidiaModule : IAppModule
     private ILog _log = NullLog.Instance;
     private volatile ModuleStatus _status = ModuleStatus.NotStarted;
     private DriverInfo _info = new(false, null, null, Array.Empty<GpuInfo>(), "Starting.");
+    // What Windows says is installed now (see InstalledDriver), read at most every few seconds. Guarded by _gate.
+    private string? _windowsVersion;
+    private DateTime _windowsVersionReadUtc;
+    private string? _loggedNewDriver;
     private HashSet<string> _knownKeys = new();
     private int _disposed;
 
@@ -142,13 +146,17 @@ public sealed class NvidiaModule : IAppModule
     private ModeInfo? _pendingMode;
     private Timer? _revertTimer;
 
-    public NvidiaModule() : this(dataDir => new NvidiaBackend(dataDir)) { }
+    public NvidiaModule() : this(dataDir => new NvidiaBackend(dataDir), installedVersion: InstalledDriver.Read) { }
 
-    public NvidiaModule(Func<string, INvidiaBackend> backendFactory, int revertSeconds = 15)
+    /// <param name="installedVersion">What Windows has installed now (null: not known); none means only the version read at start is used.</param>
+    public NvidiaModule(Func<string, INvidiaBackend> backendFactory, int revertSeconds = 15, Func<string?>? installedVersion = null)
     {
         _backendFactory = backendFactory;
         _revertSeconds = revertSeconds;
+        _installedVersion = installedVersion ?? (() => null);
     }
+
+    private readonly Func<string?> _installedVersion;
 
     public string Name => "nvidia";
     public string DisplayName => "NVIDIA graphics";
@@ -237,7 +245,7 @@ public sealed class NvidiaModule : IAppModule
         {
             return method switch
             {
-                "getInfo" => new NvidiaInfoDto(_info.Available, _info.Version, _info.Branch, _info.Gpus,
+                "getInfo" => new NvidiaInfoDto(_info.Available, CurrentVersionLocked(), _info.Branch, _info.Gpus,
                     _info.Available ? Limitations : new[] { _info.Problem ?? "No NVIDIA graphics card was found." }),
                 "getPower" => GetPower(),
                 "setPowerLimit" => SetPowerLimit(RpcArgs.Require<PowerArgs>(args)),
@@ -551,7 +559,7 @@ public sealed class NvidiaModule : IAppModule
         lock (_gate)
         {
             backend = Backend();
-            installed = _info.Version;
+            installed = CurrentVersionLocked();
         }
         var now = DateTimeOffset.Now.ToString("o");
         try
@@ -633,20 +641,71 @@ public sealed class NvidiaModule : IAppModule
                 _log.Error("The downloaded driver file is not signed by NVIDIA; it was deleted.");
                 throw RpcException.Unsafe("The downloaded file is not signed by NVIDIA, so it was deleted and not run.");
             }
+            System.Diagnostics.Process? installer;
             try
             {
-                DriverInstaller.Start(path);
+                installer = DriverInstaller.Start(path);
             }
             catch (Exception ex)
             {
                 throw RpcException.Unavailable("The installer could not be started: " + ex.Message);
             }
             _log.Info($"Started NVIDIA's installer for driver {latest.Version}.");
+            if (installer is not null) _ = WatchInstallerAsync(installer);
             return new DriverInstallDto(true, latest.Version);
         }
         finally
         {
             Interlocked.Exchange(ref _installing, 0);
+        }
+    }
+
+    /// <summary>
+    /// The driver version to show: what Windows has installed now when it can be read, otherwise what the driver said
+    /// at start. Call with _gate held.
+    /// </summary>
+    private string? CurrentVersionLocked()
+    {
+        if (DateTime.UtcNow - _windowsVersionReadUtc > TimeSpan.FromSeconds(5))
+        {
+            _windowsVersion = _installedVersion();
+            _windowsVersionReadUtc = DateTime.UtcNow;
+        }
+        var version = _windowsVersion ?? _info.Version;
+        if (_info.Version is not null && version != _info.Version && version != _loggedNewDriver)
+        {
+            _loggedNewDriver = version;
+            _log.Info($"Windows now has NVIDIA driver {version} installed (RigControl started with {_info.Version}).");
+        }
+        return version;
+    }
+
+    /// <summary>When NVIDIA's installer closes, reads the driver again and tells the page, so it never shows the old one.</summary>
+    private async Task WatchInstallerAsync(System.Diagnostics.Process installer)
+    {
+        try
+        {
+            using (installer)
+            {
+                using var limit = new CancellationTokenSource(TimeSpan.FromHours(2));
+                await installer.WaitForExitAsync(limit.Token).ConfigureAwait(false);
+                int? code = null;
+                try { code = installer.ExitCode; } catch { /* not ours to read */ }
+                // Windows finishes registering the new driver a moment after the installer window closes.
+                await Task.Delay(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                string? version;
+                lock (_gate)
+                {
+                    _windowsVersionReadUtc = DateTime.MinValue;
+                    version = CurrentVersionLocked();
+                }
+                _log.Info($"NVIDIA's installer closed (exit code {code?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}); installed driver: {version ?? "unknown"}.");
+                _ctx?.Events.Publish("nvidia.driverChanged", new { driverVersion = version });
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Info("Stopped watching NVIDIA's installer: " + ex.Message);
         }
     }
 

@@ -86,7 +86,7 @@ public sealed class GitHubAccount
 
             if (string.IsNullOrEmpty(tokens.RefreshToken) || (tokens.RefreshExpiresAt is { } r && _now() >= r))
             {
-                Forget();
+                Forget("its renewal had run out");
                 throw new GitHubException("The GitHub sign-in has run out. Sign in with GitHub again.");
             }
             try
@@ -96,12 +96,13 @@ public sealed class GitHubAccount
                 _log.Info("The GitHub sign-in was renewed.");
                 return renewed.AccessToken;
             }
-            catch (GitHubException ex) when (ex.Status is null or System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Unauthorized)
+            catch (GitHubException ex) when (RefusedByGitHub(ex))
             {
                 // GitHub refused the refresh token (used up, revoked): the user has to sign in again.
-                Forget();
+                Forget("GitHub refused to renew it (" + ex.Message + ")");
                 throw;
             }
+            // Anything else (no network, a time-out, GitHub busy) keeps the sign-in: the next try may well work.
         }
         finally
         {
@@ -112,11 +113,24 @@ public sealed class GitHubAccount
     /// <summary>Signs out: the tokens and the account name are deleted from this PC.</summary>
     public void SignOut()
     {
-        Forget();
+        Forget(null);
         _log.Info("Signed out of GitHub; the sign-in was deleted from this PC.");
     }
 
-    private void Forget() => _settings.Set(GitHubSettings.Section, new GitHubSettings());
+    /// <summary>
+    /// True only when GitHub itself said no to the refresh token: HTTP 400/401 from the token address, or one of the
+    /// sign-in error codes that mean the token is no good. A failure to reach GitHub is not a refusal.
+    /// </summary>
+    internal static bool RefusedByGitHub(GitHubException ex)
+        => ex.Status is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Unauthorized
+           || ex.OAuthError is "bad_refresh_token" or "invalid_grant" or "unauthorized" or "unauthorized_client" or "expired_token";
+
+    /// <summary>Deletes the sign-in; with a reason it is also written to the log, so a dropped sign-in is never a mystery.</summary>
+    private void Forget(string? reason)
+    {
+        if (reason is not null) _log.Warn("The GitHub sign-in was deleted from this PC: " + reason + ". Sign in with GitHub again.");
+        _settings.Set(GitHubSettings.Section, new GitHubSettings());
+    }
 
     private void Store(GitHubTokens tokens, string? login)
     {
@@ -153,8 +167,7 @@ public sealed class GitHubAccount
         catch (Exception ex) when (ex is CryptographicException or FormatException or JsonException)
         {
             // Protected for another Windows account, or damaged: it cannot be used, so it is dropped.
-            _log.Warn("The stored GitHub sign-in could not be read and was deleted; sign in again.");
-            Forget();
+            Forget("it could not be read (" + ex.GetType().Name + ")");
             return null;
         }
     }

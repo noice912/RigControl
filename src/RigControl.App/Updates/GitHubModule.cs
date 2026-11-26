@@ -197,12 +197,14 @@ internal sealed class GitHubModule : IRpcModule
     /// </summary>
     private async Task<object> SubmitReviewAsync(ReviewArgs a, CancellationToken ct)
     {
-        if (!AppVersion.TryParseLoose(_services.Environment.Version, out var version))
+        if (!AppVersion.TryParseLoose(_services.Environment.Version, out _))
             throw RpcException.Unavailable("RigControl's own version is unknown, so the review can't say which version it is about.");
+        // A test build says so in its version ("1.1.3-rc.1").
+        var version = RunningVersion.Resolve(_services.Environment.Version);
         (string Title, string Body) review;
         try
         {
-            review = Reviews.Compose(a.Stars ?? 0, a.Text, version.Value);
+            review = Reviews.Compose(a.Stars ?? 0, a.Text, version);
         }
         catch (ArgumentException ex)
         {

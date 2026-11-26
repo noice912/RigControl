@@ -117,7 +117,8 @@ public class InstallTests
         Assert.Equal(Root + @"\ffmpeg", l.FfmpegDir);
         Assert.Equal(Root + @"\licenses", l.LicensesDir);
         Assert.Equal(Root + @"\updates", l.UpdatesDir);
-        Assert.Equal(4, l.OwnFolders.Count);
+        Assert.Equal(Root + @"\runtime", l.RuntimeDir);
+        Assert.Equal(5, l.OwnFolders.Count);
         Assert.DoesNotContain(l.OwnFolders, f => f.EndsWith("OpenRGB", StringComparison.OrdinalIgnoreCase));
         Assert.True(l.IsAppExe(@"c:\program files\rigcontrol\APP\rigcontrol.exe"));
         Assert.False(l.IsAppExe(OldExe));
@@ -323,11 +324,90 @@ public class InstallTests
     [Fact]
     public void The_cleanup_line_deletes_the_folders_and_the_root_only_when_empty()
     {
-        var script = CleanupScript.Build(new[] { InstalledExe[..InstalledExe.LastIndexOf('\\')] }, Root, null)!;
-        Assert.StartsWith("/d /c \"ping -n 4 127.0.0.1 >nul & rmdir /s /q \"" + Root + "\\app\" 2>nul", script);
+        var script = CleanupScript.Build(new[] { InstalledExe[..InstalledExe.LastIndexOf('\\')] }, Root, null, 4242, Sys)!;
+        Assert.StartsWith("/d /s /c \"(for /l %i in (1,1," + CleanupScript.MaxWaitRounds + ") do @if not defined done (", script);
+        Assert.Contains(" & (if exist \"" + Root + "\\app\" rmdir /s /q \"" + Root + "\\app\" 2>nul) & ", script);
+        Assert.Contains(" & rmdir /s /q \"" + Root + "\\app\" 2>nul", script);
         Assert.EndsWith("& rmdir \"" + Root + "\" 2>nul\"", script);
         Assert.DoesNotContain("rmdir /s /q \"" + Root + "\" ", script);
-        Assert.Null(CleanupScript.Build(Array.Empty<string>(), null, null));
-        Assert.Throws<ArgumentException>(() => CleanupScript.Build(new[] { @"C:\Apps\%TEMP%" }, null, null));
+        Assert.Null(CleanupScript.Build(Array.Empty<string>(), null, null, 4242, Sys));
+    }
+
+    private const string Sys = @"C:\Windows\system32";
+
+    [Fact]
+    public void The_cleanup_line_waits_for_the_uninstaller_and_names_every_program_by_full_path()
+    {
+        var script = CleanupScript.Build(new[] { Root + @"\app" }, Root, null, 4242, Sys)!;
+        Assert.Contains(Sys + "\\tasklist.exe /FI \"PID eq 4242\" /NH | " + Sys + "\\find.exe \" 4242 \" >nul && " + Sys + "\\PING.EXE -n 2 127.0.0.1 >nul || set done=1)) & ", script);
+        // No program is started by its bare name, which cmd would first look for in its current folder.
+        Assert.DoesNotContain(" ping ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"ping", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("& tasklist", script, StringComparison.OrdinalIgnoreCase);
+        // The wait comes before any delete.
+        Assert.True(script.IndexOf("tasklist", StringComparison.Ordinal) < script.IndexOf("rmdir", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_cleanup_line_really_waits_then_deletes_in_the_command_prompt()
+    {
+        // Runs the real line in cmd.exe on a throwaway folder (brackets and & in its name), waiting for a short ping.
+        var root = Path.Combine(Path.GetTempPath(), "rc-cleanup (x86) & co " + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(root, "app", "sub"));
+        File.WriteAllText(Path.Combine(root, "app", "sub", "f.txt"), "x");
+        var sys = Environment.SystemDirectory;
+        using var waitFor = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(sys, "PING.EXE"), "-n 4 127.0.0.1")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+        })!;
+        try
+        {
+            var args = CleanupScript.Build(new[] { Path.Combine(root, "app") }, root, null, waitFor.Id, sys)!;
+            using var cmd = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(sys, "cmd.exe"), args)
+            {
+                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = sys,
+            })!;
+            Thread.Sleep(1000);
+            Assert.False(waitFor.HasExited);
+            Assert.True(Directory.Exists(Path.Combine(root, "app")), "deleted before the waited-for process ended");
+            Assert.True(cmd.WaitForExit(60000));
+            Assert.True(waitFor.HasExited);
+            Assert.False(Directory.Exists(Path.Combine(root, "app")));
+            Assert.False(Directory.Exists(root), "the empty install folder was not removed");
+        }
+        finally
+        {
+            try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch { /* temp */ }
+        }
+    }
+
+    [Fact]
+    public void A_folder_the_command_prompt_would_change_is_left_out_not_half_quoted()
+    {
+        Assert.False(CleanupScript.CanQuote(@"C:\Users\user\a%TEMP%b\AppData\Local\RigControl"));
+        Assert.False(CleanupScript.CanQuote(@"C:\Users\user\x!y\AppData\Local\RigControl"));
+        Assert.False(CleanupScript.CanQuote(@"C:\Users\user\x^y\AppData\Local\RigControl"));
+        Assert.True(CleanupScript.CanQuote(@"C:\Program Files (x86)\RigControl"));
+        Assert.True(CleanupScript.CanQuote(@"D:\Games & Apps\RigControl"));
+
+        var script = CleanupScript.Build(new[] { Root + @"\app" }, Root, @"C:\Users\user\x%y\AppData\Local\RigControl", 1, Sys)!;
+        Assert.DoesNotContain("x%y", script);
+        Assert.Contains(Root + @"\app", script);
+        Assert.Null(CleanupScript.Build(new[] { @"C:\Apps\%TEMP%" }, null, null, 1, Sys));
+        Assert.Throws<ArgumentException>(() => CleanupScript.Build(new[] { Root }, null, null, 1, @"C:\Win dows\system32"));
+    }
+
+    [Fact]
+    public void The_user_data_folder_is_only_deleted_inside_the_users_own_profile_and_never_through_a_link()
+    {
+        const string profile = @"C:\Users\user";
+        const string data = @"C:\Users\user\AppData\Local\RigControl";
+        Assert.Null(Uninstaller.UserDataProblem(data, profile, _ => false));
+        Assert.NotNull(Uninstaller.UserDataProblem(data, null, _ => false));
+        Assert.NotNull(Uninstaller.UserDataProblem(@"D:\Redirected\Local\RigControl", profile, _ => false));
+        Assert.NotNull(Uninstaller.UserDataProblem(@"C:\Users\username\AppData\Local\RigControl", profile, _ => false));
+        Assert.NotNull(Uninstaller.UserDataProblem(data, profile, d => d.EndsWith(@"\RigControl", StringComparison.Ordinal)));
+        Assert.NotNull(Uninstaller.UserDataProblem(data, profile, d => d.EndsWith(@"\AppData", StringComparison.Ordinal)));
+        Assert.NotNull(Uninstaller.UserDataProblem(data, profile, d => d == profile));
     }
 }

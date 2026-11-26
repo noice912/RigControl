@@ -1,9 +1,12 @@
+import { useEffect } from "react";
 import { call } from "../bridge";
 import { useAction, useLive } from "../hooks";
 import { useApp } from "../appContext";
 import { goTo } from "../nav";
 import type { UpdateStatus } from "../types";
-import { Notice, Switch } from "./controls";
+import { Notice, Switch, useConfirm } from "./controls";
+import { useGitHub } from "./GitHubAccount";
+import { VersionLabel } from "./VersionLabel";
 
 function useUpdates() {
   return useLive("updates.status", "updates.getStatus");
@@ -21,7 +24,15 @@ function mb(bytes: number) {
 export function UpdatesPanel() {
   const { restartAsAdmin } = useApp();
   const { data: s, setData } = useUpdates();
+  const { data: gh } = useGitHub();
   const { busy, run } = useAction();
+  const { confirm, element: confirmDialog } = useConfirm();
+  const maintainer = !!gh?.maintainer;
+
+  // The channel choice depends on the GitHub account: read the status again when that changes.
+  useEffect(() => {
+    void call<UpdateStatus>("updates.getStatus").then(setData, () => undefined);
+  }, [maintainer, setData]);
 
   const check = async () => {
     const r = await run("check", () => call<UpdateStatus>("updates.check", undefined, 90000));
@@ -31,7 +42,35 @@ export function UpdatesPanel() {
     const r = await run("auto", () => call<UpdateStatus>("updates.setSettings", { autoCheck }));
     if (r) setData(r);
   };
-  const install = () => void run("install", () => call("updates.install", undefined, 15 * 60000));
+  const setChannel = async (channel: "public" | "test") => {
+    if (channel === "test") {
+      const ok = await confirm({
+        title: "Get development builds?",
+        body: "Development builds are unfinished versions published for testing. They can have bugs. Turn this off later to switch back to the public build.",
+        confirmLabel: "Get development builds",
+      });
+      if (!ok) return;
+    }
+    const r = await run("channel", () => call<UpdateStatus>("updates.setSettings", { channel }));
+    if (r) setData(r);
+  };
+  const install = async () => {
+    if (s?.available?.downgrade) {
+      const ok = await confirm({
+        title: `Switch to the public version ${s.available.version}?`,
+        body: `This installs an OLDER version than the one you are running (${s.current}). Your settings are kept. RigControl closes, installs it and starts again.`,
+        confirmLabel: `Install ${s.available.version}`,
+      });
+      if (!ok) return;
+    }
+    void run("install", () => call("updates.install", undefined, 15 * 60000));
+  };
+  const downgrade = !!s?.available?.downgrade;
+  const title = s?.available
+    ? downgrade
+      ? `Switch to the public version ${s.available.version}`
+      : `RigControl ${s.available.version}${s.available.preRelease ? " (development build)" : ""} is available`
+    : "";
 
   return (
     <section className="panel">
@@ -39,7 +78,7 @@ export function UpdatesPanel() {
         <div>
           <h2>Updates</h2>
           <div className="sub">
-            RigControl {s?.current ?? ""}. Only updates signed with RigControl's own key are offered. Last checked:{" "}
+            <VersionLabel version={s?.current ?? null} />. Only updates signed with RigControl's own key are offered. Last checked:{" "}
             {when(s?.lastCheck ?? null)}.
           </div>
         </div>
@@ -56,20 +95,41 @@ export function UpdatesPanel() {
           <Switch checked={s?.autoCheck ?? true} disabled={!s || busy !== null} onChange={(v) => void setAuto(v)} />
         </div>
       </div>
+      {maintainer && s?.testChannelAllowed && (
+        <div className="field">
+          <div className="field-label">
+            <span>Get development builds</span>
+            <span className="sub">
+              {s.channel === "test"
+                ? "On: unfinished versions (pre-releases) as well as the public build, whichever is newest. They can have bugs."
+                : "Off: only the public build. Shown to you because your GitHub account may publish RigControl."}
+            </span>
+          </div>
+          <div className="field-control">
+            <Switch
+              checked={s.channel === "test"}
+              disabled={busy !== null || !!s.installing}
+              onChange={(v) => void setChannel(v ? "test" : "public")}
+            />
+          </div>
+        </div>
+      )}
       {s?.error && <Notice tone="warn" title="The last check did not work">{s.error}</Notice>}
       {s && !s.available && !s.error && s.lastCheck && (
         <div className="sub">{s.note ?? "RigControl is up to date."}</div>
       )}
       {s?.available && (
         <Notice
-          title={`RigControl ${s.available.version} is available`}
+          title={title}
           actions={
             s.canInstall ? (
               s.elevated ? (
-                <button className="btn primary" disabled={busy !== null || !!s.installing} onClick={install}>
+                <button className="btn primary" disabled={busy !== null || !!s.installing} onClick={() => void install()}>
                   {s.installing
                     ? `${s.installing}${s.progress != null ? ` ${Math.round(s.progress * 100)}%` : ""}…`
-                    : `Update to ${s.available.version}`}
+                    : downgrade
+                      ? `Switch to ${s.available.version}`
+                      : `Update to ${s.available.version}`}
                 </button>
               ) : (
                 <button className="btn" onClick={() => void restartAsAdmin()}>
@@ -79,22 +139,29 @@ export function UpdatesPanel() {
             ) : undefined
           }
         >
+          {downgrade && (
+            <div style={{ marginBottom: 6 }}>
+              You are running {s.current}, a development build. This installs the public version {s.available.version},
+              which is OLDER. Your settings are kept.
+            </div>
+          )}
           {s.canInstall
             ? s.elevated
-              ? `${mb(s.available.size)}. RigControl closes, updates itself and starts again. Not while a recording is running.`
+              ? `${mb(s.available.size)}. RigControl closes, ${downgrade ? "installs it" : "updates itself"} and starts again. Not while a recording is running.`
               : "Installing an update needs RigControl to run as administrator."
             : "This copy of RigControl isn't installed, so it can't update itself. Install RigControl with its setup to get updates automatically."}
           {s.available.notes && <div className="sub" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{s.available.notes}</div>}
         </Notice>
       )}
+      {confirmDialog}
     </section>
   );
 }
 
-/** A banner on every page while an update is waiting. */
+/** A banner on every page while an update is waiting (not for a switch back to an older version: that is in Settings). */
 export function UpdateBanner({ onSettings }: { onSettings?: boolean }) {
   const { data: s } = useUpdates();
-  if (!s?.available || onSettings) return null;
+  if (!s?.available || s.available.downgrade || onSettings) return null;
   return (
     <div style={{ marginBottom: 12 }}>
       <Notice

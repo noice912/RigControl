@@ -31,8 +31,8 @@ issue.
 | **Microsoft Windows Update** | When you press "Check" or install on the Drivers page | Windows' own update service does the search and download, the same as Windows Settings does |
 | **A web page you chose** | Only while the cooler screen is in "web page" mode | A hidden browser opens the address you typed and shows it on the cooler's screen. That site sees a normal browser visit. |
 | **Discord's web app** (`discord.com`, `discordapp.com`, `discord.gg`) | Only when you open Discord inside the in-game panel | See "The Discord window in the in-game panel" below |
-| **GitHub** (`api.github.com`, and GitHub's release download hosts) | The update check: 1 minute after RigControl starts and every 6 hours, while "Check for updates automatically" is on (Settings > Updates; on by default), and when you press "Check now" | A plain request for RigControl's latest release page. When you press "Update", the new version's setup file is downloaded. No account or id of yours is sent. |
-| **GitHub** (`github.com`, `api.github.com`) | Only if you sign in with GitHub (Settings > GitHub account), and while you stay signed in | Signing in uses GitHub's device sign-in: you confirm a short code on github.com in your normal browser. RigControl then holds a GitHub sign-in token for your account, **encrypted for your Windows user** (Windows DPAPI) in `settings.json`. It is used only to talk to GitHub: to post a review you write, and to check whether your account may change RigControl's own repository. Signing out deletes it. |
+| **GitHub** (`api.github.com`, and GitHub's release download hosts) | The update check: 1 minute after RigControl starts and every 6 hours, while "Check for updates automatically" is on (Settings > Updates; on by default), and when you press "Check now" | A plain request for RigControl's latest release page (with "Get development builds" on, which only people who may publish RigControl can turn on: the list of RigControl's newest releases instead). When you press "Update", the new version's setup file is downloaded. No account or id of yours is sent. |
+| **GitHub** (`github.com`, `api.github.com`) | Only if you sign in with GitHub (Settings > GitHub account), and while you stay signed in | Signing in uses GitHub's device sign-in: you confirm a short code on github.com in your normal browser. RigControl then holds a GitHub sign-in token for your account, **encrypted for your Windows user** (Windows DPAPI) in `settings.json`. It is used only to talk to GitHub: to post a review you write, and to check whether your account may change the maintainers' private development repository (GitHub answers "not found" to anyone else). For the repository's maintainers it is also used to publish releases and to list reviews. Signing out deletes it. |
 | **GitHub issues** (`api.github.com`) | Only when you press "Send" on a review | Your star rating, the text you wrote and RigControl's version become a **public** issue on github.com/noice912/RigControl under your GitHub name. Nothing about your PC is added. |
 
 Apart from the GitHub rows above, RigControl contacts no other site. Every update is checked before it is used: its
@@ -120,6 +120,42 @@ RigControl does not see or store your password.
 - If the separate RichPresence app was used on this PC: its settings, copied once, and its Discord web sign-in for
   the in-game panel, copied once. Its own folder is never changed.
 
+## Developer mode and the Windows Hello check
+
+This part only concerns the people who maintain RigControl. For everyone else the Developer section stays hidden and
+none of this happens: it appears only when the GitHub account signed in to RigControl may change the maintainers' private
+development repository on GitHub.
+
+**What the Windows Hello check is for.** Developer mode can publish an update that every RigControl user receives,
+so it needs more than a GitHub sign-in (sign-in tokens can be stolen and stay valid for hours). Every time the
+Developer page is opened, and again right before "Publish", RigControl asks Windows Hello (your Windows PIN,
+fingerprint or face) to sign a random challenge with a key kept in this PC's TPM security chip. That proves two
+things: the request comes from the one PC that was registered, because the key cannot be copied out of the chip, and
+the person at the keyboard knows the PIN or has the finger, not a program running in the background or someone using
+an unlocked PC. The unlocked state lasts for that session only and locks again after 15 minutes without use or when
+RigControl closes.
+
+**What RigControl sees and keeps.**
+
+- Your PIN, fingerprint and face never reach RigControl. Windows checks them itself and only tells RigControl whether
+  the key was allowed to sign.
+- "Register this PC" makes one Windows Hello key named `RigControl.Developer` for your Windows account. Windows keeps
+  it, in the TPM. RigControl only ever reads its public half, which is what the registration text (`RCREQ2...`)
+  carries.
+- The developer code you paste in (`RCDEV2...`) is kept in `settings.json`. It holds the maintainer's GitHub name,
+  the date, an id and the public half of this PC's key. It is not secret: it works only together with that key on
+  this PC.
+- Nothing about this check is sent anywhere. The registration text goes only where you paste it yourself, to the
+  maintainer who issues the code.
+
+**Publishing.** "Publish an update" reads the update signing key file you point it at (by default
+`%USERPROFILE%\.rigcontrol-keys\update-signing.pem`), signs the new version's details on this PC, and uploads the
+setup file and those details to RigControl's GitHub releases with your GitHub sign-in. The signing key itself is
+never uploaded, logged or shown.
+
+**Removing it.** Settings > Developer > "Remove from this PC" deletes both the code and the Windows Hello key.
+Uninstalling RigControl does not delete the Windows Hello key, so press that button first if you want it gone.
+
 ## What it stores, and where
 
 Everything is on your PC. Nothing is synced.
@@ -141,6 +177,7 @@ Everything is on your PC. Nothing is synced.
 | Registry `HKLM\SOFTWARE\RigControl` | That you agreed to the helper programs, and (on the one supported board) the original BIOS settings. Only administrators can write here. |
 | Registry `HKCU\Software\RigControl` | Notes of what "Take over" changed (for example another app's start-up entry), so it can be put back |
 | A Windows scheduled task named `RigControl-<your user id>` | Only if "Start with Windows" is on |
+| A Windows Hello key named `RigControl.Developer`, in the TPM | Only on a maintainer's PC after "Register this PC" (see "Developer mode and the Windows Hello check") |
 
 The first-time setup (or the installer) also installs PawnIO and Equalizer APO as normal Windows programs, and may
 point an existing OpenRGB service at RigControl's copy. See the README and [TERMS-OF-USE.md](TERMS-OF-USE.md).

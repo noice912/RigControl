@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <PackageReference Include="NvAPIWrapper.Net" Version="0.8.1.101" />
+    <!-- The installed driver version as Windows has it, which changes when NVIDIA's installer replaces the driver. -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

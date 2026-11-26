@@ -1124,13 +1124,26 @@ export function createMockBackend() {
     latest: "1.1.3",
     note: null as string | null,
     error: null as string | null,
+    channel: "public" as "public" | "test",
+    testChannelAllowed: false,
+    switchBackPending: false,
     available: {
       version: "1.1.3",
       size: 214958080,
       published: new Date().toISOString(),
       releaseUrl: "https://github.com/noice912/RigControl/releases",
       notes: "Fixes and small improvements.",
-    } as null | { version: string; size: number; published: string; releaseUrl: string; notes: string | null },
+      downgrade: false,
+      preRelease: false,
+    } as null | {
+      version: string;
+      size: number;
+      published: string;
+      releaseUrl: string;
+      notes: string | null;
+      downgrade: boolean;
+      preRelease: boolean;
+    },
     canInstall: true,
     elevated: true,
     installing: null as string | null,
@@ -2433,13 +2446,32 @@ export function createMockBackend() {
           return ok({ path: "D:\\Videos" });
 
         case "updates.getStatus":
-          return ok(updates);
+          return ok({ ...updates, testChannelAllowed: github.maintainer, channel: github.maintainer ? updates.channel : "public" });
         case "updates.check":
           updates = { ...updates, lastCheck: new Date().toISOString() };
           return ok(updates);
-        case "updates.setSettings":
-          updates = { ...updates, autoCheck: params?.autoCheck ?? updates.autoCheck };
+        case "updates.setSettings": {
+          // Like the app: development builds only for an account that may push to RigControl.
+          const channel = params?.channel as "public" | "test" | undefined;
+          if (channel === "test" && !github.maintainer)
+            throw new RpcError("invalidArgs", "Development builds are only for GitHub accounts that may publish RigControl.");
+          updates = { ...updates, autoCheck: params?.autoCheck ?? updates.autoCheck, testChannelAllowed: github.maintainer };
+          if (channel === "test")
+            updates = {
+              ...updates,
+              channel,
+              switchBackPending: false,
+              available: { version: "1.1.4-rc.1", size: 215000000, published: new Date().toISOString(), releaseUrl: "https://github.com/noice912/RigControl/releases", notes: "Development build (pre-release).", downgrade: false, preRelease: true },
+            };
+          if (channel === "public")
+            updates = {
+              ...updates,
+              channel,
+              switchBackPending: true,
+              available: { version: "1.1.3", size: 214958080, published: new Date().toISOString(), releaseUrl: "https://github.com/noice912/RigControl/releases", notes: "Fixes and small improvements.", downgrade: updates.current.includes("-"), preRelease: false },
+            };
           return ok(updates);
+        }
         case "updates.install":
           throw new RpcError("unavailable", "The preview can't install anything.");
 

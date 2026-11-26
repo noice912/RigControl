@@ -433,7 +433,7 @@ The older Nanoleaf calls still work and act on the same paired Nanoleaf: `lighti
 - `app.pickFolder { title? }` -> `{ path }`.
 
 ### nvidia
-- `nvidia.installDriver` -> `{ started, version }`. Downloads only from `*.download.nvidia.com` over https, requires a valid Authenticode signature by NVIDIA Corporation, then starts NVIDIA's installer. Progress event `nvidia.driverDownload { version, receivedMB, totalMB, percent }`. `checkDriverUpdate` gains `canInstall`.
+- `nvidia.installDriver` -> `{ started, version }`. Downloads only from `*.download.nvidia.com` over https, requires a valid Authenticode signature by NVIDIA Corporation, then starts NVIDIA's installer. Progress event `nvidia.driverDownload { version, receivedMB, totalMB, percent }`. `checkDriverUpdate` gains `canInstall`. When NVIDIA's installer closes, event `nvidia.driverChanged { driverVersion }`; `getInfo` and `checkDriverUpdate` report the version Windows has installed now (WMI), falling back to the one read at start.
 - New curated settings (group "DLSS and RTX"): `dlssOverride`, `dlssPreset`, `dlssRayReconstruction`, `dlssFrameGen`, `smoothMotion`, `rtxHdr`, `rtxHdrProcessing`. Ids from NVIDIA Profile Inspector's CustomSettingNames.xml; each is offered only if the installed driver knows it.
 
 ## Additions: health check, first-time setup, Discord attach

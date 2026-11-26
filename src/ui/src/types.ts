@@ -735,7 +735,23 @@ export type UpdateStatus = {
   latest: string | null;
   note: string | null;
   error: string | null;
-  available: { version: string; size: number; published: string; releaseUrl: string; notes: string | null } | null;
+  /** The channel in use: "test" (pre-releases too) only for a maintainer account that chose it. */
+  channel: "public" | "test";
+  /** The channel choice is shown only to a GitHub account that may push to RigControl. */
+  testChannelAllowed: boolean;
+  /** The user just left the test channel: an older public version may be offered (available.downgrade). */
+  switchBackPending: boolean;
+  available: {
+    version: string;
+    size: number;
+    published: string;
+    releaseUrl: string;
+    notes: string | null;
+    /** OLDER than the running copy: "Switch to the public version". */
+    downgrade: boolean;
+    /** A test build (pre-release). */
+    preRelease: boolean;
+  } | null;
   /** Only the installed copy updates itself; any other copy only says an update exists. */
   canInstall: boolean;
   elevated: boolean;
@@ -806,4 +822,5 @@ export interface EventMap {
   "overlay.mode": { mode: string };
   "drivers.download": DriverDownload;
   "nvidia.driverDownload": DriverDownloadProgress;
+  "nvidia.driverChanged": { driverVersion: string | null };
 }

@@ -74,6 +74,7 @@ function PublishPanel({ defaultKeyPath }: { defaultKeyPath: string }) {
   const [version, setVersion] = useState("");
   const [notes, setNotes] = useState("");
   const [keyPath, setKeyPath] = useState(defaultKeyPath);
+  const [testBuild, setTestBuild] = useState(false);
   const [step, setStep] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
@@ -85,18 +86,31 @@ function PublishPanel({ defaultKeyPath }: { defaultKeyPath: string }) {
   };
 
   const publish = async () => {
-    const r = await run("publish", () => call<{ url: string }>("dev.publishUpdate", { exePath, version, notes, keyPath }, 60 * 60000), "Published.");
+    const r = await run("publish", () => call<{ url: string }>("dev.publishUpdate", { exePath, version: version.trim(), notes, keyPath, testBuild }, 60 * 60000), "Published.");
     if (r) setDone(r.url);
   };
 
-  const ready = exePath && /^\d+\.\d+\.\d+$/.test(version.trim()) && keyPath;
+  // Three numbers, and for a development build a pre-release part ("1.1.3-rc.1"); the app checks the same again.
+  const m = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.exec(version.trim());
+  const versionProblem = !version.trim()
+    ? null
+    : !m
+      ? "The version must look like 1.2.3, or 1.2.3-rc.1 for a development build."
+      : testBuild && !m[1]
+        ? "A development build needs a pre-release version, like 1.2.3-rc.1."
+        : !testBuild && m[1]
+          ? "A version with a pre-release part (-rc.1) can only be published as a development build. Tick the box below or drop the part."
+          : null;
+  const ready = exePath && m && !versionProblem && keyPath;
 
   return (
     <section className="panel">
       <h2>Publish an update</h2>
       <div className="sub" style={{ marginBottom: 10 }}>
-        Signs the program, makes the release v{version || "x.y.z"} on GitHub as a draft, uploads the setup file and its
-        signed update information, then publishes it. GitHub decides whether {gh?.login ?? "the account"} may do this.
+        Signs the program, makes the release v{version.trim().replace(/^v/, "") || "x.y.z"} on GitHub as a draft, uploads the
+        setup file and its signed update information, then publishes it
+        {testBuild ? " as a pre-release (only people with development builds on get it)" : " as the latest public build"}. GitHub decides
+        whether {gh?.login ?? "the account"} may do this.
       </div>
       <div className="stack">
         <label className="stack">
@@ -110,7 +124,24 @@ function PublishPanel({ defaultKeyPath }: { defaultKeyPath: string }) {
         </label>
         <label className="stack">
           <span>Version</span>
-          <input className="input" placeholder="1.1.2" value={version} onChange={(e) => setVersion(e.target.value)} />
+          <input
+            className="input"
+            placeholder={testBuild ? "1.1.3-rc.1" : "1.1.2"}
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+          />
+          {versionProblem && <span className="sub" style={{ color: "var(--hot)" }}>{versionProblem}</span>}
+        </label>
+        <label className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+          <input type="checkbox" checked={testBuild} onChange={(e) => setTestBuild(e.target.checked)} />
+          <span>
+            Development build (pre-release: only people with development builds on get it)
+            <span className="sub">
+              {" "}
+              The release is marked as a pre-release and its notes say it is a development build. The public build never
+              offers it.
+            </span>
+          </span>
         </label>
         <label className="stack">
           <span>Release notes</span>

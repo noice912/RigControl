@@ -69,6 +69,64 @@ internal static class RunningCopy
         return true;
     }
 
+    /// <summary>
+    /// Whether any other RigControl process in this Windows session runs with administrator rights: true when one does,
+    /// false when every one found runs without them, null when none was found or one could not be looked at.
+    /// </summary>
+    public static bool? OthersElevated()
+    {
+        var self = Environment.ProcessId;
+        var session = Process.GetCurrentProcess().SessionId;
+        bool? answer = null;
+        foreach (var p in Process.GetProcesses())
+        {
+            using (p)
+            {
+                try
+                {
+                    if (p.Id == self || p.SessionId != session) continue;
+                    if (!p.ProcessName.StartsWith("RigControl", StringComparison.OrdinalIgnoreCase)) continue;
+                    var elevated = IsElevated(p);
+                    if (elevated is null) return null;
+                    if (elevated == true) return true;
+                    answer = false;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
+        return answer;
+    }
+
+    private static bool? IsElevated(Process p)
+    {
+        const uint QueryLimitedInformation = 0x1000, TokenQuery = 0x0008;
+        var process = OpenProcess(QueryLimitedInformation, false, p.Id);
+        if (process == IntPtr.Zero) return null;
+        try
+        {
+            if (!OpenProcessToken(process, TokenQuery, out var token)) return null;
+            try
+            {
+                // TokenElevation = 20: one int, non-zero when the process runs with administrator rights.
+                return GetTokenInformation(token, 20, out var elevation, sizeof(int), out _) ? elevation != 0 : null;
+            }
+            finally { CloseHandle(token); }
+        }
+        finally { CloseHandle(process); }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [System.Runtime.InteropServices.DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+    [System.Runtime.InteropServices.DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr token, int infoClass, out int info, int length, out int returned);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+
     /// <summary>Waits up to <see cref="Wait"/> for the process with this id to end (the updater's old copy).</summary>
     public static void WaitForPid(int pid)
     {

@@ -195,6 +195,6 @@ RigControl works with these but does not carry them, and none of their code is i
 ## Trademarks
 
 NVIDIA, GeForce, NZXT, Kraken, ASUS, ROG, GIGABYTE, Razer, Nanoleaf, Philips Hue (Signify), Govee, Yeelight, WLED,
-LifeSmart Cololight, LeetDesk, Corsair, Thermaltake, Lian Li, Discord, Intel, AMD, Ryzen, Microsoft, Windows and
+LifeSmart Cololight, LeetDesk, SignalRGB (WhirlwindFX), Corsair, Thermaltake, Lian Li, Discord, Intel, AMD, Ryzen, Microsoft, Windows and
 the other product names in this repository belong to their owners. RigControl is not made, endorsed or supported
-by any of them.
+by any of them, and it is not a competitor of their products.

@@ -4,6 +4,7 @@ import { useAction, useLive } from "../hooks";
 import { useApp } from "../appContext";
 import type { GitHubStatus } from "../types";
 import { Dialog, Notice } from "./controls";
+import { useRunningVersion } from "./VersionLabel";
 
 /** The GitHub account (sign-in state, never a token), kept up to date by the "github.status" event. */
 export function useGitHub() {
@@ -100,7 +101,8 @@ export function GitHubAccountPanel() {
 
 /** Settings > Write a review: stars and words, posted as a public GitHub issue under the user's GitHub name. */
 export function ReviewPanel() {
-  const { info, openUrl } = useApp();
+  const { openUrl } = useApp();
+  const running = useRunningVersion();
   const { data: gh, setData } = useGitHub();
   const { busy, run } = useAction();
   const [open, setOpen] = useState(false);
@@ -184,7 +186,7 @@ export function ReviewPanel() {
             />
             <div className="sub">
               Your review will be public on RigControl's GitHub page under your GitHub name, with the RigControl
-              version ({info?.version ?? "this one"}). Nothing about your PC is added.
+              version ({running ?? "this one"}). Nothing about your PC is added.
             </div>
             {!gh?.login && <GitHubSignInBox status={gh} setStatus={setData} />}
           </div>

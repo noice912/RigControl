@@ -96,7 +96,7 @@ public partial class App : System.Windows.Application
         }
 
         _single = new SingleInstance("RigControl");
-        if (!_single.TryAcquire())
+        if (!_single.TryAcquire() && !TakeOverFromCopyWithoutAdminRights(_single))
         {
             _single.SignalExisting();
             _single.Dispose();
@@ -125,7 +125,8 @@ public partial class App : System.Windows.Application
             args.SetObserved();
         };
 
-        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+        // The full version, with a development build's "-rc.N" (the numeric assembly version drops it).
+        var version = Updates.RunningVersion.Text;
         var env = new AppEnvironment(dataDir, logDir, AppEnvironment.DetectElevated(), version,
             System.Environment.ProcessPath ?? string.Empty);
         _log.Info($"RigControl {version} starting. Elevated={env.IsElevated}. Exe={env.ExecutablePath}");
@@ -145,6 +146,7 @@ public partial class App : System.Windows.Application
         var settingsPath = Path.Combine(dataDir, "settings.json");
         var settingsExisted = FirstRunState.SettingsExist(settingsPath);
         var settings = new SettingsStore(settingsPath, _log.For("settings"));
+        _log.For("settings").Info($"Settings read from {settingsPath}: {string.Join(", ", settings.SectionNames)}.");
         FirstRunState.Initialise(settings, settingsExisted, _log.For("setup"));
         var bus = new EventBus();
         var dispatcher = new RpcDispatcher(_log.For("rpc"));
@@ -216,7 +218,7 @@ public partial class App : System.Windows.Application
         dispatcher.Register(new AppModule(_services, this));
         // Updates, GitHub sign-in and reviews, and dev mode (Updates\). They only ever connect to GitHub.
         _github = new Updates.GitHubServices(_services);
-        _updates = new Updates.UpdatesModule(_services, this, _github.Api);
+        _updates = new Updates.UpdatesModule(_services, this, _github);
         dispatcher.Register(_updates);
         var githubModule = new Updates.GitHubModule(_services, _github);
         var devModule = new Updates.DeveloperModule(_services, _github, new Updates.WindowsHelloKey());
@@ -312,6 +314,36 @@ public partial class App : System.Windows.Application
     public RigControl.Bundled.BundledApps? Bundled { get; private set; }
 
     /// <summary>
+
+    /// <summary>
+    /// At sign-in a copy without administrator rights (started from the Start menu, say) can be running already when the
+    /// start-up task's copy, which has them, arrives. Giving way would leave RigControl running with half its features,
+    /// so a copy with administrator rights asks one without them to close (properly, as "--exit" does) and takes its
+    /// place. A copy that has administrator rights itself is never asked to close.
+    /// </summary>
+    private bool TakeOverFromCopyWithoutAdminRights(SingleInstance single)
+    {
+        if (!AppEnvironment.DetectElevated()) return false;
+        var others = Install.RunningCopy.OthersElevated();
+        if (others is not false) return false; // one has administrator rights too, or it can't be told: leave it
+        _log?.Info("A copy of RigControl without administrator rights is running; asking it to close so this one (with them) takes over.");
+        using (var probe = new SingleInstance("RigControl"))
+        {
+            if (!probe.SignalExit()) return false;
+        }
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTime.UtcNow < until)
+        {
+            Thread.Sleep(250);
+            if (single.TryAcquire())
+            {
+                _log?.Info("Took over from the copy without administrator rights.");
+                return true;
+            }
+        }
+        _log?.Warn("The copy without administrator rights did not close in time; it keeps running.");
+        return false;
+    }
 
     /// <summary>
     /// After "restart as administrator" the new copy starts while the old one is still shutting down (saving the audio

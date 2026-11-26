@@ -116,7 +116,7 @@ public sealed class GitHubSignIn
         }, ct).ConfigureAwait(false);
         var root = doc.RootElement;
         if (Str(root, "error") is { } error)
-            throw new GitHubException("GitHub would not renew the sign-in (" + error + "). Sign in with GitHub again.");
+            throw new GitHubException("GitHub would not renew the sign-in (" + error + "). Sign in with GitHub again.") { OAuthError = error };
         return ReadTokens(root);
     }
 

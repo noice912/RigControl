@@ -7,8 +7,8 @@ namespace RigControl.Updates;
 /// <summary>One file on a release.</summary>
 public sealed record ReleaseAsset(string Name, string DownloadUrl, long Size);
 
-/// <summary>A release as far as updates need it.</summary>
-public sealed record ReleaseInfo(string Tag, string HtmlUrl, string? Body, IReadOnlyList<ReleaseAsset> Assets);
+/// <summary>A release as far as updates need it. <see cref="Prerelease"/>: GitHub's "pre-release" mark (test builds).</summary>
+public sealed record ReleaseInfo(string Tag, string HtmlUrl, string? Body, IReadOnlyList<ReleaseAsset> Assets, bool Draft = false, bool Prerelease = false);
 
 /// <summary>A release just made as a draft: where to upload its files.</summary>
 public sealed record DraftRelease(long Id, string UploadUrl, string HtmlUrl);
@@ -35,37 +35,67 @@ public sealed class GitHubApi
         return Str(doc.RootElement, "login") ?? throw new GitHubException("GitHub did not say which account signed in.");
     }
 
-    /// <summary>True when the signed-in account may push to noice912/RigControl (GitHub's "permissions.push").</summary>
+    /// <summary>
+    /// True when the signed-in account may push to the maintainers' private repository (GitHub's "permissions.push").
+    /// GitHub answers "not found" to everyone without access to it, which simply means no.
+    /// </summary>
     public async Task<bool> CanPushAsync(string token, CancellationToken ct)
     {
-        using var doc = await GitHubHttp.SendJsonAsync(_http, GitHubHttp.Api(HttpMethod.Get, GitHubHosts.RepoApi, token), ct).ConfigureAwait(false);
+        JsonDocument doc;
+        try
+        {
+            doc = await GitHubHttp.SendJsonAsync(_http, GitHubHttp.Api(HttpMethod.Get, GitHubHosts.MaintainersRepoApi, token), ct).ConfigureAwait(false);
+        }
+        catch (GitHubException ex) when (ex.Status is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
+        {
+            return false;
+        }
+        using var _ = doc;
         return doc.RootElement.ValueKind == JsonValueKind.Object
                && doc.RootElement.TryGetProperty("permissions", out var p) && p.ValueKind == JsonValueKind.Object
                && p.TryGetProperty("push", out var push) && push.ValueKind == JsonValueKind.True;
     }
 
-    /// <summary>The newest published release (no sign-in needed).</summary>
+    /// <summary>The newest published release (no sign-in needed). GitHub never counts drafts or pre-releases here.</summary>
     public async Task<ReleaseInfo?> GetLatestReleaseAsync(CancellationToken ct)
     {
         try
         {
             using var doc = await GitHubHttp.SendJsonAsync(_http, GitHubHttp.Api(HttpMethod.Get, GitHubHosts.RepoApi + "/releases/latest"), ct).ConfigureAwait(false);
-            var root = doc.RootElement;
-            var assets = new List<ReleaseAsset>();
-            if (root.TryGetProperty("assets", out var list) && list.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var a in list.EnumerateArray())
-                {
-                    if (Str(a, "name") is { } name && Str(a, "browser_download_url") is { } url && a.TryGetProperty("size", out var size) && size.TryGetInt64(out var bytes))
-                        assets.Add(new ReleaseAsset(name, url, bytes));
-                }
-            }
-            return new ReleaseInfo(Str(root, "tag_name") ?? "", Str(root, "html_url") ?? "", Str(root, "body"), assets);
+            return ReadRelease(doc.RootElement);
         }
         catch (GitHubException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
         {
             return null; // no release yet
         }
+    }
+
+    /// <summary>The newest releases, pre-releases included (first page of 30, newest first; no sign-in needed).</summary>
+    public async Task<IReadOnlyList<ReleaseInfo>> ListReleasesAsync(CancellationToken ct)
+    {
+        using var doc = await GitHubHttp.SendJsonAsync(_http, GitHubHttp.Api(HttpMethod.Get, GitHubHosts.RepoApi + "/releases?per_page=30"), ct).ConfigureAwait(false);
+        var result = new List<ReleaseInfo>();
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var r in doc.RootElement.EnumerateArray())
+                if (r.ValueKind == JsonValueKind.Object) result.Add(ReadRelease(r));
+        }
+        return result;
+    }
+
+    private static ReleaseInfo ReadRelease(JsonElement root)
+    {
+        var assets = new List<ReleaseAsset>();
+        if (root.TryGetProperty("assets", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var a in list.EnumerateArray())
+            {
+                if (Str(a, "name") is { } name && Str(a, "browser_download_url") is { } url && a.TryGetProperty("size", out var size) && size.TryGetInt64(out var bytes))
+                    assets.Add(new ReleaseAsset(name, url, bytes));
+            }
+        }
+        return new ReleaseInfo(Str(root, "tag_name") ?? "", Str(root, "html_url") ?? "", Str(root, "body"), assets,
+            Draft: Bool(root, "draft"), Prerelease: Bool(root, "prerelease"));
     }
 
     /// <summary>Opens an issue. GitHub drops the labels for people who may not set them; the issue is still made.</summary>
@@ -95,11 +125,14 @@ public sealed class GitHubApi
         return result;
     }
 
-    /// <summary>Makes a draft release (not visible to the public until <see cref="PublishReleaseAsync"/>).</summary>
-    public async Task<DraftRelease> CreateDraftReleaseAsync(string token, string tag, string name, string body, CancellationToken ct)
+    /// <summary>
+    /// Makes a draft release (not visible to the public until <see cref="PublishReleaseAsync"/>). A pre-release is a test
+    /// build: GitHub's "latest release" (the public update channel) never points at one.
+    /// </summary>
+    public async Task<DraftRelease> CreateDraftReleaseAsync(string token, string tag, string name, string body, CancellationToken ct, bool prerelease = false)
     {
         var request = GitHubHttp.Api(HttpMethod.Post, GitHubHosts.RepoApi + "/releases", token);
-        request.Content = JsonContent.Create(new { tag_name = tag, name, body, draft = true, prerelease = false });
+        request.Content = JsonContent.Create(new { tag_name = tag, name, body, draft = true, prerelease });
         using var doc = await GitHubHttp.SendJsonAsync(_http, request, ct).ConfigureAwait(false);
         var root = doc.RootElement;
         if (!root.TryGetProperty("id", out var idEl) || !idEl.TryGetInt64(out var id) || Str(root, "upload_url") is not { } upload)
@@ -143,11 +176,12 @@ public sealed class GitHubApi
         }
     }
 
-    /// <summary>Makes a draft public and the newest release.</summary>
-    public async Task<string> PublishReleaseAsync(string token, long id, CancellationToken ct)
+    /// <summary>Makes a draft public and, unless it is a pre-release, the newest release.</summary>
+    public async Task<string> PublishReleaseAsync(string token, long id, CancellationToken ct, bool prerelease = false)
     {
         var request = GitHubHttp.Api(HttpMethod.Patch, GitHubHosts.RepoApi + "/releases/" + id, token);
-        request.Content = JsonContent.Create(new { draft = false, make_latest = "true" });
+        // GitHub never makes a pre-release the latest one; saying "false" keeps the public release where it is.
+        request.Content = JsonContent.Create(new { draft = false, make_latest = prerelease ? "false" : "true" });
         using var doc = await GitHubHttp.SendJsonAsync(_http, request, ct).ConfigureAwait(false);
         return Str(doc.RootElement, "html_url") ?? "";
     }
@@ -165,6 +199,9 @@ public sealed class GitHubApi
         DateTimeOffset? created = Str(e, "created_at") is { } c && DateTimeOffset.TryParse(c, out var d) ? d : null;
         return new IssueInfo(number, Str(e, "html_url") ?? "", Str(e, "title") ?? "", Str(e, "body"), author, created, Str(e, "state") ?? "");
     }
+
+    private static bool Bool(JsonElement root, string name)
+        => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.True;
 
     private static string? Str(JsonElement root, string name)
         => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String ? el.GetString() : null;
