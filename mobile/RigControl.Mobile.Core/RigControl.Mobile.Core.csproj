@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The parts of the phone app that need no phone: the link to the PCs (ILinkService, the real RelayLinkService on
+    top of RigControl.Link, and the FakeLinkService stand-in), the pairing code and rigcontrol:// link parsing.
+    Plain .NET, so it is tested on any PC. RigControl.Link targets net8.0 and is used as it is (net10.0-android and
+    net10.0-ios consume net8.0 libraries); it builds with its own settings from the repository's Directory.Build.props.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RigControl.Mobile.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.Mobile.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RigControl.Link\RigControl.Link.csproj" />
+  </ItemGroup>
+</Project>

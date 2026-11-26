@@ -216,6 +216,8 @@ public partial class App : System.Windows.Application
                 // Told on the Health page: RigControl starts as administrator from a folder any program can change.
                 StartsAsAdminFromOpenFolder = () => settings.Get<AppSettings>(AppSettings.Section).AutostartRegistered && programFolderOpen.Value,
             },
+            // Linked phones (Settings > Phone). Connects out to the relay only once a phone is linked or a pairing starts.
+            new Link.LinkModule(dispatcher, bus, (title, text) => Dispatcher.BeginInvoke(() => ShowTrayNotice(title, text))),
         };
         HostModules.Register(modules, host, dispatcher);
 

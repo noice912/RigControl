@@ -1532,3 +1532,28 @@ p {
 .header-empty {
   color: #fbbf24;
 }
+
+/* Settings > Phone: the pairing QR code and code. */
+.phone-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+  margin: 12px 0;
+}
+.phone-qr {
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  image-rendering: pixelated;
+}
+.phone-code {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  user-select: all;
+}

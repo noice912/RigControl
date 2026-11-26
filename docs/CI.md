@@ -15,7 +15,7 @@ This page says what each check proves, and what it does not.
 - So the honest label for Linux and macOS is: *builds and passes its tests on GitHub's Linux and macOS machines;
   not tried on real hardware.*
 
-## The five jobs
+## The jobs
 
 ### 1. Interface
 
@@ -24,6 +24,15 @@ the types (`npm run typecheck`) and builds it (`npm run build`).
 
 Proves: the interface compiles from a fresh copy of the source.
 Does not prove: that any page looks right or works. Nobody looks at it.
+
+### 1b. Link relay
+
+Runs on Linux. Installs the relay's packages exactly as `relay/package-lock.json` lists them, checks the types and
+runs its tests (`relay/README.md`). The tests run inside the Workers runtime on the build machine (Miniflare);
+nothing is deployed and no Cloudflare account is used.
+
+Proves: the relay's rules (signatures, allow-list, routing, pairing, limits, expiry) hold in the local runtime.
+Does not prove: that the deployed Worker behaves the same on Cloudflare's network.
 
 ### 2. Shared code (Linux, macOS, Windows)
 

@@ -68,6 +68,8 @@ public static class ModuleCatalog
             ("presence.watching", WindowsOnly),
             ("presence.extension", WindowsOnly)),
         Module("health", "Health", WindowsOnly),
+        // RigControl Link: linked phones through the relay (Settings > Phone).
+        Module("link", "Phone link", WindowsOnly),
     };
 
     public static ModuleDescriptor? Find(string name)

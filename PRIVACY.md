@@ -7,7 +7,8 @@ issue.
 ## The short version
 
 - **Nothing is sent to the author.** There is no RigControl account, no telemetry, no crash upload and no analytics.
-  The author has no server. The update check asks GitHub, not the author, and sends nothing about you.
+  The update check asks GitHub, not the author, and sends nothing about you. The one server the author runs is the
+  phone link relay, and only once you link a phone: it passes on messages it cannot read (see "The phone link").
 - Everything RigControl stores stays on your PC.
 - It contacts the internet only for the look-ups listed below, each tied to a feature you can leave off or a button
   you press.
@@ -33,14 +34,44 @@ issue.
 | **Discord's web app** (`discord.com`, `discordapp.com`, `discord.gg`) | Only when you open Discord inside the in-game panel | See "The Discord window in the in-game panel" below |
 | **GitHub** (`api.github.com`, and GitHub's release download hosts) | The update check: 1 minute after RigControl starts and every 6 hours, while "Check for updates automatically" is on (Settings > Updates; on by default), and when you press "Check now" | A plain request for RigControl's latest release page (with "Get development builds" on, which only people who may publish RigControl can turn on: the list of RigControl's newest releases instead). When you press "Update", the new version's setup file is downloaded. No account or id of yours is sent. |
 | **GitHub** (`github.com`, `api.github.com`) | Only if you sign in with GitHub (Settings > GitHub account), and while you stay signed in | Signing in uses GitHub's device sign-in: you confirm a short code on github.com in your normal browser. RigControl then holds a GitHub sign-in token for your account, **encrypted for your Windows user** (Windows DPAPI) in `settings.json`. It is used only to talk to GitHub: to post a review you write, and to check whether your account may change the maintainers' private development repository (GitHub answers "not found" to anyone else). For the repository's maintainers it is also used to publish releases and to list reviews. Signing out deletes it. |
+| **The phone link relay** (the address is shown on Settings > Phone; a Cloudflare Worker run by RigControl's author) | Only while at least one phone is linked, and while a pairing code is shown on Settings > Phone. Nothing connects before you press "Link a phone". | See "The phone link" below. In short: this PC's public link key and id, the ids of your linked phones, and sealed (end-to-end encrypted) messages the relay cannot read. |
 | **GitHub issues** (`api.github.com`) | Only when you press "Send" on a review | Your star rating, the text you wrote and RigControl's version become a **public** issue on github.com/noice912/RigControl under your GitHub name. Nothing about your PC is added. |
 
-Apart from the GitHub rows above, RigControl contacts no other site. Every update is checked before it is used: its
+Apart from the GitHub rows and the phone link relay above, RigControl contacts no other site. Every update is checked before it is used: its
 details carry a signature that only the author's update key can make, and the file must match them exactly. Links in
 the app (to a download page, a store, a help page) open in your normal browser when you press them.
 
 The requests RigControl makes itself carry no account, cookie or id of yours. Like any internet request, they show
 your IP address to the site that answers.
+
+### The phone link
+
+Settings > Phone links a phone to this PC, so you can see what the PC is doing and use a few controls from the phone.
+It is off until you link a phone, and RigControl still opens no port: the PC and the phone each connect **out** to a
+small relay (a Cloudflare Worker with Durable Objects, run by RigControl's author on Cloudflare's free plan), over
+`wss://`.
+
+- **What passes through the relay:** every message between phone and PC is sealed end to end (AES-256-GCM, with a key
+  only the PC and that phone can work out, from keys made on each device). The relay sees that a message goes from one
+  device id to another, its size and time, and your IP address (as any server does). It cannot read or change what is
+  inside: temperatures, fan speeds, loads, recording and lighting state, what is playing, your custom status names,
+  and the actions a phone asks for.
+- **What the relay stores:** for this PC, its public link key, the ids of the phones you linked (an id is a hash of a
+  phone's public key) and the time it last connected. While a pairing code is shown: a hash of the code and the
+  sealed offer, for at most 10 minutes (afterwards only that the hash was used, for 24 hours). No message content, no
+  names, no accounts. A PC that has not connected for 90 days is deleted from the relay. Request logging is turned off.
+- **Pairing:** the code (20 letters and digits, shown for 10 minutes, usable once) never leaves the PC and the phone in
+  clear; the relay gets only a hash of it, and the keys are exchanged inside boxes locked with the code. The name of
+  this PC (its Windows computer name) and the phone's name go to the other device inside those boxes.
+- **What a phone can do:** read a snapshot (temperatures, fans, loads, recording state, lighting effect, what is
+  playing, the names of your custom statuses) and ask for: lighting effect or scene, lights on or off, start or stop a
+  recording, save an instant replay, switch one of your custom Discord statuses on or off. Nothing else: fan curves,
+  overclocking, BIOS, drivers and installing are not reachable from a phone. Every action shows a notice on the PC.
+- **On this PC** (`settings.json`, section `link`): this PC's link keys, **encrypted for your Windows user** (Windows
+  DPAPI), and for each linked phone its name, public keys, when it was linked and last seen.
+- **Unlinking:** Settings > Phone > Remove. The PC refuses that phone at once, tells the relay to drop it, and once no
+  phone is linked RigControl disconnects from the relay. Deleting `settings.json` (or the `link` section) forgets the
+  keys too.
 
 ### What Discord and your friends see
 
@@ -180,6 +211,7 @@ Everything is on your PC. Nothing is synced.
 | Registry `HKLM\SOFTWARE\RigControl` | That you agreed to the helper programs, and (on the one supported board) the original BIOS settings. Only administrators can write here. |
 | Registry `HKCU\Software\RigControl` | Notes of what "Take over" changed (for example another app's start-up entry), so it can be put back |
 | A Windows scheduled task named `RigControl-<your user id>` | Only if "Start with Windows" is on |
+| `settings.json`, section `link` | Only once you use Settings > Phone: this PC's link keys (encrypted for your Windows user) and your linked phones' names, public keys and last-seen times |
 | A Windows Hello key named `RigControl.Developer`, in the TPM | Only on a maintainer's PC after "Register this PC" (see "Developer mode and the Windows Hello check") |
 
 The first-time setup (or the installer) also installs PawnIO and Equalizer APO as normal Windows programs, and may
@@ -243,7 +275,8 @@ helper programs, RigControl's OpenRGB copy and the registry keys.
 
 By hand, or for a copy that was never installed:
 
-1. In Settings, switch off "Start with Windows" (this removes the scheduled task). If you used a "Take over"
+1. In Settings > Phone, remove your linked phones (the relay then forgets them; it forgets this PC 90 days after
+   its last connection). In Settings, switch off "Start with Windows" (this removes the scheduled task). If you used a "Take over"
    button, give control back first on the page where you pressed it.
 2. Quit RigControl from the tray and delete its exe.
 3. Delete `%LOCALAPPDATA%\RigControl` and, if you do not want the sound library, `%LOCALAPPDATA%\AudioController`.

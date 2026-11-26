@@ -20,6 +20,9 @@ private/
 .claude/
 *.log
 
+# tools/LinkProbe keeps its (test) keys here, in plain text
+linkprobe-state.json
+
 # Apps RigControl carries inside its exe (see third_party/BUNDLED.md); filled by third_party/prepare-bundled.ps1
 third_party/openrgb/files/
 third_party/pawnio/*.exe

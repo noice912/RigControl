@@ -10,6 +10,7 @@ import { UpdatesPanel } from "../components/Updates";
 import { GitHubAccountPanel, ReviewPanel, useGitHub } from "../components/GitHubAccount";
 import { DeveloperSettings } from "../components/DeveloperSettings";
 import { VersionLabel } from "../components/VersionLabel";
+import { PhoneLinkPanel } from "../components/PhoneLink";
 
 const STATE: Record<ModuleState, { label: string; color: string }> = {
   ready: { label: "Working", color: "var(--ok)" },
@@ -198,6 +199,9 @@ export function Settings() {
           {github.data?.maintainer && <DeveloperSettings key={github.data.login ?? ""} />}
         </>
       )}
+
+      {/* RigControl Link: phones through the relay (the Windows app). */}
+      {info && can("link") && <PhoneLinkPanel />}
 
       {/* Asked for only once the app has said it carries helper programs (the Windows app does). */}
       {info && can("host.helpers") && <BuiltInApps />}

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RigControl.Mobile.Views.PcsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:RigControl.Mobile.ViewModels"
+    x:DataType="vm:PcsViewModel"
+    Title="Your PCs">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Link a PC" Command="{Binding LinkCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
+        <CollectionView ItemsSource="{Binding Pcs}" SelectionMode="None" Margin="16,8">
+            <CollectionView.Header>
+                <Label Text="{Binding Error}" IsVisible="{Binding Error, Converter={StaticResource NotEmpty}}"
+                       TextColor="{StaticResource Hot}" Margin="0,8" />
+            </CollectionView.Header>
+
+            <CollectionView.EmptyView>
+                <VerticalStackLayout Spacing="14" Padding="8,48" HorizontalOptions="Center" MaximumWidthRequest="420">
+                    <Image Source="tab_pcs.png" HeightRequest="56" WidthRequest="56" Opacity="0.6" />
+                    <Label Text="No PCs yet" Style="{StaticResource Title}" HorizontalTextAlignment="Center" />
+                    <Label Style="{StaticResource Muted}" HorizontalTextAlignment="Center"
+                           Text="On your PC, open RigControl, go to Settings &gt; Phone and choose Link a phone. Then scan the code it shows." />
+                    <Button Text="Link a PC" Command="{Binding LinkCommand}" Margin="0,8,0,0" />
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Vertical" ItemSpacing="10" />
+            </CollectionView.ItemsLayout>
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:PcItem">
+                    <Border Style="{StaticResource Card}" MinimumHeightRequest="72">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PcsViewModel}}, Path=OpenCommand}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                            <Ellipse WidthRequest="12" HeightRequest="12" VerticalOptions="Center"
+                                     Fill="{Binding Online, Converter={StaticResource OnlineBrush}}" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="18" />
+                                <Label Text="{Binding Status}" Style="{StaticResource Muted}" />
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="›" FontSize="28" TextColor="{StaticResource Faint}" VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </RefreshView>
+</ContentPage>

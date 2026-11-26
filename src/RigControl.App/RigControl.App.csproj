@@ -61,6 +61,8 @@
     <ProjectReference Include="..\RigControl.Bundled\RigControl.Bundled.csproj" />
     <!-- Auto-update, GitHub sign-in, reviews and dev mode's checks (only ever connects to GitHub). -->
     <ProjectReference Include="..\RigControl.Updates\RigControl.Updates.csproj" />
+    <!-- RigControl Link: phones see this PC and use a few controls through the relay (only outgoing connections). -->
+    <ProjectReference Include="..\RigControl.Link\RigControl.Link.csproj" />
     <!-- The merged Audio Controller (soundboard, virtual mic, EQ, "also play on"), hosted as the Audio section. -->
     <ProjectReference Include="..\Audio\AudioController.App\AudioController.App.csproj" />
   </ItemGroup>
@@ -80,6 +82,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <!-- The pairing QR code on Settings > Phone (MIT). -->
+    <PackageReference Include="QRCoder" Version="1.9.0" />
   </ItemGroup>
 
 </Project>

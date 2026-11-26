@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The in-memory relay of RigControl.Link's own tests (follows docs/protocols/link.md; nothing goes on the network). -->
+    <Compile Include="..\..\tests\RigControl.Link.Tests\FakeRelay.cs" Link="Link\FakeRelay.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RigControl.Mobile.Core\RigControl.Mobile.Core.csproj" />
+  </ItemGroup>
+</Project>

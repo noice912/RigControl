@@ -1147,6 +1147,36 @@ export function createMockBackend() {
   const ok = <T>(v: T) =>
     new Promise<T>((r) => window.setTimeout(() => r(structuredClone(v)), 120));
 
+  // Phone link (made-up; the preview never connects to a relay).
+  let link = {
+    enabled: true,
+    relaySet: true,
+    relay: "relay.example.workers.dev",
+    connection: "online" as "off" | "connecting" | "online" | "waiting",
+    message: "Connected to the relay.",
+    pairing: null as null | { code: string; groups: string[]; qrSvg: string; qrText: string; expiresAt: string },
+    pairingError: null as string | null,
+    keysUnreadable: false,
+    phones: [
+      {
+        id: "s-cAp3rrut4EfrWaw6fc5Ykr_lc0qYFZmXVsTT2CQ8k",
+        name: "iPhone",
+        added: new Date(Date.now() - 86400000 * 3).toISOString(),
+        lastSeen: new Date(Date.now() - 600000).toISOString(),
+        online: false,
+      },
+    ],
+  };
+  const mockQr = () => {
+    // Not a real QR code: a fixed pattern of squares, enough to show where the code goes.
+    let cells = "";
+    for (let y = 0; y < 25; y++)
+      for (let x = 0; x < 25; x++)
+        if (((x * 7 + y * 13) % 5 === 0) || (x < 7 && y < 7) || (x > 17 && y < 7) || (x < 7 && y > 17))
+          cells += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 29 29"><rect x="-2" y="-2" width="29" height="29" fill="#fff"/><g fill="#000">${cells}</g></svg>`;
+  };
+
   // Updates, GitHub and dev mode (made-up; nothing is ever sent anywhere).
   let emitLater: (event: string, data: unknown) => void = () => {};
   let updates = {
@@ -2496,6 +2526,37 @@ export function createMockBackend() {
           return ok(captureStatus);
         case "app.pickFolder":
           return ok({ path: "D:\\Videos" });
+
+        case "link.getStatus":
+          return ok(link);
+        case "link.startPairing": {
+          const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+          let raw = "";
+          for (let i = 0; i < 20; i++) raw += alphabet[Math.floor(Math.random() * 32)];
+          const groups = raw.match(/.{4}/g) ?? [];
+          link = {
+            ...link,
+            pairingError: null,
+            pairing: {
+              code: groups.join("-"),
+              groups,
+              qrSvg: mockQr(),
+              qrText: `rigcontrol://pair?relay=${link.relay}&code=${raw}`,
+              expiresAt: new Date(Date.now() + 600000).toISOString(),
+            },
+          };
+          return ok(link);
+        }
+        case "link.cancelPairing":
+          link = { ...link, pairing: null, pairingError: null };
+          return ok(link);
+        case "link.resetKeys":
+          link = { ...link, keysUnreadable: false, phones: [], enabled: false };
+          return ok(link);
+        case "link.removePhone":
+          link = { ...link, phones: link.phones.filter((p) => p.id !== params?.id) };
+          link = { ...link, enabled: link.phones.length > 0 };
+          return ok(link);
 
         case "updates.getStatus":
           return ok({ ...updates, testChannelAllowed: github.maintainer, channel: github.maintainer ? updates.channel : "public" });

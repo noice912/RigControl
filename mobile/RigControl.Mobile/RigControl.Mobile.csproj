@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Android always; iPhone too where its SDK can be built (macOS, or Windows for code checks only). -->
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios</TargetFrameworks>
+    <!-- The cloud Mac builds only the iPhone app (-p:MobileOnly=ios), so it needs only the iOS workload. -->
+    <TargetFrameworks Condition="'$(MobileOnly)' == 'ios'">net10.0-ios</TargetFrameworks>
+
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RigControl.Mobile</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <MauiXamlInflator>SourceGen</MauiXamlInflator>
+
+    <ApplicationTitle>RigControl</ApplicationTitle>
+    <ApplicationId>io.github.rigcontrol.mobile</ApplicationId>
+    <ApplicationDisplayVersion>$(Version)</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">23.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!--
+    The link to the PCs: the real one (RelayLinkService over RigControl.Link) unless the build is made with
+    -p:UseFakeLink=true, which runs the app on the stand-in with two sample PCs (FakeLinkService) for trying the
+    screens without a PC or relay.
+  -->
+  <PropertyGroup Condition="'$(UseFakeLink)' == 'true'">
+    <DefineConstants>$(DefineConstants);FAKE_LINK</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Android: one .apk that installs directly (sideloading), not an .aab for a store. -->
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(Configuration)' == 'Release'">
+    <!-- 64-bit phones only (every phone sold since 2019), which keeps the .apk smaller. -->
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#161C23" />
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#161C23" BaseSize="128,128" />
+    <MauiImage Include="Resources\Images\*" />
+    <MauiFont Include="Resources\Fonts\*" />
+    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RigControl.Mobile.Core\RigControl.Mobile.Core.csproj" />
+  </ItemGroup>
+
+</Project>

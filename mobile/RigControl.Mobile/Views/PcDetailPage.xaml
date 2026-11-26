@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RigControl.Mobile.Views.PcDetailPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:RigControl.Mobile.ViewModels"
+    xmlns:link="clr-namespace:RigControl.Mobile.Core.Link;assembly=RigControl.Mobile.Core"
+    x:DataType="vm:PcDetailViewModel"
+    Title="{Binding Name}">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16,12,16,32" Spacing="14">
+
+            <!-- Online state -->
+            <HorizontalStackLayout Spacing="10">
+                <Ellipse WidthRequest="12" HeightRequest="12" VerticalOptions="Center"
+                         Fill="{Binding Online, Converter={StaticResource OnlineBrush}}" />
+                <Label Text="{Binding Status}" Style="{StaticResource Muted}" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+
+            <Border Style="{StaticResource Card}" IsVisible="{Binding Online, Converter={StaticResource Invert}}">
+                <Label Style="{StaticResource Muted}"
+                       Text="This PC is offline. The readings below are from when it was last online. Controls work again once RigControl runs on the PC." />
+            </Border>
+
+            <Label Text="{Binding Message}" IsVisible="{Binding Message, Converter={StaticResource NotEmpty}}"
+                   TextColor="{Binding MessageIsError, Converter={StaticResource ErrorColor}}" />
+
+            <ActivityIndicator IsRunning="True" IsVisible="{Binding HasData, Converter={StaticResource Invert}}" HorizontalOptions="Center" />
+
+            <VerticalStackLayout Spacing="14" IsVisible="{Binding HasData}">
+
+                <!-- Temperatures -->
+                <Label Text="Temperatures" Style="{StaticResource Section}" />
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                    <Border Style="{StaticResource Tile}">
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="CPU" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding CpuTemp}" Style="{StaticResource BigValue}" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource Tile}">
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="GPU" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding GpuTemp}" Style="{StaticResource BigValue}" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Tile}">
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="Liquid" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding LiquidTemp}" Style="{StaticResource BigValue}" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+
+                <!-- Load -->
+                <Label Text="Load" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="6">
+                        <Label Text="CPU" />
+                        <Label Grid.Column="1" Text="{Binding CpuLoadText}" FontFamily="OpenSansSemibold" />
+                        <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Progress="{Binding CpuLoad}" Margin="0,0,0,8" />
+                        <Label Grid.Row="2" Text="GPU" />
+                        <Label Grid.Row="2" Grid.Column="1" Text="{Binding GpuLoadText}" FontFamily="OpenSansSemibold" />
+                        <ProgressBar Grid.Row="3" Grid.ColumnSpan="2" Progress="{Binding GpuLoad}" />
+                    </Grid>
+                </Border>
+
+                <!-- Fans -->
+                <Label Text="Fans" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding Fans}">
+                        <BindableLayout.EmptyView>
+                            <Label Text="The PC reports no fans." Style="{StaticResource Muted}" />
+                        </BindableLayout.EmptyView>
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:FanItem">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Text="{Binding Name}" />
+                                    <Label Grid.Column="1" Text="{Binding Speed}" FontFamily="OpenSansSemibold" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Now playing -->
+                <Border Style="{StaticResource Card}" IsVisible="{Binding NowPlaying, Converter={StaticResource NotEmpty}}">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="On the PC" Style="{StaticResource Section}" />
+                        <Label Text="{Binding NowPlaying}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Recording -->
+                <Label Text="Recording" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="12">
+                        <HorizontalStackLayout Spacing="10">
+                            <Ellipse WidthRequest="12" HeightRequest="12" VerticalOptions="Center" Fill="{StaticResource Hot}"
+                                     IsVisible="{Binding IsRecording}" />
+                            <Label Text="{Binding RecordingText}" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <Button Text="{Binding RecordButtonText}" Command="{Binding ToggleRecordingCommand}"
+                                    IsEnabled="{Binding Online}" />
+                            <Button Grid.Column="1" Text="Save replay" Style="{StaticResource Secondary}"
+                                    Command="{Binding SaveReplayCommand}" IsEnabled="{Binding Online}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Lighting -->
+                <Label Text="Lighting" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="Lights on" VerticalOptions="Center" FontSize="17" />
+                            <Switch Grid.Column="1" IsToggled="{Binding LightsOn}" IsEnabled="{Binding Online}" />
+                        </Grid>
+                        <Picker Title="Effect" ItemsSource="{Binding Effects}" SelectedItem="{Binding SelectedEffect}"
+                                ItemDisplayBinding="{Binding Name, x:DataType=link:LightingEffect}" IsEnabled="{Binding Online}" />
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+
+            <Button Text="Forget this PC" Style="{StaticResource Danger}" Command="{Binding ForgetCommand}" Margin="0,16,0,0" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

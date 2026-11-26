@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RigControl.Mobile.Views.LinkPcPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:RigControl.Mobile.ViewModels"
+    x:DataType="vm:LinkPcViewModel"
+    Title="Link a PC">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16,16,16,32" Spacing="16" MaximumWidthRequest="560">
+
+            <Label Style="{StaticResource Muted}"
+                   Text="On the PC, open RigControl and go to Settings &gt; Phone &gt; Link a phone. It shows a QR code and a code that works for 10 minutes." />
+
+            <Button Text="Scan the QR code" Command="{Binding ScanCommand}" />
+
+            <Label Text="Or type the code" Style="{StaticResource Section}" Margin="0,8,0,0" />
+            <Entry Text="{Binding CodeText}" Placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
+                   Keyboard="Plain" IsSpellCheckEnabled="False" IsTextPredictionEnabled="False"
+                   FontFamily="OpenSansSemibold" FontSize="20" CharacterSpacing="1.5" MaxLength="40"
+                   ReturnCommand="{Binding LinkCommand}" />
+            <Label Text="{Binding CodeHint}" Style="{StaticResource Muted}" />
+
+            <VerticalStackLayout Spacing="8" IsVisible="{Binding ShowRelay}">
+                <Label Text="Relay address" Style="{StaticResource Section}" />
+                <Entry Text="{Binding RelayText}" Placeholder="the relay your PC uses (from its QR code)"
+                       Keyboard="Url" IsSpellCheckEnabled="False" IsTextPredictionEnabled="False" />
+                <Label Style="{StaticResource Muted}"
+                       Text="Filled in by the QR code. Only change it if you run your own relay." />
+                <Label Text="{Binding RelayNote}" IsVisible="{Binding RelayNote, Converter={StaticResource NotEmpty}}"
+                       Style="{StaticResource Muted}" />
+            </VerticalStackLayout>
+            <Label Text="{Binding OtherRelayNote}" IsVisible="{Binding OtherRelayNote, Converter={StaticResource NotEmpty}}"
+                   TextColor="{StaticResource Hot}" />
+            <Button Text="Change the relay address" Style="{StaticResource Secondary}" Command="{Binding EditRelayCommand}"
+                    IsVisible="{Binding ShowRelay, Converter={StaticResource Invert}}" />
+
+            <Label Text="{Binding Error}" IsVisible="{Binding Error, Converter={StaticResource NotEmpty}}"
+                   TextColor="{StaticResource Hot}" />
+
+            <Grid>
+                <Button Text="Link" Command="{Binding LinkCommand}" />
+                <ActivityIndicator IsRunning="{Binding Busy}" IsVisible="{Binding Busy}" HorizontalOptions="End" Margin="0,0,16,0" />
+            </Grid>
+            <Label Text="{Binding ProgressText}" IsVisible="{Binding ProgressText, Converter={StaticResource NotEmpty}}"
+                   Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
+
+            <Label Style="{StaticResource Muted}" FontSize="13"
+                   Text="The code is used once to exchange keys with the PC. After that, everything between this phone and the PC is end-to-end encrypted; the relay only passes sealed messages on." />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RigControl.Mobile.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:RigControl.Mobile.ViewModels"
+    x:DataType="vm:SettingsViewModel"
+    Title="Settings">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16,12,16,32" Spacing="14">
+
+            <!-- This phone -->
+            <Label Text="This phone" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Name shown on your PCs" />
+                    <Entry Text="{Binding PhoneName}" MaxLength="40" />
+                    <Label Text="Your PCs list this phone by this name, so you can tell your phones apart and remove one."
+                           Style="{StaticResource Muted}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Link -->
+            <Label Text="Link to your PCs" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="{Binding LinkMode}" />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <Label Text="Relay" Style="{StaticResource Muted}" />
+                        <Label Grid.Column="1" Text="{Binding Relay}" HorizontalTextAlignment="End" LineBreakMode="MiddleTruncation" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Discord status (Step 3) -->
+            <Label Text="Discord status" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Show what you play and listen to on this phone on your Discord profile, with Spotify and the iPhone Music app." />
+                    <Label Text="Coming in the next version. Sign-in uses Discord's and Spotify's own pages; RigControl never sees your passwords."
+                           Style="{StaticResource Muted}" />
+                    <Button Text="Sign in with Discord" IsEnabled="False" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- About -->
+            <Label Text="About" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="RigControl Mobile" />
+                        <Label Grid.Column="1" Text="{Binding Version}" Style="{StaticResource Muted}" />
+                    </Grid>
+                    <Label Style="{StaticResource Muted}"
+                           Text="Free software under the GNU GPL version 3. Uses .NET MAUI (MIT), CommunityToolkit.Mvvm (MIT) and ZXing.Net.MAUI (MIT) with ZXing.Net (Apache 2.0)." />
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

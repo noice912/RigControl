@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RigControl Link (docs/protocols/link.md): device keys, pairing codes, sealing, the relay client, and the PC and
+    phone sides of the protocol. Platform-neutral on purpose and with no project references: the PC app and the
+    .NET MAUI phone app both reference it, so it may use nothing that is Windows-only (no DPAPI, no registry).
+    Keeping keys safe at rest is the caller's job (ISecretProtector on the PC, Keychain/Keystore on the phone).
+  -->
+  <PropertyGroup>
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
+    <RootNamespace>RigControl.Link</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.Link.Tests" />
+  </ItemGroup>
+
+</Project>

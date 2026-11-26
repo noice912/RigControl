@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A pretend phone for testing RigControl Link through a real relay: pair with the code a PC shows, ask for a
+    snapshot, send one of the allowed actions. How to run it: see the top of Program.cs. Platform-neutral.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
+    <RootNamespace>RigControl.LinkProbe</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RigControl.Link\RigControl.Link.csproj" />
+  </ItemGroup>
+
+</Project>

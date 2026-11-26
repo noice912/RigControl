@@ -63,6 +63,29 @@ jobs:
         working-directory: src/ui
         run: npm run build
 
+  # ------------------------------------------------------------------ 1b. The Link relay (Cloudflare Worker), tests only
+  relay:
+    name: Link relay (typecheck and tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Install the relay's packages
+        working-directory: relay
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        working-directory: relay
+        run: npm run typecheck
+      - name: Test (inside the Workers runtime, locally; nothing is deployed)
+        working-directory: relay
+        run: npm test
+
   # ------------------------------------------------------------------ 2. The shared code on three systems
   portable:
     name: Shared code (${{ matrix.os }})
@@ -106,14 +129,17 @@ jobs:
             src/RigControl.Presence \
             src/RigControl.Desktop \
             src/RigControl.Updates \
+            src/RigControl.Link \
             tools/UpdateSigner \
             tools/DevEnroll \
+            tools/LinkProbe \
             tests/RigControl.Core.Tests \
             tests/RigControl.Hosting.Tests \
             tests/RigControl.Lighting.Tests \
             tests/RigControl.Presence.Tests \
             tests/RigControl.Desktop.Tests \
-            tests/RigControl.Updates.Tests
+            tests/RigControl.Updates.Tests \
+            tests/RigControl.Link.Tests
           do
             echo "::group::build $project"
             dotnet build "$project" -c Debug -f net8.0 $STRICT
@@ -129,7 +155,8 @@ jobs:
             tests/RigControl.Lighting.Tests \
             tests/RigControl.Presence.Tests \
             tests/RigControl.Desktop.Tests \
-            tests/RigControl.Updates.Tests
+            tests/RigControl.Updates.Tests \
+            tests/RigControl.Link.Tests
           do
             echo "::group::test $project"
             # A test that hangs is stopped after 3 minutes and named in the log, instead of using up the job.

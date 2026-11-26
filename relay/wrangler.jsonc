@@ -1,0 +1,33 @@
+// RigControl Link relay (docs/protocols/link.md). Not deployed by CI; see README.md for how to deploy.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rigcontrol-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  // No request logs or traces are kept by Cloudflare for this Worker, and the code itself logs nothing.
+  "observability": { "enabled": false },
+  "logpush": false,
+  "durable_objects": {
+    "bindings": [
+      // One object per room (name = the room = the PC's id).
+      { "name": "ROOMS", "class_name": "Room" },
+      // One object per pairing rendezvous (name = h).
+      { "name": "PAIRS", "class_name": "Pairing" }
+    ]
+  },
+  // Workers Rate Limiting, keyed by the client address (IPv4, or the /64 of an IPv6 address). Checked in the Worker
+  // before any Durable Object is touched; nothing is stored. Counters are per Cloudflare location and approximate.
+  // namespace_id must be unique within the Cloudflare account.
+  "ratelimits": [
+    // Every WebSocket upgrade (/v1/connect and /v1/pair).
+    { "name": "UPGRADE_LIMIT", "namespace_id": "4761001", "simple": { "limit": 30, "period": 60 } },
+    // /v1/pair upgrades on top: one pair connection carries one offer or claim, so this caps claims.
+    { "name": "PAIR_LIMIT", "namespace_id": "4761002", "simple": { "limit": 10, "period": 60 } }
+  ],
+  // SQLite-backed objects (the only kind on the Workers free plan).
+  "migrations": [
+    // Never deployed with an earlier class list, so the first deploy starts from this one migration.
+    { "tag": "v1", "new_sqlite_classes": ["Room", "Pairing"] }
+  ]
+}

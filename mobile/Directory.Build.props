@@ -1,0 +1,15 @@
+<Project>
+  <!--
+    The phone app is built on its own: it does NOT take the PC projects' settings from ../Directory.Build.props
+    (those pick net8.0-windows and one shared artifacts folder). Build output stays in each project's bin/ and obj/.
+  -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Product>RigControl Mobile</Product>
+    <Version>0.1.0</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+</Project>

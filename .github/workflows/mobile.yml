@@ -1,0 +1,196 @@
+# Builds RigControl Mobile (mobile/README.md): an Android .apk and an UNSIGNED iPhone .ipa, and puts them on this
+# repository's "mobile-dev" pre-release (release files don't count against the account's artifact storage quota).
+# Runs only when started by hand (Actions > Mobile > Run workflow) or for a version tag. They are test builds: public
+# releases attach them by hand, after checking them.
+#
+# Rules this file keeps (the same as ci.yml):
+#   - No secrets are used anywhere. Jobs that run build tools can only read; only the final upload job (which runs
+#     no repository code) may write, and only releases (plus deleting its own cache entries).
+#   - Every action is pinned to a full commit, with its version beside it.
+#   - Nothing is cached between runs: the build cache only carries this run's two files to the upload job, which deletes them.
+#   - No signing: the .ipa is signed later on the owner's own PC (sideloading, or RigControl's installer in Step 4).
+name: Mobile
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+  # Must match mobile/global.json.
+  SDK_VERSION: '10.0.404'
+  PROJECT: mobile/RigControl.Mobile/RigControl.Mobile.csproj
+
+jobs:
+  # ------------------------------------------------------------------ Android (.apk)
+  android:
+    name: Android (.apk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: ${{ env.SDK_VERSION }}
+      - name: Install the MAUI Android workload
+        working-directory: mobile
+        run: |
+          dotnet --version
+          dotnet workload install maui-android
+          dotnet workload list
+      - name: Test the shared phone code
+        working-directory: mobile
+        run: dotnet test RigControl.Mobile.Tests -c Release
+      - name: Install the Android SDK parts the app needs
+        working-directory: mobile
+        run: |
+          # The runner has an Android SDK and JDK 17; this adds the exact platform and build tools if missing.
+          dotnet build "../$PROJECT" -t:InstallAndroidDependencies -f net10.0-android \
+            -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME_17_X64" -p:AcceptAndroidSDKLicenses=True
+      - name: Publish the .apk
+        working-directory: mobile
+        run: |
+          # One restore of the whole project graph first; the earlier steps restored parts of it for other targets.
+          dotnet restore "../$PROJECT" -p:Configuration=Release
+          dotnet publish "../$PROJECT" -f net10.0-android -c Release --no-restore \
+            -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME_17_X64" \
+            -o "$RUNNER_TEMP/android"
+          # The build signs it with a throwaway debug key, so it installs; a release key comes later.
+          apk=$(ls "$RUNNER_TEMP/android/"*-Signed.apk | head -n 1)
+          cp "$apk" "$RUNNER_TEMP/RigControl-Mobile.apk"
+          ls -l "$RUNNER_TEMP/RigControl-Mobile.apk"
+          sha256sum "$RUNNER_TEMP/RigControl-Mobile.apk"
+      - name: Checksum
+        run: |
+          cd "$RUNNER_TEMP"
+          (sha256sum RigControl-Mobile.apk 2>/dev/null || shasum -a 256 RigControl-Mobile.apk) > RigControl-Mobile.apk.sha256
+          mkdir -p "$RUNNER_TEMP/out-apk" && mv RigControl-Mobile.apk RigControl-Mobile.apk.sha256 "$RUNNER_TEMP/out-apk/"
+      # Handed to the upload job through the build cache (its own storage allowance; the artifact quota is full).
+      # This job runs the build tools, so it gets no write access at all.
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/out-apk
+          key: mobile-${{ github.run_id }}-apk
+
+  # ------------------------------------------------------------------ iPhone (unsigned .ipa)
+  ios:
+    name: iPhone (unsigned .ipa)
+    # .NET 10's current iOS tools need Xcode 27; the newer macOS image has it (macos-latest had 26.6).
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: ${{ env.SDK_VERSION }}
+      # The newest .NET iOS tools (27.x) need Xcode 27, which GitHub's Macs don't have yet. The iOS workload is pinned to
+      # the last release for Xcode 26.5, and the matching Xcode is selected.
+      - name: Pick Xcode 26.5
+        run: |
+          ls -d /Applications/Xcode_*.app
+          x=$(ls -d /Applications/Xcode_26.5*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$x" ]; then echo "::error::No Xcode 26.5 on this runner"; exit 1; fi
+          sudo xcode-select -s "$x/Contents/Developer"
+          xcodebuild -version
+      - name: Install the MAUI iOS workload (iOS tools pinned to 26.5)
+        working-directory: mobile
+        run: |
+          dotnet --version
+          dotnet workload config --update-mode manifests
+          echo '{ "microsoft.net.sdk.ios": "26.5.10318/10.0.100" }' > "$RUNNER_TEMP/ios-rollback.json"
+          dotnet workload install maui-ios --from-rollback-file "$RUNNER_TEMP/ios-rollback.json"
+          dotnet workload list
+      - name: Build for iPhone, without signing
+        working-directory: mobile
+        run: |
+          # Only the iPhone target is restored, so the Mac needs only the iOS workload.
+          dotnet restore "../$PROJECT" -r ios-arm64 -p:MobileOnly=ios -p:Configuration=Release
+          dotnet build "../$PROJECT" -f net10.0-ios -c Release -p:MobileOnly=ios --no-restore \
+            -p:RuntimeIdentifier=ios-arm64 -p:EnableCodeSigning=false -p:CodesignKey="" -p:ArchiveOnBuild=false
+      - name: Package Payload/RigControl.app into an unsigned .ipa
+        run: |
+          app=$(find mobile/RigControl.Mobile/bin/Release/net10.0-ios/ios-arm64 -maxdepth 1 -name '*.app' -type d | head -n 1)
+          if [ -z "$app" ]; then echo "::error::No .app bundle was built"; exit 1; fi
+          echo "Built: $app"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist"
+          stage="$RUNNER_TEMP/ipa"
+          mkdir -p "$stage/Payload"
+          # ditto keeps the bundle exactly as built (permissions, symlinks).
+          ditto "$app" "$stage/Payload/RigControl.app"
+          (cd "$stage" && zip -qry "$RUNNER_TEMP/RigControl-Mobile.ipa" Payload)
+          ls -l "$RUNNER_TEMP/RigControl-Mobile.ipa"
+          shasum -a 256 "$RUNNER_TEMP/RigControl-Mobile.ipa"
+      - name: Checksum
+        run: |
+          cd "$RUNNER_TEMP"
+          (sha256sum RigControl-Mobile.ipa 2>/dev/null || shasum -a 256 RigControl-Mobile.ipa) > RigControl-Mobile.ipa.sha256
+          mkdir -p "$RUNNER_TEMP/out-ipa" && mv RigControl-Mobile.ipa RigControl-Mobile.ipa.sha256 "$RUNNER_TEMP/out-ipa/"
+      # Handed to the upload job through the build cache (its own storage allowance; the artifact quota is full).
+      # This job runs the build tools, so it gets no write access at all.
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/out-ipa
+          key: mobile-${{ github.run_id }}-ipa
+
+  # ------------------------------------------------------------------ hand the files over
+  # The only job with write access. It runs no code from the repository or its packages: it restores the two built
+  # files from the build cache and puts them on the "mobile-dev" pre-release (release files don't count against the
+  # artifact quota).
+  publish:
+    name: Put the builds on the mobile-dev pre-release
+    needs: [android, ios]
+    if: ${{ always() && (needs.android.result == 'success' || needs.ios.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write   # deletes this run's cache entries afterwards
+    steps:
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/out-apk
+          key: mobile-${{ github.run_id }}-apk
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/out-ipa
+          key: mobile-${{ github.run_id }}-ipa
+      - name: Upload to the mobile-dev pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          files=("$RUNNER_TEMP"/out-apk/* "$RUNNER_TEMP"/out-ipa/*)
+          if [ ${#files[@]} -eq 0 ]; then echo "::error::Nothing was built"; exit 1; fi
+          ls -l "${files[@]}"
+          if ! gh release view mobile-dev >/dev/null 2>&1; then
+            gh release create mobile-dev --prerelease --title "RigControl Mobile (test builds)" --notes "Test builds of the phone app. Not a release." --target "$GITHUB_SHA"
+          fi
+          gh release edit mobile-dev --notes "Test builds of the phone app from ${GITHUB_SHA} (run ${GITHUB_RUN_ID}). Not a release."
+          gh release upload mobile-dev "${files[@]}" --clobber
+      - name: Delete this run's cache entries
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for k in apk ipa; do gh cache delete "mobile-${GITHUB_RUN_ID}-$k" 2>/dev/null || true; done

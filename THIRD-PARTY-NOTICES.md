@@ -89,6 +89,7 @@ Versions are the ones the project files and the package restore name.
 | HidSharp | 2.6.4 | Apache-2.0 ([text with its copyright line](LICENSES/HidSharp-LICENSE.txt)) | https://software.seekye.com/hidsharp |
 | NAudio, NAudio.Core, NAudio.Wasapi, NAudio.WinMM, NAudio.WinForms, NAudio.Asio, NAudio.Midi | 2.2.1 | MIT, Copyright 2020 Mark Heath ([text](LICENSES/NAudio-LICENSE.txt)) | https://github.com/naudio/NAudio |
 | NvAPIWrapper.Net | 0.8.1.101 | LGPL-3.0 per its repository ([text](LICENSES/LGPL-3.0.txt)). To be confirmed against the package. | https://github.com/falahati/NvAPIWrapper |
+| QRCoder | 1.9.0 | MIT, Copyright (c) 2013-2025 Raffael Herrmann, Copyright (c) 2024-2025 Shane Krueger ([text](LICENSES/MIT.txt)) | https://github.com/Shane32/QRCoder |
 | Microsoft.Web.WebView2 (SDK) | 1.0.4314.35 | Microsoft's WebView2 SDK licence, BSD-3-Clause wording, Copyright (C) Microsoft Corporation ([text](LICENSES/WebView2-LICENSE.txt)) | https://aka.ms/webview |
 | Mono.Posix.NETStandard (used by LibreHardwareMonitorLib) | 1.0.0 | MIT. To be confirmed: the package only links to its licence. | https://github.com/mono/mono |
 | System.Management, System.CodeDom, System.IO.Ports (with `runtime.native.System.IO.Ports`), System.Threading.AccessControl | 10.0.x | MIT, Copyright (c) .NET Foundation and Contributors ([text](LICENSES/MIT.txt)) | https://github.com/dotnet/runtime |

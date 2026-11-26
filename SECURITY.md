@@ -94,6 +94,27 @@ For bugs that are not security problems, open a normal issue.
 - OBS's WebSocket password is read from OBS's own settings to sign in to OBS on this PC, for read-only requests. It
   is never logged, shown or stored by RigControl.
 
+### The phone link (Settings > Phone)
+
+- No incoming port: the PC connects out to the relay (`wss://` only) and only once a phone is linked or a pairing code
+  is shown. The relay cannot read or forge messages: they are sealed with AES-256-GCM under a key from ECDH (P-256)
+  between this PC's and the phone's own keys and a random value made at pairing, with a counter that must always
+  rise, so a recorded message cannot be played again (also not after the phone is linked again). A message that was
+  held back or delayed is refused once it is more than 2 minutes old (the phone's and the PC's clocks must agree
+  within that).
+- Pairing uses a one-time 20-character code (100 bits) that is valid for 10 minutes. The relay only sees a hash of it;
+  the keys travel in boxes locked with a key derived from the code, so the relay cannot put itself between PC and
+  phone. Only show the code to the phone you want to link.
+- The relay only lets in a phone whose key is on the allow-list this PC signed. The PC checks every message again, and
+  a phone can only read a snapshot and ask for the fixed list of actions in `src/RigControl.Link/Messages.cs`
+  (lighting effect or scene, lights on/off, start/stop recording, save replay, switch a custom Discord status). Each
+  action is run through the same checks as the app's own buttons and shows a notice on the PC. Fan curves,
+  overclocking, BIOS, drivers and installs cannot be reached from a phone.
+- This PC's link keys are kept encrypted for your Windows user (DPAPI). Remove a lost phone on Settings > Phone: it
+  is refused at once.
+- What it does not protect against: someone who has your unlocked phone with the app, or who can run programs as your
+  Windows user on the PC. The relay learns which device ids talk to each other and when.
+
 ### Lights on your network
 
 - **Pairing keys.** Nanoleaf gives an access token at pairing; a Philips Hue Bridge gives an application key and a

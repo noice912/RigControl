@@ -829,7 +829,41 @@ export type ReviewItem = {
 };
 
 /** Every event the backend sends. */
+/** Settings > Phone (link.getStatus / "link.status"): RigControl Link, phones through the relay. */
+export interface LinkPairing {
+  /** "ABCD-EFGH-JKMN-PQRS-TVWX". */
+  code: string;
+  groups: string[];
+  /** The QR code as an SVG document (made by the app, shown as an image). */
+  qrSvg: string;
+  qrText: string;
+  expiresAt: string;
+}
+
+export interface LinkPhone {
+  id: string;
+  name: string;
+  added: string;
+  lastSeen: string | null;
+  online: boolean;
+}
+
+export interface LinkStatus {
+  enabled: boolean;
+  /** False when this build has no relay address: nothing can be linked. */
+  relaySet: boolean;
+  relay: string;
+  connection: "off" | "connecting" | "online" | "waiting";
+  message: string;
+  pairing: LinkPairing | null;
+  pairingError: string | null;
+  phones: LinkPhone[];
+  /** The stored link keys can't be read: phones are kept but can't connect until new keys are made (link.resetKeys). */
+  keysUnreadable: boolean;
+}
+
 export interface EventMap {
+  "link.status": LinkStatus;
   "updates.status": UpdateStatus;
   "github.status": GitHubStatus;
   "dev.status": DevStatus;

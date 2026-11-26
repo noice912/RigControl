@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="RigControl.Mobile.Views.ScanPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.MAUI.Controls"
+    Title="Scan the QR code">
+
+    <Grid RowDefinitions="*,Auto">
+        <zxing:CameraBarcodeReaderView x:Name="Reader" BarcodesDetected="OnBarcodesDetected" />
+        <Border Grid.Row="0" WidthRequest="240" HeightRequest="240" Stroke="{StaticResource Accent}" StrokeThickness="3"
+                StrokeShape="RoundRectangle 18" BackgroundColor="Transparent" InputTransparent="True"
+                HorizontalOptions="Center" VerticalOptions="Center" />
+        <VerticalStackLayout Grid.Row="1" Padding="16" Spacing="12" BackgroundColor="{StaticResource Rail}">
+            <Label Style="{StaticResource Muted}" HorizontalTextAlignment="Center"
+                   Text="Point the camera at the QR code on the PC's Settings &gt; Phone page." />
+            <Button Text="Type the code instead" Style="{StaticResource Secondary}" Clicked="OnCancel" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

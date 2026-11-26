@@ -69,6 +69,14 @@ RigControl is an independent project and not a competitor of any official produc
 ASUS Armoury Crate, GIGABYTE Control Center or other makers' apps. Their names appear only to describe what RigControl
 works with or resembles.
 
+## 6a. The phone link relay
+
+The phone link (Settings > Phone) uses a relay run by RigControl's author on Cloudflare. It is offered as it is, for
+free, with no promise that it is available, and it may be changed or stopped. When it is down, a phone cannot reach the
+PC; the PC itself works as before. The relay passes on sealed messages it cannot read; what it stores is listed in
+[PRIVACY.md](PRIVACY.md). Do not use it to send anything other than what RigControl sends, and do not try to overload
+it. Remove a phone on Settings > Phone to unlink it.
+
 ## 7. Changes to these terms
 
 A new version of RigControl may come with new terms. Each version carries its terms: they are written to the

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="RigControl.Mobile.Core/RigControl.Mobile.Core.csproj" />
+  <Project Path="RigControl.Mobile.Tests/RigControl.Mobile.Tests.csproj" />
+  <Project Path="RigControl.Mobile/RigControl.Mobile.csproj" />
+</Solution>
