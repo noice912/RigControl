@@ -317,9 +317,11 @@ export type ListenStatus = {
   level: number;
   problem: string | null;
   settings: ListenSettings;
+  /** An input switched off in Windows' sound settings that "Turn it on" can switch on. */
+  switchedOffInputId?: string | null;
 };
 
-export type ListenDevice = { id: string; name: string; captureCard: boolean; isDefault: boolean };
+export type ListenDevice = { id: string; name: string; captureCard: boolean; isDefault: boolean; switchedOff?: boolean };
 export type ListenDevices = { inputs: ListenDevice[]; outputs: ListenDevice[] };
 
 // ---------- cooling ----------

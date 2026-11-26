@@ -8,11 +8,14 @@ namespace RigControl.Capture.Listen;
 /// <summary>What the listen module needs from Windows' sound system. Replaceable in tests.</summary>
 public interface IListenEngine
 {
-    /// <summary>Sound inputs that are switched on and connected.</summary>
+    /// <summary>Connected sound inputs that are not microphones, including ones switched off in Windows (Enabled false).</summary>
     IReadOnlyList<AudioEndpoint> Inputs();
 
-    /// <summary>Sound outputs that are switched on and connected.</summary>
+    /// <summary>Sound outputs that are switched on and connected, without Bluetooth hands-free (call) outputs.</summary>
     IReadOnlyList<AudioEndpoint> Outputs();
+
+    /// <summary>Switches a sound input on in Windows' sound settings (it was switched off there). False when it can't.</summary>
+    bool EnableInput(string id);
 
     /// <summary>Windows' default output for media, or null when there is none.</summary>
     string? DefaultOutputId();
@@ -44,9 +47,9 @@ public interface IListenSession : IDisposable
 /// </summary>
 public sealed class WasapiListenEngine : IListenEngine
 {
-    public IReadOnlyList<AudioEndpoint> Inputs() => List(DataFlow.Capture);
+    public IReadOnlyList<AudioEndpoint> Inputs() => List(DataFlow.Capture, DeviceState.Active | DeviceState.Disabled).Where(d => !d.IsMicrophoneLike).ToList();
 
-    public IReadOnlyList<AudioEndpoint> Outputs() => List(DataFlow.Render);
+    public IReadOnlyList<AudioEndpoint> Outputs() => List(DataFlow.Render).Where(d => d.FormFactor is not (5 or 6)).ToList();
 
     public string? DefaultOutputId()
     {
@@ -56,22 +59,37 @@ public sealed class WasapiListenEngine : IListenEngine
         return d.ID;
     }
 
-    private static IReadOnlyList<AudioEndpoint> List(DataFlow flow)
+    private static IReadOnlyList<AudioEndpoint> List(DataFlow flow, DeviceState states = DeviceState.Active)
     {
         var list = new List<AudioEndpoint>();
         using var e = new MMDeviceEnumerator();
-        foreach (var d in e.EnumerateAudioEndPoints(flow, DeviceState.Active))
+        foreach (var d in e.EnumerateAudioEndPoints(flow, states))
         {
             using (d)
             {
                 string name;
                 try { name = d.FriendlyName; }
                 catch { name = "Sound device"; }
-                list.Add(new AudioEndpoint(d.ID, name, HardwareIds(d)));
+                var formFactor = -1;
+                try
+                {
+                    if (d.Properties.Contains(PropertyKeys.PKEY_AudioEndpoint_FormFactor)
+                        && d.Properties[PropertyKeys.PKEY_AudioEndpoint_FormFactor].Value is uint f) formFactor = (int)f;
+                }
+                catch
+                {
+                    // Unknown kind: kept, as an ordinary device.
+                }
+                bool enabled;
+                try { enabled = d.State == DeviceState.Active; }
+                catch { enabled = false; }
+                list.Add(new AudioEndpoint(d.ID, name, HardwareIds(d), formFactor, enabled));
             }
         }
         return list;
     }
+
+    public bool EnableInput(string id) => PolicyConfig.SetVisible(id, true);
 
     /// <summary>
     /// Every text property of the endpoint that names a USB id ("VID_..."). Which property holds the parent device's
@@ -142,10 +160,10 @@ internal sealed class WasapiListenSession : IListenSession
     private readonly MMDevice _inputDevice;
     private readonly MMDevice _outputDevice;
     private readonly WasapiCapture _capture;
-    private readonly WasapiOut _out;
-    private readonly GainLimiter _limiter;
-    private readonly BoundedSampleBuffer _buffer;
-    private readonly Kind _kind;
+    private WasapiOut _out = null!;   // set in Build
+    private GainLimiter _limiter = null!;
+    private BoundedSampleBuffer _buffer = null!;
+    private Kind _kind;
     private readonly object _peakGate = new();
     private float[] _scratch = Array.Empty<float>();
     private float _peak;
@@ -157,6 +175,21 @@ internal sealed class WasapiListenSession : IListenSession
         _inputDevice = input;
         _outputDevice = output;
         _capture = new WasapiCapture(input, true, Math.Max(10, latencyMs / 2)) { ShareMode = AudioClientShareMode.Shared };
+        try
+        {
+            Build(output, gain, latencyMs);
+        }
+        catch
+        {
+            // Nothing opened so far may stay open: the module tries again every 2 s.
+            try { _out?.Dispose(); } catch { /* ignore */ }
+            try { _capture.Dispose(); } catch { /* ignore */ }
+            throw;
+        }
+    }
+
+    private void Build(MMDevice output, float gain, int latencyMs)
+    {
         var cf = _capture.WaveFormat;
         _kind = KindOf(cf) ?? throw new InvalidOperationException($"The input's sound format ({cf.Encoding}, {cf.BitsPerSample}-bit) can't be read.");
         var inRate = cf.SampleRate;
@@ -332,6 +365,45 @@ internal sealed class WasapiListenSession : IListenSession
             ChannelMap.Map(_in.AsSpan(0, need), _inChannels, target, _outChannels, frames);
             for (var i = 0; i < target.Length; i++) target[i] = Math.Clamp(target[i], -1f, 1f);
             return frames * _outChannels * 4;
+        }
+    }
+}
+
+/// <summary>
+/// Windows' own switch for "Enable"/"Disable" on a device in the Sound control panel. Windows has no documented call for it,
+/// so this uses the interface the control panel itself uses (unchanged since Windows Vista). Used only when the user
+/// presses "Turn it on" for the capture card's input.
+/// </summary>
+internal static class PolicyConfig
+{
+    [ComImport, Guid("f8679f50-850a-41cf-9c72-430f290290c8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPolicyConfig
+    {
+        [PreserveSig] int GetMixFormat(); [PreserveSig] int GetDeviceFormat(); [PreserveSig] int ResetDeviceFormat();
+        [PreserveSig] int SetDeviceFormat(); [PreserveSig] int GetProcessingPeriod(); [PreserveSig] int SetProcessingPeriod();
+        [PreserveSig] int GetShareMode(); [PreserveSig] int SetShareMode(); [PreserveSig] int GetPropertyValue();
+        [PreserveSig] int SetPropertyValue(); [PreserveSig] int SetDefaultEndpoint();
+        [PreserveSig] int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string deviceId, int visible);
+    }
+
+    [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
+    private class PolicyConfigClient { }
+
+    public static bool SetVisible(string id, bool visible)
+    {
+        object? client = null;
+        try
+        {
+            client = new PolicyConfigClient();
+            return ((IPolicyConfig)client).SetEndpointVisibility(id, visible ? 1 : 0) >= 0;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (client is not null) Marshal.ReleaseComObject(client);
         }
     }
 }

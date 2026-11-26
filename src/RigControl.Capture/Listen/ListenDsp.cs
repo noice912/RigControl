@@ -222,7 +222,16 @@ public sealed class BoundedSampleBuffer
 /// <param name="Id">Windows' endpoint id.</param>
 /// <param name="Name">The name Windows shows, e.g. "Digital Audio Interface (USB Digital Audio)".</param>
 /// <param name="HardwareIds">Hardware paths Windows keeps for the device (e.g. "USB\VID_534D&amp;PID_2109..."), joined; may be empty.</param>
-public sealed record AudioEndpoint(string Id, string Name, string HardwareIds = "");
+/// <param name="FormFactor">Windows' kind of device (EndpointFormFactor: 4 microphone, 5 headset, 6 handset, ...); -1 unknown.</param>
+/// <param name="Enabled">False when the device is switched off in Windows' sound settings.</param>
+public sealed record AudioEndpoint(string Id, string Name, string HardwareIds = "", int FormFactor = -1, bool Enabled = true)
+{
+    /// <summary>
+    /// Microphones, headsets and phone handsets are never offered: the sound to play comes from a capture card or a line
+    /// input, and opening a Bluetooth headset's microphone switches the headset into its low-quality call mode.
+    /// </summary>
+    public bool IsMicrophoneLike => FormFactor is 4 or 5 or 6;
+}
 
 /// <summary>Which sound input is the capture card when the user left the choice on "automatic".</summary>
 public static class CaptureCardPicker
@@ -234,7 +243,9 @@ public static class CaptureCardPicker
     /// <summary>The capture card's input, or null: first one on MacroSilicon's USB id, then one named "USB Digital Audio".</summary>
     public static AudioEndpoint? Pick(IEnumerable<AudioEndpoint> inputs)
     {
-        var list = inputs as IReadOnlyList<AudioEndpoint> ?? inputs.ToList();
+        var all = inputs.Where(d => !d.IsMicrophoneLike).ToList();
+        // A switched-on one first; a switched-off one is still found, so the user can be told to turn it on.
+        var list = all.Where(d => d.Enabled).Concat(all.Where(d => !d.Enabled)).ToList();
         return list.FirstOrDefault(IsMacroSilicon)
             ?? list.FirstOrDefault(d => d.Name.Contains(UsbDigitalAudio, StringComparison.OrdinalIgnoreCase));
     }

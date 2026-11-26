@@ -178,6 +178,19 @@ public class ListenModuleTests
         public void Dispose() => Disposed = true;
     }
 
+    [Fact]
+    public void Microphones_and_headsets_are_never_picked_and_a_switched_off_capture_card_is_still_found()
+    {
+        var mic = new AudioEndpoint("mic", "Headset (Crusher ANC 2)", FormFactor: 5);
+        var realMic = new AudioEndpoint("m2", "Microphone (Realtek USB Audio)", FormFactor: 4);
+        var card = new AudioEndpoint("card", "Digital Audio Interface (USB Digital Audio)", @"USB\VID_534D&PID_2109", 7, Enabled: false);
+        Assert.Equal("card", CaptureCardPicker.Pick(new[] { mic, realMic, card })!.Id);
+        Assert.True(mic.IsMicrophoneLike);
+        Assert.False(card.IsMicrophoneLike);
+        // A microphone named like a capture card still isn't one to play.
+        Assert.Null(CaptureCardPicker.Pick(new[] { new AudioEndpoint("x", "USB Digital Audio mic", FormFactor: 4) }));
+    }
+
     private sealed class FakeEngine : IListenEngine
     {
         public List<AudioEndpoint> In = new();
@@ -187,6 +200,14 @@ public class ListenModuleTests
         public IReadOnlyList<AudioEndpoint> Inputs() => In;
         public IReadOnlyList<AudioEndpoint> Outputs() => Out;
         public string? DefaultOutputId() => Default;
+        public List<string> Enabled = new();
+        public bool EnableInput(string id)
+        {
+            Enabled.Add(id);
+            var i = In.FindIndex(d => d.Id == id);
+            if (i >= 0) In[i] = In[i] with { Enabled = true };
+            return true;
+        }
         public IListenSession Start(AudioEndpoint input, AudioEndpoint output, float gain, int latencyMs)
         {
             var s = new FakeSession { Gain = gain };

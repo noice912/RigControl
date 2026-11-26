@@ -36,9 +36,11 @@ public sealed record ListenSettingsDto(bool Enabled, string? InputId, string? Ou
 
 /// <summary>State: "off", "running" or "waiting" (switched on, but the input or output is missing; tried again every 2 s).</summary>
 public sealed record ListenStatusDto(
-    bool Enabled, string State, string? InputName, string? OutputName, float Level, string? Problem, ListenSettingsDto Settings);
+    bool Enabled, string State, string? InputName, string? OutputName, float Level, string? Problem, ListenSettingsDto Settings,
+    string? SwitchedOffInputId = null);
 
-public sealed record ListenDeviceDto(string Id, string Name, bool CaptureCard, bool IsDefault);
+/// <param name="SwitchedOff">An input switched off in Windows' sound settings ("Turn it on" can switch it on).</param>
+public sealed record ListenDeviceDto(string Id, string Name, bool CaptureCard, bool IsDefault, bool SwitchedOff = false);
 
 public sealed record ListenDevicesDto(IReadOnlyList<ListenDeviceDto> Inputs, IReadOnlyList<ListenDeviceDto> Outputs);
 
@@ -68,6 +70,7 @@ public sealed class ListenModule : IAppModule
     private IListenSession? _session;
     private AudioEndpoint? _input, _output;
     private string? _problem;
+    private string? _switchedOff;   // the input to offer "Turn it on" for, when the chosen or found one is switched off in Windows
     private float _level;
     private string? _lastLogged;
 
@@ -195,15 +198,21 @@ public sealed class ListenModule : IAppModule
         }
 
         AudioEndpoint? input;
-        if (_settings.InputId is { } inId)
+        _switchedOff = null;
+        // A chosen input that is no longer offered (a microphone picked in an earlier version) counts as automatic.
+        if (_settings.InputId is { } inId && inputs.FirstOrDefault(d => d.Id == inId) is { } chosen)
         {
-            input = inputs.FirstOrDefault(d => d.Id == inId);
-            if (input is null) return (null, null, "The chosen input is not connected. Plug it in, or choose another one.");
+            input = chosen;
         }
         else
         {
             input = CaptureCardPicker.Pick(inputs);
             if (input is null) return (null, null, "No capture card sound input was found. Plug in the capture card, or choose the input by hand.");
+        }
+        if (!input.Enabled)
+        {
+            _switchedOff = input.Id;
+            return (null, null, $"\"{input.Name}\" is switched off in Windows' sound settings. Press \"Turn it on\".");
         }
 
         AudioEndpoint? output;
@@ -236,7 +245,7 @@ public sealed class ListenModule : IAppModule
         var s = _settings;
         var state = !s.Enabled ? "off" : _session is not null ? "running" : "waiting";
         return new ListenStatusDto(s.Enabled, state, _input?.Name, _output?.Name, _session is null ? 0 : _level, _problem,
-            new ListenSettingsDto(s.Enabled, s.InputId, s.OutputId, s.GainPercent, s.LatencyMs));
+            new ListenSettingsDto(s.Enabled, s.InputId, s.OutputId, s.GainPercent, s.LatencyMs), _switchedOff);
     }
 
     private void Publish()
@@ -255,6 +264,7 @@ public sealed class ListenModule : IAppModule
             "getStatus" => GetStatus(),
             "setSettings" => SetSettings(RpcArgs.Require<SettingsArgs>(args)),
             "listDevices" => ListDevices(),
+            "enableInput" => EnableInput(RpcArgs.Require<EnableArgs>(args).Id),
             _ => throw RpcException.UnknownMethod(Name, method),
         };
         return Task.FromResult<object?>(result);
@@ -295,13 +305,41 @@ public sealed class ListenModule : IAppModule
         {
             var defaultOut = _engine.DefaultOutputId();
             return new ListenDevicesDto(
-                _engine.Inputs().Select(d => new ListenDeviceDto(d.Id, d.Name, CaptureCardPicker.IsCaptureCard(d), false)).ToList(),
+                _engine.Inputs().Select(d => new ListenDeviceDto(d.Id, d.Name, CaptureCardPicker.IsCaptureCard(d), false, !d.Enabled)).ToList(),
                 _engine.Outputs().Select(d => new ListenDeviceDto(d.Id, d.Name, false, d.Id == defaultOut)).ToList());
         }
         catch (Exception ex)
         {
             throw RpcException.Unavailable("Windows' sound devices could not be read: " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Switches a sound input on in Windows (the capture card's is often switched off there). Only inputs this module
+    /// offers (never a microphone) can be switched on this way.
+    /// </summary>
+    private ListenStatusDto EnableInput(string? id)
+    {
+        if (string.IsNullOrEmpty(id)) throw RpcException.InvalidArgs("Which input?");
+        AudioEndpoint? target;
+        try { target = _engine.Inputs().FirstOrDefault(d => d.Id == id); }
+        catch (Exception ex) { throw RpcException.Unavailable("Windows' sound devices could not be read: " + ex.Message); }
+        if (target is null) throw RpcException.InvalidArgs("That input isn't one RigControl can play.");
+        if (!target.Enabled && !_engine.EnableInput(id))
+            throw RpcException.Unavailable("Windows did not switch it on. Open Sound settings > Recording, right-click it and choose Enable.");
+        _log.Info($"Switched on \"{target.Name}\" in Windows' sound settings.");
+        lock (_gate)
+        {
+            _lastLogged = null;
+            Reconcile();
+        }
+        Publish();
+        return GetStatus();
+    }
+
+    public sealed class EnableArgs
+    {
+        public string? Id { get; set; }
     }
 
     public ValueTask DisposeAsync()

@@ -44,7 +44,25 @@ export function CaptureCardSound() {
             label="Play the capture card's sound"
           />
           {s.enabled && status?.problem && (
-            <Notice tone="warn" title="Waiting">
+            <Notice
+              tone="warn"
+              title="Waiting"
+              actions={
+                status.switchedOffInputId ? (
+                  <button
+                    className="btn"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      void run("enable", () =>
+                        call<ListenStatus>("listen.enableInput", { id: status.switchedOffInputId }).then(() => devices.reload()),
+                      )
+                    }
+                  >
+                    Turn it on
+                  </button>
+                ) : undefined
+              }
+            >
               {status.problem}
             </Notice>
           )}
@@ -69,6 +87,7 @@ export function CaptureCardSound() {
                   <option key={d.id} value={d.id}>
                     {d.name}
                     {d.captureCard ? " (capture card)" : ""}
+                    {d.switchedOff ? " (switched off in Windows)" : ""}
                   </option>
                 ))}
                 {s.inputId && !inputs.some((d) => d.id === s.inputId) && <option value={s.inputId}>Not connected</option>}
