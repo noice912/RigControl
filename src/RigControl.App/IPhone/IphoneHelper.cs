@@ -81,12 +81,8 @@ internal static class IphoneHelper
 
     private static InstallerSession CreateSession(Action<string> log)
     {
-        var http = new HttpClient(new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-        })
-        { Timeout = TimeSpan.FromSeconds(60) };
+        // Apple's sign-in servers use Apple's own root CA, trusted here for apple.com hosts only (AppleTls).
+        var http = new HttpClient(AppleTls.CreateHandler()) { Timeout = TimeSpan.FromSeconds(60) };
         return new InstallerSession(http, log);
     }
 }

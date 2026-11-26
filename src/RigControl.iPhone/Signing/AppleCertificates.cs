@@ -24,6 +24,9 @@ internal static class AppleCertificates
     /// <summary>WWDR G3 then Apple Root CA.</summary>
     public static IReadOnlyList<X509Certificate2> DefaultChain => Chain.Value;
 
+    /// <summary>Apple Root CA (pinned): also the root of Apple's sign-in servers' TLS certificates.</summary>
+    public static X509Certificate2 Root => Chain.Value[1];
+
     private static X509Certificate2 Load(string name, string sha256)
     {
         var resource = $"RigControl.iPhone.Signing.AppleCertificates.{name}";

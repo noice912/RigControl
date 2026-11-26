@@ -44,7 +44,9 @@ internal static class AppleHttp
         }
         catch (HttpRequestException e)
         {
-            throw new AppleException("Couldn't reach Apple's server. Check the internet connection and try again.", 0, e);
+            // The reason (DNS, refused, TLS) goes along: it names no secret and says what went wrong.
+            var why = e.InnerException?.Message ?? e.Message;
+            throw new AppleException("Couldn't reach Apple's server (" + why + "). Check the internet connection and try again.", 0, e);
         }
     }
 
