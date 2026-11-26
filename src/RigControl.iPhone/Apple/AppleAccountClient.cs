@@ -582,9 +582,11 @@ public sealed class AppleAccountClient
         {
             token = PlistFile.ParseDict(plain);
         }
-        catch (FormatException e)
+        catch (Exception e) when (e is FormatException or System.Xml.XmlException or ArgumentException or InvalidOperationException or OverflowException)
         {
-            throw new AppleException("Apple's app token could not be read.", 0, e);
+            // The token is secret: no inner exception, and only RigControl's own fixed plist sentences are kept.
+            var why = e is RigControl.iPhone.Plist.PlistFormatException p ? " (" + p.Message + ")" : "";
+            throw new AppleException("Apple's app token could not be read" + why + ".");
         }
         finally
         {
