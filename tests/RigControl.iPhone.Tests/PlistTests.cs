@@ -34,6 +34,19 @@ public class PlistTests
     }
 
     [Fact]
+    public void Long_form_booleans_and_a_doctype_are_read()
+    {
+        var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n" +
+                  "<plist version=\"1.0\"><dict><key>a</key><true></true><key>b</key><false></false><key>n</key><integer>-2</integer>" +
+                  "<key>t</key><dict><key>x</key><dict><key>token</key><string>v</string><key>duration</key><integer>3600</integer></dict></dict></dict></plist>";
+        var d = PlistFile.ParseDict(Encoding.UTF8.GetBytes(xml));
+        Assert.True(d.Bool("a"));
+        Assert.False(d.Bool("b"));
+        Assert.Equal(-2L, d.Long("n"));
+        Assert.Equal("v", d.Dict("t")!.Dict("x")!.String("token"));
+    }
+
+    [Fact]
     public void Xml_with_an_entity_declaration_is_not_expanded()
     {
         var xml = "<?xml version=\"1.0\"?><!DOCTYPE plist [<!ENTITY x \"boom\">]><plist><dict><key>k</key><string>&x;</string></dict></plist>";
@@ -115,6 +128,6 @@ public class PlistTests
         var trailer = new byte[32];
         trailer[6] = 1; trailer[7] = 1; trailer[15] = 1; trailer[31] = (byte)table;
         body.AddRange(trailer);
-        Assert.Throws<FormatException>(() => PlistFile.Parse(body.ToArray()));
+        Assert.ThrowsAny<FormatException>(() => PlistFile.Parse(body.ToArray()));
     }
 }

@@ -70,8 +70,10 @@ public class LockdownTests
 
         await using var lockdown = await LockdownClient.ConnectAsync(mux.Client(), 7);
         await lockdown.StartSessionAsync(await PairAsync(mux));
-        Assert.True(sawHost);
+        // With TLS 1.3 the client can finish before the device has checked the client certificate; once the device
+        // has answered a request over TLS, that check has certainly run.
         Assert.Equal("18.1", await lockdown.GetValueAsync(null, "ProductVersion"));
+        Assert.True(Volatile.Read(ref sawHost));
         await lockdown.StopSessionAsync();
         Assert.Contains("StopSession", device.LockdownRequests);
     }

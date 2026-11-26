@@ -174,22 +174,7 @@ public sealed class AppleAccountClient
                 throw new AppleException("Apple's sign-in server could not be verified (its proof didn't match). Try again.");
 
             var spdBytes = complete.Data("spd") ?? throw Malformed("spd");
-            // The key is HMAC(K, ...) with K = H(S) as in SRP; S itself is tried second, as one current client does.
-            var plain = GsaCrypto.DecryptSpd(proof.SessionKey, spdBytes) ?? GsaCrypto.DecryptSpd(proof.PremasterSecret, spdBytes)
-                ?? throw new AppleException("Apple's sign-in reply could not be decrypted.");
-            PlistDict spd;
-            try
-            {
-                spd = PlistFile.ParseDict(plain);
-            }
-            catch (FormatException e)
-            {
-                throw new AppleException("Apple's sign-in reply could not be read.", 0, e);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(plain);
-            }
+            var spd = ReadSpd(spdBytes, proof);
 
             var adsid = Text(spd.String("adsid"), "adsid");
             var idms = Text(spd.String("GsIdmsToken"), "GsIdmsToken", 8192);
@@ -272,8 +257,61 @@ public sealed class AppleAccountClient
         return response;
     }
 
+    /// <summary>
+    /// Decrypts and reads spd (the account details Apple sends after the password proof). The key is HMAC(K, ...) with
+    /// K = H(S) as in SRP, or S itself as one current client does: both are tried, and the one that gives a readable
+    /// property list wins (a wrong key can pass the padding check by chance). When neither reads, the error names the
+    /// shape of the data and the parser's reason, never its content.
+    /// </summary>
+    internal static PlistDict ReadSpd(byte[] spdBytes, SrpResult proof)
+    {
+        var reasons = new List<string>();
+        foreach (var (name, key) in new[] { ("K", proof.SessionKey), ("S", proof.PremasterSecret) })
+        {
+            var plain = GsaCrypto.DecryptSpd(key, spdBytes);
+            if (plain is null)
+            {
+                reasons.Add(name + ": padding");
+                continue;
+            }
+            try
+            {
+                return PlistFile.ParseDict(plain);
+            }
+            catch (Exception e) when (e is FormatException or System.Xml.XmlException or OverflowException or ArgumentException)
+            {
+                // Only RigControl's own fixed messages (PlistFormatException) or an XML error's position are kept:
+                // other messages can quote the decrypted data.
+                var why = e switch
+                {
+                    RigControl.iPhone.Plist.PlistFormatException p => p.Message,
+                    System.Xml.XmlException x => $"line {x.LineNumber} position {x.LinePosition}",
+                    _ => "no details",
+                };
+                reasons.Add($"{name}: {Shape(plain)} {plain.Length} bytes, {e.GetType().Name}: {why}");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(plain);
+            }
+        }
+        throw new AppleException("Apple's sign-in reply could not be read (" + string.Join("; ", reasons) + ").");
+    }
+
+    /// <summary>What kind of data it looks like: "xml", "bplist" or "binary" (nothing of the content itself).</summary>
+    private static string Shape(byte[] plain)
+    {
+        var head = plain.AsSpan(0, Math.Min(plain.Length, 64));
+        var start = head.TrimStart((byte)0xEF).TrimStart((byte)0xBB).TrimStart((byte)0xBF).TrimStart(" \t\r\n"u8);
+        if (start.StartsWith("<?xml"u8) || start.StartsWith("<plist"u8) || start.StartsWith("<!DOCTYPE"u8)) return "xml";
+        if (start.StartsWith("bplist"u8)) return "bplist";
+        return "binary";
+    }
+
     private static PlistDict ParsePlist(AppleHttp.Reply reply)
     {
+        if ((int)reply.Status is 503 or 429)
+            throw new AppleException($"Apple's sign-in server is busy right now (HTTP {(int)reply.Status}). Wait a few minutes, then try again.");
         try
         {
             return PlistFile.ParseDict(reply.Body);

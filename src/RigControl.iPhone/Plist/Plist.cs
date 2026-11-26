@@ -23,7 +23,7 @@ public static class PlistFile
     }
 
     public static PlistDict ParseDict(ReadOnlySpan<byte> bytes) =>
-        Parse(bytes) as PlistDict ?? throw new FormatException("The property list is not a dictionary.");
+        Parse(bytes) as PlistDict ?? throw new PlistFormatException("The property list is not a dictionary.");
 
     public static object ParseXml(ReadOnlySpan<byte> bytes)
     {
@@ -40,7 +40,7 @@ public static class PlistFile
         using var reader = XmlReader.Create(stream, settings);
         reader.MoveToContent();
         if (reader.Name != "plist")
-            throw new FormatException("Not a property list.");
+            throw new PlistFormatException("Not a property list.");
         reader.Read();
         reader.MoveToContent();
         return ReadXmlValue(reader, 0);
@@ -49,10 +49,23 @@ public static class PlistFile
     private static object ReadXmlValue(XmlReader r, int depth)
     {
         if (depth > MaxDepth)
-            throw new FormatException("The property list is nested too deeply.");
+            throw new PlistFormatException("The property list is nested too deeply.");
         if (r.NodeType != XmlNodeType.Element)
-            throw new FormatException("Expected a value in the property list.");
+            throw new PlistFormatException("Expected a value in the property list.");
         var name = r.Name;
+        try
+        {
+            return ReadXmlScalarOrContainer(r, name, depth);
+        }
+        catch (Exception e) when (e is FormatException and not PlistFormatException or OverflowException)
+        {
+            // .NET's own parse errors quote the text; only a fixed message leaves this reader.
+            throw new PlistFormatException("A number, date or data value in the property list is not valid.");
+        }
+    }
+
+    private static object ReadXmlScalarOrContainer(XmlReader r, string name, int depth)
+    {
         switch (name)
         {
             case "dict":
@@ -63,7 +76,7 @@ public static class PlistFile
                 while (r.NodeType != XmlNodeType.EndElement)
                 {
                     if (r.Name != "key")
-                        throw new FormatException("Expected <key> in a dict.");
+                        throw new PlistFormatException("Expected <key> in a dict.");
                     var key = r.ReadElementContentAsString();
                     r.MoveToContent();
                     dict[key] = ReadXmlValue(r, depth + 1);
@@ -85,8 +98,9 @@ public static class PlistFile
                 r.Read();
                 return list;
             }
-            case "true": r.Read(); return true;
-            case "false": r.Read(); return false;
+            // Skip() also steps over a long form such as <true></true>.
+            case "true": r.Skip(); return true;
+            case "false": r.Skip(); return false;
             case "string": return r.IsEmptyElement ? Skip(r, "") : r.ReadElementContentAsString();
             case "integer":
             {
@@ -108,7 +122,7 @@ public static class PlistFile
                 return DateTime.Parse(r.ReadElementContentAsString(), CultureInfo.InvariantCulture,
                     DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);
             default:
-                throw new FormatException($"Unknown property list element <{name}>.");
+                throw new PlistFormatException("The property list has a kind of value RigControl doesn't know.");
         }
     }
 
@@ -195,7 +209,7 @@ public static class PlistFile
         public object Read()
         {
             if (data.Length < 8 + 32)
-                throw new FormatException("The binary property list is too short.");
+                throw new PlistFormatException("The binary property list is too short.");
             var t = data.AsSpan(data.Length - 32);
             _offsetSize = t[6];
             _refSize = t[7];
@@ -204,7 +218,7 @@ public static class PlistFile
             var tableAt = BinaryPrimitives.ReadUInt64BigEndian(t[24..]);
             if (_offsetSize is < 1 or > 8 || _refSize is < 1 or > 8 || count == 0 || count > (ulong)data.Length
                 || top >= count || tableAt + count * (ulong)_offsetSize > (ulong)data.Length - 32)
-                throw new FormatException("The binary property list is damaged.");
+                throw new PlistFormatException("The binary property list is damaged.");
             _offsets = new long[count];
             for (var i = 0; i < (int)count; i++)
                 _offsets[i] = (long)ReadSized((int)tableAt + i * _offsetSize, _offsetSize);
@@ -222,13 +236,13 @@ public static class PlistFile
         private object ReadObject(long index, int depth)
         {
             if (index < 0 || index >= _offsets.Length || depth > MaxDepth)
-                throw new FormatException("The binary property list is damaged.");
+                throw new PlistFormatException("The binary property list is damaged.");
             if (++_references > MaxReferences)
-                throw new FormatException("The binary property list is too complex.");
+                throw new PlistFormatException("The binary property list is too complex.");
             if (_done.TryGetValue(index, out var seen))
                 return seen;
             if (!_active.Add(index))
-                throw new FormatException("The binary property list refers to itself.");
+                throw new PlistFormatException("The binary property list refers to itself.");
             try
             {
                 var value = ReadAt(checked((int)_offsets[index]), depth);
@@ -247,7 +261,7 @@ public static class PlistFile
                 return (low, at + 1);
             var marker = data[at + 1];
             if (marker >> 4 != 1)
-                throw new FormatException("The binary property list is damaged.");
+                throw new PlistFormatException("The binary property list is damaged.");
             var size = 1 << (marker & 0xF);
             return ((long)ReadSized(at + 2, size), at + 2 + size);
         }
@@ -255,17 +269,17 @@ public static class PlistFile
         private object ReadAt(int at, int depth)
         {
             if (at < 8 || at >= data.Length - 32)
-                throw new FormatException("The binary property list is damaged.");
+                throw new PlistFormatException("The binary property list is damaged.");
             var marker = data[at];
             int high = marker >> 4, low = marker & 0xF;
             switch (high)
             {
                 case 0x0:
-                    return low switch { 0x8 => false, 0x9 => true, _ => throw new FormatException("Unsupported binary plist value.") };
+                    return low switch { 0x8 => false, 0x9 => true, _ => throw new PlistFormatException("Unsupported binary plist value.") };
                 case 0x1:
                 {
                     var size = 1 << low;
-                    if (size > 16) throw new FormatException("The binary property list is damaged.");
+                    if (size > 16) throw new PlistFormatException("The binary property list is damaged.");
                     if (size == 16) return (long)ReadSized(at + 9, 8);
                     var v = ReadSized(at + 1, size);
                     return size == 8 ? unchecked((long)v) : (long)v;
@@ -315,20 +329,20 @@ public static class PlistFile
                     for (var i = 0; i < n; i++)
                     {
                         var key = ReadObject((long)ReadSized(start + i * _refSize, _refSize), depth + 1) as string
-                            ?? throw new FormatException("A binary plist dict key is not a string.");
+                            ?? throw new PlistFormatException("A binary plist dict key is not a string.");
                         dict[key] = ReadObject((long)ReadSized(start + (int)(n + i) * _refSize, _refSize), depth + 1);
                     }
                     return dict;
                 }
                 default:
-                    throw new FormatException($"Unsupported binary plist value type {high:X}.");
+                    throw new PlistFormatException("The binary property list has a kind of value RigControl doesn't know.");
             }
         }
 
         private void Check(int start, long length)
         {
             if (length < 0 || start + length > data.Length - 32)
-                throw new FormatException("The binary property list is damaged.");
+                throw new PlistFormatException("The binary property list is damaged.");
         }
     }
 }
@@ -346,3 +360,9 @@ public sealed class PlistDict : Dictionary<string, object>
     public List<object>? Array(string key) => TryGetValue(key, out var v) ? v as List<object> : null;
     public DateTime? Date(string key) => TryGetValue(key, out var v) && v is DateTime d ? d : null;
 }
+
+/// <summary>
+/// A damaged property list. Its message is always one of RigControl's fixed sentences and never contains any of the
+/// data (so it may be shown or logged even when the data was secret).
+/// </summary>
+public sealed class PlistFormatException(string message) : FormatException(message);
