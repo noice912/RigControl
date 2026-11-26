@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 using RigControl.App.Install;
 using RigControl.Bundled;
 
@@ -90,16 +91,18 @@ internal static class NativeFolderGuard
 
     // Read by .NET itself (the runtime or its start-up code) as DOTNET_<name> or COMPlus_<name>, and each one makes it
     // load or connect to code from elsewhere: startup hooks, extra dependency files, a package store, a profiler, a
-    // different garbage collector or JIT, a diagnostics connection that can attach a profiler.
-    private static readonly string[] RuntimeKnobs = { "STARTUP_HOOKS", "ADDITIONAL_DEPS", "SHARED_STORE", "GCName", "GCPath", "JitPath", "JitName", "DiagnosticPorts" };
-    private static readonly string[] RuntimeKnobPrefixes = { "PROFILER", "AltJit" };
+    // different garbage collector or JIT, a diagnostics connection that can attach a profiler. EventPipe tracing is
+    // blocked too: it writes a trace of the process (its own choice of events) to a file the variable names. So are
+    // the JIT's text output file and the runtime's crash dump settings, which write files to a path the variable names.
+    private static readonly string[] RuntimeKnobs = { "STARTUP_HOOKS", "ADDITIONAL_DEPS", "SHARED_STORE", "GCName", "GCPath", "JitPath", "JitName", "DiagnosticPorts", "EnableEventPipe", "JitStdOutFile" };
+    private static readonly string[] RuntimeKnobPrefixes = { "PROFILER", "AltJit", "EventPipe", "DbgMiniDump", "DbgEnableMiniDump", "CreateDumpDiagnostics", "EnableCrashReport" };
     private static readonly string[] RuntimePrefixes = { "DOTNET_", "COMPlus_" };
 
     /// <summary>
     /// True for an environment variable that makes .NET load extra code into this process at start (case does not
     /// matter, as in Windows): every CORECLR_* (CORECLR_ENABLE_PROFILING, CORECLR_PROFILER, CORECLR_PROFILER_PATH…),
     /// COR_ENABLE_PROFILING and COR_PROFILER*, and DOTNET_/COMPlus_ STARTUP_HOOKS, ADDITIONAL_DEPS, SHARED_STORE,
-    /// PROFILER*, GCName, GCPath, AltJit*, JitPath, JitName and DiagnosticPorts.
+    /// PROFILER*, GCName, GCPath, AltJit*, JitPath, JitName, DiagnosticPorts, EnableEventPipe and EventPipe*.
     /// </summary>
     public static bool LoadsCode(string? name)
     {
@@ -306,6 +309,17 @@ internal static class NativeFolderGuard
         if (problem is not null) return null;
         try
         {
+            // The source is held open from here on without letting anyone write to, rename or delete it. Between the
+            // admin prompt and this line the file at that path could have been renamed and another put in its place
+            // (Windows lets a running exe be renamed, not changed), so the file held open must be the very file this
+            // process runs from; it is then copied from that same handle.
+            using var source = OpenStageSource(exe);
+            if (RunningImageNtPath() is not { } image || !SameFile(source.SafeFileHandle, image))
+            {
+                problem = exe + " is no longer the file this setup was started from";
+                return null;
+            }
+
             var dir = Path.Combine(updatesDir, StagePrefix + RandomNumberGenerator.GetHexString(16, lowercase: true));
             // A folder made here and now, so nothing can have been put in it beforehand.
             if (Directory.Exists(dir) || File.Exists(dir)) { problem = dir + " is there already"; return null; }
@@ -315,8 +329,6 @@ internal static class NativeFolderGuard
 
             var target = Path.Combine(dir, InstallLayout.ExeName);
             byte[] sourceHash;
-            // The source is held open without letting anyone write to, rename or delete it while it is copied.
-            using (var source = new FileStream(exe, FileMode.Open, FileAccess.Read, FileShare.Read))
             using (var copy = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
@@ -346,6 +358,108 @@ internal static class NativeFolderGuard
             return null;
         }
     }
+
+    /// <summary>
+    /// Opens a setup file to copy it: others may read it, but nobody may write to, rename or delete it while it is
+    /// open.
+    /// </summary>
+    internal static FileStream OpenStageSource(string path)
+        => new(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 1, FileOptions.SequentialScan);
+
+    /// <summary>
+    /// True when the file open on <paramref name="source"/> is the file named by <paramref name="runningImageNtPath"/>
+    /// (the running program's image, from <see cref="RunningImageNtPath"/>). Windows keeps an image's name up to date
+    /// when the file is renamed, so a file renamed away and replaced by another at the same path does not match.
+    /// When the two names are written differently (an 8.3 short name, say), the image's name is opened and the two
+    /// files' volume and file ids are compared instead.
+    /// </summary>
+    internal static bool SameFile(SafeFileHandle source, string runningImageNtPath)
+    {
+        if (string.IsNullOrEmpty(runningImageNtPath) || NtPath(source) is not { } held) return false;
+        if (string.Equals(held, runningImageNtPath, StringComparison.OrdinalIgnoreCase)) return true;
+        try
+        {
+            using var image = File.OpenHandle(@"\\?\GLOBALROOT" + runningImageNtPath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            return FileId(source) is { } a && FileId(image) is { } b && a == b;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The NT path (\Device\HarddiskVolumeN\…) of the file open on <paramref name="handle"/>, or null.</summary>
+    internal static string? NtPath(SafeFileHandle handle)
+    {
+        const uint volumeNameNt = 0x2; // FILE_NAME_NORMALIZED | VOLUME_NAME_NT
+        var buffer = new char[512];
+        for (var tries = 0; tries < 3; tries++)
+        {
+            var n = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Length, volumeNameNt);
+            if (n == 0) return null;
+            if (n < buffer.Length) return new string(buffer, 0, (int)n);
+            buffer = new char[n + 1];
+        }
+        return null;
+    }
+
+    /// <summary>The NT path of the file mapped at <paramref name="address"/> in this process, or null.</summary>
+    internal static string? MappedNtPath(IntPtr address)
+    {
+        var buffer = new char[1024];
+        for (var tries = 0; tries < 3; tries++)
+        {
+            var n = K32GetMappedFileNameW(GetCurrentProcess(), address, buffer, (uint)buffer.Length);
+            if (n == 0) return null;
+            // A full buffer may mean the name was cut short.
+            if (n < buffer.Length - 1) return new string(buffer, 0, (int)n);
+            buffer = new char[buffer.Length * 4];
+        }
+        return null;
+    }
+
+    /// <summary>The NT path of the file this process runs from (its mapped exe image), or null.</summary>
+    internal static string? RunningImageNtPath()
+    {
+        var module = GetModuleHandleW(null);
+        return module == IntPtr.Zero ? null : MappedNtPath(module);
+    }
+
+    private static (uint Volume, ulong Index)? FileId(SafeFileHandle handle)
+        => GetFileInformationByHandle(handle, out var info)
+            ? (info.VolumeSerialNumber, ((ulong)info.FileIndexHigh << 32) | info.FileIndexLow)
+            : null;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, [Out] char[] path, uint length, uint flags);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint K32GetMappedFileNameW(IntPtr process, IntPtr address, [Out] char[] name, uint size);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr GetModuleHandleW(string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandle(SafeFileHandle file, out ByHandleFileInformation info);
 
     /// <summary>
     /// Makes the folder (as administrator) and checks it. When RigControl's own folder is made new here, it is limited

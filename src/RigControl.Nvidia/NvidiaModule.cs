@@ -243,8 +243,9 @@ public sealed class NvidiaModule : IAppModule
 
     public async Task<object?> InvokeAsync(string method, JsonElement? args, CancellationToken ct)
     {
-        // The first answer after start waits (briefly) for Windows' version, so the page never shows the old one
-        // first; later answers use what was read last and start a new read in the background when it is due.
+        // The first answer after start waits (briefly, and only once) for Windows' version, so the page never shows
+        // the old one first; later answers use what was read last and start a new read in the background when it is
+        // due.
         if (method is "getInfo" or "checkDriverUpdate") await WaitForWindowsVersionAsync(ct).ConfigureAwait(false);
         if (method == "checkDriverUpdate") return await CheckDriverUpdate(ct).ConfigureAwait(false);
         if (method == "installDriver") return await InstallDriver(ct).ConfigureAwait(false);
@@ -699,14 +700,25 @@ public sealed class NvidiaModule : IAppModule
         });
     }
 
-    /// <summary>Waits up to <see cref="WindowsVersionWait"/> for a read that is under way. Never holds _gate.</summary>
-    private async Task WaitForWindowsVersionAsync(CancellationToken ct)
+    /// <summary>
+    /// Waits up to <see cref="WindowsVersionWait"/> for a read that is under way. Never holds _gate. A page call
+    /// (<paramref name="always"/> false) waits only until Windows has answered once, and only once at all: when that
+    /// first wait ran out (WMI stuck), every later call answers at once with the version from before.
+    /// </summary>
+    private async Task WaitForWindowsVersionAsync(CancellationToken ct, bool always = false)
     {
+        if (!always && (_windowsVersion is not null || Volatile.Read(ref _windowsVersionWaitTimedOut) != 0)) return;
         var read = _windowsVersionRead;
         if (read.IsCompleted) return;
         try { await read.WaitAsync(WindowsVersionWait, ct).ConfigureAwait(false); }
-        catch (TimeoutException) { /* the version from before is shown */ }
+        catch (TimeoutException)
+        {
+            // The version from before is shown, now and on later calls until Windows answers.
+            Volatile.Write(ref _windowsVersionWaitTimedOut, 1);
+        }
     }
+
+    private int _windowsVersionWaitTimedOut; // 1 once a page call's wait for Windows ran out; Volatile
 
     /// <summary>
     /// The driver version to show: what Windows has installed now as last read in the background, otherwise what the
@@ -738,9 +750,9 @@ public sealed class NvidiaModule : IAppModule
                 // Windows finishes registering the new driver a moment after the installer window closes.
                 await Task.Delay(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
                 // Read outside the lock, then only the cached answer is used under it.
-                await WaitForWindowsVersionAsync(CancellationToken.None).ConfigureAwait(false);
+                await WaitForWindowsVersionAsync(CancellationToken.None, always: true).ConfigureAwait(false);
                 RefreshWindowsVersion(force: true);
-                await WaitForWindowsVersionAsync(CancellationToken.None).ConfigureAwait(false);
+                await WaitForWindowsVersionAsync(CancellationToken.None, always: true).ConfigureAwait(false);
                 string? version;
                 lock (_gate) version = CurrentVersionLocked();
                 _log.Info($"NVIDIA's installer closed (exit code {code?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}); installed driver: {version ?? "unknown"}.");

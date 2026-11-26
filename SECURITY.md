@@ -145,7 +145,9 @@ under "Safety" in the [README](README.md).
 
 ## Known limits
 
-- No code signing, no installer, no automatic updates. You have to check for new releases yourself.
+- The setup exe is not code-signed (Windows SmartScreen warns the first time). Updates are checked against the
+  author's update signature before they run, but the first download is only as trustworthy as this repository's
+  Releases page.
 - Settings in `%LOCALAPPDATA%\RigControl\settings.json` can be changed by any program you run. RigControl treats
   that file as untrusted for anything that installs software or changes a service, but a program on your PC could
   still change your fan curves or lighting through it.
@@ -156,7 +158,7 @@ under "Safety" in the [README](README.md).
 - The log folder is plain text. Look through a log before you attach it to a public issue.
 - What RigControl cannot defend against: code that already runs as you can set environment variables a .NET
   program reads at start (a profiler DLL through `CORECLR_PROFILER_PATH`, `DOTNET_STARTUP_HOOKS`, another garbage
-  collector or JIT, a diagnostics connection). RigControl refuses to keep running elevated with them and restarts
+  collector or JIT, a diagnostics connection, an EventPipe trace file). RigControl refuses to keep running elevated with them and restarts
   without them, and startup hooks are switched off in the build, but a profiler DLL named that way has already been
   loaded into the first process by .NET before any of RigControl's own code runs.
 - Setup run as administrator from a folder any program can change (such as Downloads) copies itself into a new

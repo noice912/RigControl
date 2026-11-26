@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
+using System.Security.Principal;
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 
 namespace RigControl.App.Install;
 
@@ -121,35 +123,59 @@ internal static class Uninstaller
     }
 
     /// <summary>
-    /// Deletes the user's data folder in this (elevated) process, after checking it again with the same rules as at the
-    /// start: the user owns that folder and could have swapped it for a link to somewhere else meanwhile. RigControl
-    /// has closed by now, but its browser views may let go of their files a moment later, so it tries a few times.
-    /// Returns a note for the user when something was left, else null. A link inside the folder is removed as a link,
-    /// never followed (.NET's recursive delete does not go through links).
+    /// Deletes the user's data folder, after checking it again with the same rules as at the start: the user owns that
+    /// folder and could have swapped it, or a folder inside it, for a link to somewhere else meanwhile. So the delete
+    /// itself runs with the user's own normal rights (their limited token, see <see cref="LimitedToken"/>), never this
+    /// process's administrator rights: whatever a link points at, nothing the user could not delete themselves goes.
+    /// Without such a token the folder is kept. RigControl has closed by now, but its browser views may let go of
+    /// their files a moment later, so it tries a few times. Returns a note for the user when something was left, else
+    /// null. A link inside the folder is removed as a link, never followed (.NET's recursive delete does not go
+    /// through links).
     /// </summary>
     private static string? DeleteUserData(string userSid, string expected, Action<string> log)
+        => DeleteUserData(expected, () => UserDataFolder(userSid, _ => { }), () => LimitedToken.ForUser(userSid, log), log);
+
+    /// <param name="currentFolder">The data folder as checked now (null when it may not be deleted any more).</param>
+    /// <param name="limitedToken">The user's token without administrator rights, or null when there is none. The
+    /// handle is disposed here.</param>
+    internal static string? DeleteUserData(string expected, Func<string?> currentFolder, Func<SafeAccessTokenHandle?> limitedToken, Action<string> log)
     {
         log("Deleting your settings, logs and Discord sign-in in " + expected + ".");
-        for (var attempt = 1; attempt <= 5; attempt++)
+        SafeAccessTokenHandle? token = null;
+        try
         {
-            if (UserDataFolder(userSid, _ => { }) is not { } folder || !InstallLayout.SamePath(folder, expected))
-                return "Your settings were kept: their folder changed during the uninstall, so RigControl did not delete it.";
-            try
+            for (var attempt = 1; attempt <= 5; attempt++)
             {
-                if (!Directory.Exists(folder)) return null;
-                Directory.Delete(folder, recursive: true);
-                return null;
+                if (currentFolder() is not { } folder || !InstallLayout.SamePath(folder, expected))
+                    return $"Your settings were kept in {expected}: their folder changed during the uninstall, so RigControl did not delete it.";
+                token ??= limitedToken();
+                if (token is null || token.IsInvalid)
+                    return $"Your settings were kept in {expected}: RigControl could not get your normal (non-administrator) rights to delete them. Delete that folder yourself.";
+                try
+                {
+                    var gone = WindowsIdentity.RunImpersonated(token, () =>
+                    {
+                        if (!Directory.Exists(folder)) return true;
+                        Directory.Delete(folder, recursive: true);
+                        return true;
+                    });
+                    if (gone) return null;
+                }
+                catch when (attempt < 5)
+                {
+                    Thread.Sleep(1000);
+                }
+                catch (Exception ex)
+                {
+                    return $"Some of your settings could not be deleted ({ex.Message}). Delete {folder} yourself.";
+                }
             }
-            catch when (attempt < 5)
-            {
-                Thread.Sleep(1000);
-            }
-            catch (Exception ex)
-            {
-                return $"Some of your settings could not be deleted ({ex.Message}). Delete {folder} yourself.";
-            }
+            return null;
         }
-        return null;
+        finally
+        {
+            token?.Dispose();
+        }
     }
 
     /// <summary>

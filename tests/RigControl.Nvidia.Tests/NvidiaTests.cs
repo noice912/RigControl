@@ -214,6 +214,36 @@ public class NvidiaModuleTests : IDisposable
     }
 
     [Fact]
+    public async Task A_hung_driver_read_delays_only_the_first_call()
+    {
+        using var release = new ManualResetEventSlim(false);
+        var m = new NvidiaModule(_ => _backend, installedVersion: () => { release.Wait(); return "621.40"; });
+        await m.StartAsync(new ModuleContext(new EventBus(), NullLog.Instance,
+            new SettingsStore(Path.Combine(_dir, "settings.json"), NullLog.Instance),
+            new AppEnvironment(_dir, _dir, false, "1.0.0", "x.exe")), CancellationToken.None);
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Equal("621.24", (await Call(m, "getInfo")).GetProperty("driverVersion").GetString());
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3.5), "the first getInfo waited too long: " + clock.Elapsed);
+            for (var i = 0; i < 3; i++)
+            {
+                clock.Restart();
+                Assert.Equal("621.24", (await Call(m, "getInfo")).GetProperty("driverVersion").GetString());
+                Assert.True(clock.Elapsed < TimeSpan.FromSeconds(0.5), "a later getInfo waited again: " + clock.Elapsed);
+                clock.Restart();
+                await Call(m, "checkDriverUpdate");
+                Assert.True(clock.Elapsed < TimeSpan.FromSeconds(0.5), "checkDriverUpdate waited again: " + clock.Elapsed);
+            }
+        }
+        finally
+        {
+            release.Set();
+            await m.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task Info_and_settings_match_the_contract()
     {
         await using var m = await Start();

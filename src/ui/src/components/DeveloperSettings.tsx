@@ -3,7 +3,7 @@ import { call } from "../bridge";
 import { useAction, useQuery } from "../hooks";
 import { goTo } from "../nav";
 import type { DevStatus } from "../types";
-import { Notice } from "./controls";
+import { Dialog, Notice } from "./controls";
 
 /**
  * Settings > Developer. Only drawn for a GitHub account that may push to RigControl's repository (the app refuses the
@@ -13,9 +13,11 @@ export function DeveloperSettings() {
   const status = useQuery<DevStatus>("dev.getStatus");
   const { busy, run } = useAction();
   const [token, setToken] = useState("");
+  const [replaceAsk, setReplaceAsk] = useState(false);
   const s = status.data;
 
   const register = async () => {
+    setReplaceAsk(false);
     const r = await run("register", () => call<DevStatus>("dev.registerPc", undefined, 180000), "This PC is registered.");
     if (r) status.setData(r);
   };
@@ -47,7 +49,12 @@ export function DeveloperSettings() {
           {s.keyProblem && <Notice tone="warn" title="Windows Hello">{s.keyProblem}</Notice>}
           <div className="spread">
             <span>{s.registered ? `This PC (${s.pcName}) is registered.` : `Register this PC (${s.pcName}) for dev mode.`}</span>
-            <button className="btn small" disabled={busy !== null} onClick={() => void register()}>
+            <button
+              className="btn small"
+              disabled={busy !== null}
+              // A working registration is only replaced after asking: its developer code stops working.
+              onClick={() => (s.registered && s.enrolled ? setReplaceAsk(true) : void register())}
+            >
               {s.registered ? "Register again" : "Register this PC"}
             </button>
           </div>
@@ -86,6 +93,20 @@ export function DeveloperSettings() {
             </div>
           )}
         </div>
+      )}
+      {replaceAsk && (
+        <Dialog
+          title="Replace this PC's registration?"
+          onClose={() => setReplaceAsk(false)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setReplaceAsk(false)}>Cancel</button>
+              <button className="btn primary" disabled={busy !== null} onClick={() => void register()}>Register again</button>
+            </>
+          }
+        >
+          Your current developer code stops working and you need a new one.
+        </Dialog>
       )}
     </section>
   );

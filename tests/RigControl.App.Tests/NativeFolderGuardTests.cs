@@ -102,6 +102,18 @@ public sealed class NativeFolderGuardTests
         => Assert.True(NativeFolderGuard.LoadsCode(name), name);
 
     [Theory]
+    [InlineData("DOTNET_EnableEventPipe")]
+    [InlineData("DOTNET_EventPipeOutputPath")]
+    [InlineData("COMPlus_EventPipeConfig")]
+    [InlineData("complus_eventpipeoutputstreaming")]
+    [InlineData("DOTNET_JitStdOutFile")]
+    [InlineData("DOTNET_DbgMiniDumpName")]
+    [InlineData("COMPlus_DbgEnableMiniDump")]
+    [InlineData("DOTNET_EnableCrashReport")]
+    public void Trace_output_variables_are_blocked(string name)
+        => Assert.True(NativeFolderGuard.LoadsCode(name), name);
+
+    [Theory]
     [InlineData("PATH")]
     [InlineData("TEMP")]
     [InlineData("DOTNET_BUNDLE_EXTRACT_BASE_DIR")] // handled by the native-folder rules themselves
@@ -222,6 +234,93 @@ public sealed class NativeFolderGuardTests
             try { Directory.Delete(root, true); } catch { /* temp */ }
         }
     }
+
+    [Fact]
+    public void A_renamed_and_replaced_source_is_refused()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rc-same-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        var a = Path.Combine(root, "RigControl-Setup.exe");
+        var moved = Path.Combine(root, "moved.exe");
+        try
+        {
+            File.WriteAllBytes(a, new byte[] { 1, 2, 3 });
+            string ntPathOfA;
+            // Stands in for the running program's image: Windows lets a running exe be renamed, not replaced.
+            using (var image = new FileStream(a, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+            {
+                using (var untouched = NativeFolderGuard.OpenStageSource(a))
+                    Assert.True(NativeFolderGuard.SameFile(untouched.SafeFileHandle, NativeFolderGuard.NtPath(image.SafeFileHandle)!));
+
+                // Someone renames the program and puts another file where it was.
+                File.Move(a, moved);
+                File.WriteAllBytes(a, new byte[] { 6, 6, 6 });
+                ntPathOfA = NativeFolderGuard.NtPath(image.SafeFileHandle)!;
+                Assert.EndsWith(@"\moved.exe", ntPathOfA, StringComparison.OrdinalIgnoreCase);
+
+                using (var b = NativeFolderGuard.OpenStageSource(a))
+                    Assert.False(NativeFolderGuard.SameFile(b.SafeFileHandle, ntPathOfA));
+                using (var original = NativeFolderGuard.OpenStageSource(moved))
+                    Assert.True(NativeFolderGuard.SameFile(original.SafeFileHandle, ntPathOfA));
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { /* temp */ }
+        }
+    }
+
+    [Fact]
+    public void The_held_source_can_be_neither_renamed_nor_replaced()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rc-hold-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        var a = Path.Combine(root, "RigControl-Setup.exe");
+        try
+        {
+            File.WriteAllBytes(a, new byte[] { 1, 2, 3 });
+            using var held = NativeFolderGuard.OpenStageSource(a);
+            Assert.ThrowsAny<IOException>(() => File.Move(a, Path.Combine(root, "moved.exe")));
+            Assert.ThrowsAny<IOException>(() => File.WriteAllBytes(a, new byte[] { 6 }));
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { /* temp */ }
+        }
+    }
+
+    [Fact]
+    public void A_mapped_file_reports_its_name_after_a_rename()
+    {
+        // The running program's name comes from its mapped image (GetMappedFileName), which must follow a rename, or
+        // a renamed-and-replaced setup file would pass the check.
+        var root = Path.Combine(Path.GetTempPath(), "rc-map-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        var a = Path.Combine(root, "image.bin");
+        var moved = Path.Combine(root, "renamed.bin");
+        try
+        {
+            File.WriteAllBytes(a, new byte[4096]);
+            using (var fs = new FileStream(a, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+            using (var map = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(fs, null, 0, System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true))
+            using (var view = map.CreateViewAccessor(0, 0, System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read))
+            {
+                var address = view.SafeMemoryMappedViewHandle.DangerousGetHandle();
+                Assert.EndsWith(@"\image.bin", NativeFolderGuard.MappedNtPath(address), StringComparison.OrdinalIgnoreCase);
+                File.Move(a, moved);
+                Assert.EndsWith(@"\renamed.bin", NativeFolderGuard.MappedNtPath(address), StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(NativeFolderGuard.NtPath(fs.SafeFileHandle), NativeFolderGuard.MappedNtPath(address), StringComparer.OrdinalIgnoreCase);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { /* temp */ }
+        }
+    }
+
+    [Fact]
+    public void This_process_knows_its_own_image_name()
+        => Assert.StartsWith(@"\Device\", NativeFolderGuard.RunningImageNtPath(), StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class StartupCleanupTests
@@ -253,6 +352,76 @@ public sealed class StartupCleanupTests
         Assert.Equal(new[] { updates + @"\setup-1111", updates + @"\SETUP-3333.old-9" },
             StartupCleanup.OldSetupFolders(Layout, children, updates + @"\setup-2222\RigControl.exe"));
         Assert.Equal(3, StartupCleanup.OldSetupFolders(Layout, children, Layout.AppExe).Count);
+    }
+
+    [Fact]
+    public void Update_unpack_folders_are_cleaned_but_not_the_one_in_use()
+    {
+        var runtime = Layout.RuntimeDir;
+        var children = new[] { runtime + @"\RigControl", runtime + @"\RigControl-Setup-v1.1.2", runtime + @"\rigcontrol-setup-v1.1.3-rc.1", runtime + @"\RigControl-Setup-v1.1.1.old-12ab", runtime + @"\Other" };
+        // The installed exe unpacks under runtime\RigControl: every update's unpack folder is old.
+        Assert.Equal(new[] { runtime + @"\RigControl-Setup-v1.1.2", runtime + @"\rigcontrol-setup-v1.1.3-rc.1", runtime + @"\RigControl-Setup-v1.1.1.old-12ab" },
+            StartupCleanup.OldUpdateUnpackFolders(Layout, children, new[] { Bundles + @"\abc" }));
+        // An update's setup that is itself running keeps its own.
+        Assert.Equal(new[] { runtime + @"\RigControl-Setup-v1.1.2", runtime + @"\RigControl-Setup-v1.1.1.old-12ab" },
+            StartupCleanup.OldUpdateUnpackFolders(Layout, children, new[] { runtime + @"\rigcontrol-setup-v1.1.3-rc.1\def\" }));
+        // Only straight under runtime.
+        Assert.Empty(StartupCleanup.OldUpdateUnpackFolders(Layout, new[] { @"C:\Elsewhere\RigControl-Setup-v1.1.2" }, Array.Empty<string>()));
+
+        var root = Path.Combine(Path.GetTempPath(), "rc-cleanup-" + Guid.NewGuid().ToString("N")[..8]);
+        var layout = new InstallLayout(root);
+        try
+        {
+            var old = Path.Combine(layout.RuntimeDir, "RigControl-Setup-v1.1.2", "aaa");
+            var current = Path.Combine(StartupCleanup.BundleParent(layout), "bbb");
+            Directory.CreateDirectory(old);
+            Directory.CreateDirectory(current);
+            File.WriteAllText(Path.Combine(old, "a.dll"), "x");
+            StartupCleanup.Run(layout, new[] { current }, Path.Combine(root, "app", "RigControl.exe"), RigControl.Core.Logging.NullLog.Instance);
+            Assert.False(Directory.Exists(Path.Combine(layout.RuntimeDir, "RigControl-Setup-v1.1.2")));
+            Assert.True(Directory.Exists(current));
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { /* temp */ }
+        }
+    }
+
+    [Fact]
+    public void Leftover_setup_copies_in_the_default_folder_are_cleaned()
+    {
+        var installedRoot = Path.Combine(Path.GetTempPath(), "rc-installed-" + Guid.NewGuid().ToString("N")[..8]);
+        var defaultRoot = Path.Combine(Path.GetTempPath(), "rc-default-" + Guid.NewGuid().ToString("N")[..8]);
+        var installed = new InstallLayout(installedRoot);
+        var fallback = new InstallLayout(defaultRoot);
+        try
+        {
+            var leftover = Path.Combine(fallback.UpdatesDir, "setup-1111");
+            var running = Path.Combine(fallback.UpdatesDir, "setup-2222");
+            var notOurs = Path.Combine(fallback.UpdatesDir, "other");
+            var unpacked = Path.Combine(fallback.RuntimeDir, "RigControl-Setup-v1.1.2", "abc");
+            foreach (var d in new[] { leftover, running, notOurs, unpacked }) Directory.CreateDirectory(d);
+            var runningExe = Path.Combine(running, "RigControl.exe");
+            File.WriteAllText(runningExe, "x");
+            var current = Path.Combine(StartupCleanup.BundleParent(installed), "bbb");
+            Directory.CreateDirectory(current);
+
+            // A default folder that other programs can change is left alone.
+            StartupCleanup.Run(installed, new[] { current }, runningExe, RigControl.Core.Logging.NullLog.Instance, defaultRoot, firstOpen: p => p);
+            Assert.True(Directory.Exists(leftover));
+
+            StartupCleanup.Run(installed, new[] { current }, runningExe, RigControl.Core.Logging.NullLog.Instance, defaultRoot, firstOpen: _ => null);
+            Assert.False(Directory.Exists(leftover));
+            Assert.True(Directory.Exists(running), "the setup copy in use was removed");
+            Assert.True(Directory.Exists(notOurs));
+            Assert.False(Directory.Exists(Path.Combine(fallback.RuntimeDir, "RigControl-Setup-v1.1.2")));
+            Assert.True(Directory.Exists(current));
+        }
+        finally
+        {
+            try { Directory.Delete(installedRoot, true); } catch { /* temp */ }
+            try { Directory.Delete(defaultRoot, true); } catch { /* temp */ }
+        }
     }
 
     [Fact]

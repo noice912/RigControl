@@ -69,7 +69,7 @@ internal static class InstallEntry
         }
         else if (!elevated)
         {
-            return RelaunchElevated(exe, InstallCommand.ElevatedInstallArgs(sid, reinstall: false), log);
+            return RelaunchElevated(exe, SetupRelaunchArgs(command, sid), log);
         }
 
         var window = new SetupWindow(Version, exe, sid, installed?.Layout.Root, log.Info);
@@ -77,6 +77,14 @@ internal static class InstallEntry
         if (window.Result is { } result && window.StartNow) Installer.Start(result.Layout, minimized: false, log.Info);
         return 0;
     }
+
+    /// <summary>
+    /// The arguments for the elevated copy of a setup that asked for the admin prompt before any choice was shown. A
+    /// "--reinstall" given to this copy goes along, so the elevated copy does not ask "Open or install again?" a second
+    /// time and end there.
+    /// </summary>
+    internal static string SetupRelaunchArgs(InstallCommand command, string sid) =>
+        InstallCommand.ElevatedInstallArgs(sid, command.Reinstall);
 
     /// <summary>
     /// "--update --after-pid &lt;pid&gt; [--minimized]" (the auto-updater's contract): no window; wait for the old copy,

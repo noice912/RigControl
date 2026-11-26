@@ -81,6 +81,28 @@ public class InstallTests
     }
 
     [Fact]
+    public void Reinstall_alone_opens_setup()
+    {
+        Assert.Equal(StartAction.Setup, InstallCommand.Parse(new[] { "--reinstall" }).Decide(1, runsInstalledExe: false, developmentBuild: false));
+        // Like --setup: also from a development build and from the installed exe.
+        Assert.Equal(StartAction.Setup, InstallCommand.Parse(new[] { "--reinstall" }).Decide(1, runsInstalledExe: true, developmentBuild: true));
+        // An update or an uninstall is never turned into a setup by it.
+        Assert.Equal(StartAction.Uninstall, InstallCommand.Parse(new[] { "--uninstall", "--reinstall" }).Decide(2, false, false));
+        Assert.Equal(StartAction.Update, InstallCommand.Parse(new[] { "--update", "--reinstall" }).Decide(2, false, false));
+    }
+
+    [Fact]
+    public void Elevating_keeps_the_reinstall_choice()
+    {
+        var again = InstallEntry.SetupRelaunchArgs(InstallCommand.Parse(new[] { "--setup", "--reinstall" }), Alice);
+        Assert.Contains("--reinstall", again.Split(' '));
+        Assert.True(InstallCommand.Parse(again.Split(' ')).Reinstall);
+        Assert.Equal(Alice, InstallCommand.Parse(again.Split(' ')).UserSid);
+        var plain = InstallEntry.SetupRelaunchArgs(InstallCommand.Parse(new[] { "--setup" }), Alice);
+        Assert.DoesNotContain("--reinstall", plain.Split(' '));
+    }
+
+    [Fact]
     public void A_copy_that_already_starts_with_Windows_never_turns_into_a_setup_window()
     {
         // The start-up task passes --minimized; restart-as-administrator passes --after-pid.
@@ -405,6 +427,64 @@ public class InstallTests
         Assert.Contains(Root + @"\app", script);
         Assert.Null(CleanupScript.Build(new[] { @"C:\Apps\%TEMP%" }, null, null, 1, Sys));
         Assert.Throws<ArgumentException>(() => CleanupScript.Build(new[] { Root }, null, null, 1, @"C:\Win dows\system32"));
+    }
+
+    [Fact]
+    public void User_data_is_kept_when_no_limited_token_exists()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rc-userdata-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "settings.json"), "{}");
+        try
+        {
+            var note = Uninstaller.DeleteUserData(folder, () => folder, () => null, _ => { });
+            Assert.NotNull(note);
+            Assert.Contains("kept", note);
+            Assert.Contains(folder, note);
+            Assert.True(File.Exists(Path.Combine(folder, "settings.json")));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch { /* temp */ }
+        }
+    }
+
+    [Fact]
+    public void User_data_is_deleted_with_the_limited_token_and_kept_when_the_folder_changed()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rc-userdata-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(folder, "logs"));
+        File.WriteAllText(Path.Combine(folder, "logs", "a.log"), "x");
+        try
+        {
+            // The folder is no longer the one checked at the start: kept, and no token is even asked for.
+            var asked = false;
+            var changed = Uninstaller.DeleteUserData(folder, () => folder + "-other", () => { asked = true; return null; }, _ => { });
+            Assert.Contains("kept", changed);
+            Assert.False(asked);
+            Assert.True(Directory.Exists(folder));
+
+            // The test runs with normal rights, so its own token stands in for the user's limited one.
+            Assert.Null(Uninstaller.DeleteUserData(folder, () => folder, () => System.Security.Principal.WindowsIdentity.GetCurrent().AccessToken, _ => { }));
+            Assert.False(Directory.Exists(folder));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch { /* temp */ }
+        }
+    }
+
+    [Fact]
+    public void Only_the_users_own_impersonation_token_without_admin_rights_is_used()
+    {
+        // Every token this PC can hand out belongs to the signed-in user, never to a made-up one.
+        Assert.Null(LimitedToken.ForUser(Bob, _ => { }));
+        // A process's own (primary) token is not one for acting as a user.
+        using var self = System.Security.Principal.WindowsIdentity.GetCurrent();
+        Assert.NotNull(LimitedToken.Problem(self.AccessToken, self.User!.Value));
+        // With a desktop (not elevated), the shell's token is the user's normal one.
+        using var mine = LimitedToken.ForUser(self.User.Value, _ => { });
+        if (mine is not null) Assert.Null(LimitedToken.Problem(mine, self.User.Value));
     }
 
     [Fact]

@@ -64,7 +64,8 @@ internal sealed record InstallCommand(InstallMode Mode, int? AfterPid, bool Mini
             : InstallMode.None;
         int? pid = int.TryParse(After(App.AfterPidSwitch), NumberStyles.None, CultureInfo.InvariantCulture, out var p) && p > 0 ? p : null;
         var sid = After(UserSwitch);
-        if (!Autostart.IsSid(sid)) sid = null;
+        // Passed on in Windows' own S-1-... form, never as typed (an SDDL short name such as "BA" also counts as a SID).
+        sid = Autostart.IsSid(sid) ? new System.Security.Principal.SecurityIdentifier(sid!).Value : null;
         return new InstallCommand(mode, pid, Has(MinimizedSwitch), sid, Has(ReinstallSwitch), Has(QuietSwitch));
     }
 
@@ -72,7 +73,7 @@ internal sealed record InstallCommand(InstallMode Mode, int? AfterPid, bool Mini
     /// What to do at start. With no switches at all, a copy outside the install folder is the setup program (the
     /// release is one exe). Anything else (--minimized from a start-up task, --after-pid from "restart as
     /// administrator") keeps the old behaviour, so a copy that already starts with Windows never turns into a setup
-    /// window at sign-in. Development builds run the app unless "--setup" asks for the window.
+    /// window at sign-in. Development builds run the app unless "--setup" (or "--reinstall") asks for the window.
     /// </summary>
     public StartAction Decide(int argCount, bool runsInstalledExe, bool developmentBuild) => Mode switch
     {
@@ -80,6 +81,8 @@ internal sealed record InstallCommand(InstallMode Mode, int? AfterPid, bool Mini
         InstallMode.Uninstall => StartAction.Uninstall,
         InstallMode.Install or InstallMode.Setup => StartAction.Setup,
         InstallMode.Portable => StartAction.RunApp,
+        // "--reinstall" on its own means the setup window too, like "--setup".
+        _ when Reinstall => StartAction.Setup,
         _ when runsInstalledExe => StartAction.RunApp,
         _ when argCount == 0 && !developmentBuild => StartAction.Setup,
         _ => StartAction.RunApp,

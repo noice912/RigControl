@@ -1,13 +1,18 @@
 using System.IO;
+using RigControl.Bundled;
 using RigControl.Core.Logging;
 
 namespace RigControl.App.Install;
 
 /// <summary>
 /// Leftovers the installed RigControl removes once it is up and running (as administrator): the native parts older
-/// versions unpacked into &lt;install&gt;\runtime\RigControl\&lt;bundle id&gt;, and the admin-only copies setup ran from
-/// (&lt;install&gt;\updates\setup-&lt;random&gt;, see <see cref="NativeFolderGuard.StageCopy"/>). A folder still in use (by a
-/// setup window that is still open, or a copy of RigControl in another Windows session) is left for next time.
+/// versions unpacked into &lt;install&gt;\runtime\RigControl\&lt;bundle id&gt;, the native parts an update's setup
+/// (&lt;install&gt;\updates\RigControl-Setup-v&lt;version&gt;.exe) unpacked into
+/// &lt;install&gt;\runtime\RigControl-Setup-v&lt;version&gt;, and the admin-only copies setup ran from
+/// (&lt;install&gt;\updates\setup-&lt;random&gt;, see <see cref="NativeFolderGuard.StageCopy"/>). Setup started before
+/// RigControl was installed keeps those in the default folder (%ProgramFiles%\RigControl), so when RigControl was
+/// installed somewhere else that folder is cleaned too. A folder still in use (by a setup window that is still open,
+/// or a copy of RigControl in another Windows session) is left for next time.
 /// </summary>
 internal static class StartupCleanup
 {
@@ -35,6 +40,20 @@ internal static class StartupCleanup
                                && Path.GetFileName(Path.TrimEndingDirectorySeparator(c)).StartsWith(NativeFolderGuard.StagePrefix, StringComparison.OrdinalIgnoreCase)
                                && !new InstallLayout(c).Contains(runningExe)).ToList();
 
+    /// <summary>An update's setup exe is named this plus its version (RigControl.Updates), and so is its unpack folder.</summary>
+    public const string UpdateSetupPrefix = "RigControl-Setup-v";
+
+    /// <summary>
+    /// The unpack folders of updates' setup exes straight under &lt;install&gt;\runtime (runtime\RigControl-Setup-v*),
+    /// except one this process unpacked into. Pure.
+    /// </summary>
+    /// <param name="children">The folders in &lt;install&gt;\runtime.</param>
+    /// <param name="currentExtractDirs">Where this process's native parts were unpacked.</param>
+    public static IReadOnlyList<string> OldUpdateUnpackFolders(InstallLayout layout, IEnumerable<string> children, IEnumerable<string> currentExtractDirs)
+        => children.Where(c => InstallLayout.SamePath(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(c)), layout.RuntimeDir)
+                               && Path.GetFileName(Path.TrimEndingDirectorySeparator(c)).StartsWith(UpdateSetupPrefix, StringComparison.OrdinalIgnoreCase)
+                               && !currentExtractDirs.Any(d => new InstallLayout(c).Contains(d))).ToList();
+
     /// <summary>&lt;install&gt;\runtime\RigControl: .NET unpacks into &lt;base&gt;\&lt;exe name&gt;\&lt;bundle id&gt;.</summary>
     public static string BundleParent(InstallLayout layout) => Path.Combine(layout.RuntimeDir, Path.GetFileNameWithoutExtension(InstallLayout.ExeName));
 
@@ -46,7 +65,8 @@ internal static class StartupCleanup
             try
             {
                 await Task.Delay(Delay).ConfigureAwait(false);
-                Run(layout, currentExtractDirs, runningExe, log);
+                var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                Run(layout, currentExtractDirs, runningExe, log, string.IsNullOrEmpty(programFiles) ? null : InstallLayout.DefaultRoot(programFiles));
             }
             catch (Exception ex)
             {
@@ -55,12 +75,32 @@ internal static class StartupCleanup
         });
     }
 
-    public static void Run(InstallLayout layout, IReadOnlyList<string> currentExtractDirs, string runningExe, ILog log)
+    /// <param name="defaultRoot">%ProgramFiles%\RigControl, where setup keeps its copies before RigControl is
+    /// installed; cleaned too when it is not the install folder and only administrators can change it.</param>
+    /// <param name="firstOpen">FolderGuard.FirstOpen (a stand-in for tests).</param>
+    public static void Run(InstallLayout layout, IReadOnlyList<string> currentExtractDirs, string runningExe, ILog log,
+        string? defaultRoot = null, Func<string, string?>? firstOpen = null)
     {
         var bundleParent = BundleParent(layout);
         var candidates = new List<string>();
         candidates.AddRange(OldBundleFolders(layout, Children(bundleParent), currentExtractDirs));
         candidates.AddRange(OldSetupFolders(layout, Children(layout.UpdatesDir), runningExe));
+        candidates.AddRange(OldUpdateUnpackFolders(layout, Children(layout.RuntimeDir), currentExtractDirs));
+        if (defaultRoot is not null && !InstallLayout.SamePath(defaultRoot, layout.Root) && Directory.Exists(defaultRoot))
+        {
+            // Its name does not come from the Installed apps entry (which only administrators can write), so it is only
+            // touched when nothing on its path is a link or open to other programs.
+            if ((firstOpen ?? FolderGuard.FirstOpen)(defaultRoot) is { } open)
+            {
+                log.Info("Setup copies in " + defaultRoot + " were left: programs without administrator rights can change " + open + ".");
+            }
+            else
+            {
+                var fallback = new InstallLayout(defaultRoot);
+                candidates.AddRange(OldSetupFolders(fallback, Children(fallback.UpdatesDir), runningExe));
+                candidates.AddRange(OldUpdateUnpackFolders(fallback, Children(fallback.RuntimeDir), currentExtractDirs));
+            }
+        }
         if (candidates.Count == 0) return;
 
         var removed = new List<string>();

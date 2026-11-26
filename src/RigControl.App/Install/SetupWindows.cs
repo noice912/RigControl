@@ -160,7 +160,10 @@ internal sealed class SetupWindow
     }
 }
 
-/// <summary>"RigControl is installed. Open it / Reinstall", when this version or a newer one is installed already.</summary>
+/// <summary>
+/// "RigControl is installed. Open RigControl / Install this copy again", when this version or a newer one is
+/// installed already.
+/// </summary>
 internal static class InstalledWindow
 {
     public enum Choice { Close, Open, Reinstall }
@@ -168,15 +171,18 @@ internal static class InstalledWindow
     public static Choice Ask(InstalledCopy installed, string myVersion)
     {
         var choice = Choice.Close;
-        var w = SetupUi.Window("RigControl", 560, 300);
+        var w = SetupUi.Window("RigControl", 640, 340);
         var page = new StackPanel();
         page.Children.Add(SetupUi.Heading("RigControl is installed"));
-        page.Children.Add(SetupUi.Para($"RigControl {installed.Version ?? "(unknown version)"} is installed in {installed.Layout.Root}. This file is version {myVersion}."));
+        page.Children.Add(SetupUi.Para($"Installed: RigControl {installed.Version ?? "(unknown version)"} in {installed.Layout.Root}.", SetupUi.Text));
+        page.Children.Add(SetupUi.Para($"This setup file: RigControl {myVersion}.", SetupUi.Text));
+        page.Children.Add(SetupUi.Para("\"Open RigControl\" starts the installed copy and changes nothing. \"Install this copy again\" puts this file's " +
+                                       "version in place of the installed one (Windows asks for administrator permission); your settings stay."));
         var close = SetupUi.Button("Close");
         close.Click += (_, _) => w.Close();
-        var reinstall = SetupUi.Button("Reinstall");
+        var reinstall = SetupUi.Button("Install this copy again");
         reinstall.Click += (_, _) => { choice = Choice.Reinstall; w.Close(); };
-        var open = SetupUi.Button("Open it", primary: true);
+        var open = SetupUi.Button("Open RigControl", primary: true);
         open.IsEnabled = File.Exists(installed.Layout.AppExe);
         open.Click += (_, _) => { choice = Choice.Open; w.Close(); };
         w.Content = SetupUi.Frame(page, close, reinstall, open);
