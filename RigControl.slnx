@@ -14,6 +14,7 @@
     <Project Path="src/RigControl.Cpu/RigControl.Cpu.csproj" />
     <Project Path="src/RigControl.Lighting/RigControl.Lighting.csproj" />
     <Project Path="src/RigControl.Link/RigControl.Link.csproj" />
+    <Project Path="src/RigControl.iPhone/RigControl.iPhone.csproj" />
     <Project Path="src/RigControl.Nvidia/RigControl.Nvidia.csproj" />
     <Project Path="src/RigControl.Sensors/RigControl.Sensors.csproj" />
     <Project Path="src/RigControl.Updates/RigControl.Updates.csproj" />
@@ -45,6 +46,7 @@
     <Project Path="tests/RigControl.Cpu.Tests/RigControl.Cpu.Tests.csproj" />
     <Project Path="tests/RigControl.Lighting.Tests/RigControl.Lighting.Tests.csproj" />
     <Project Path="tests/RigControl.Link.Tests/RigControl.Link.Tests.csproj" />
+    <Project Path="tests/RigControl.iPhone.Tests/RigControl.iPhone.Tests.csproj" />
     <Project Path="tests/RigControl.Nvidia.Tests/RigControl.Nvidia.Tests.csproj" />
     <Project Path="tests/RigControl.Sensors.Tests/RigControl.Sensors.Tests.csproj" />
     <Project Path="tests/RigControl.Updates.Tests/RigControl.Updates.Tests.csproj" />

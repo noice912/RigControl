@@ -1534,6 +1534,17 @@ p {
 }
 
 /* Settings > Phone: the pairing QR code and code. */
+.phone-install {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 8px 0 12px;
+}
+.phone-install .sub {
+  flex: 1;
+}
+
 .phone-pair {
   display: flex;
   flex-wrap: wrap;

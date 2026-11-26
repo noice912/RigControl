@@ -40,11 +40,27 @@ public static class Launcher
         else Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })?.Dispose();
     }
 
+    /// <summary>
+    /// Starts a program with arguments, without administrator rights (through Explorer when this process has them).
+    /// Used for RigControl's own non-admin helpers, such as the iPhone installer.
+    /// </summary>
+    public static void StartProgram(string exe, string arguments)
+    {
+        if (!File.Exists(exe)) throw new FileNotFoundException("The program file is missing.", exe);
+        var dir = Path.GetDirectoryName(exe) ?? "";
+        if (Environment.IsPrivilegedProcess)
+        {
+            ShellExecuteFromDesktop(exe, dir, arguments);
+            return;
+        }
+        Process.Start(new ProcessStartInfo(exe, arguments) { UseShellExecute = false, WorkingDirectory = dir })?.Dispose();
+    }
+
     private static readonly Guid CLSID_ShellWindows = new("9BA05972-F6A8-11CF-A442-00A0C90A8F39");
     private static readonly Guid SID_STopLevelBrowser = new("4C96BE40-915C-11CF-99D3-00AA004AE837");
     private const int SWC_DESKTOP = 8, SWFO_NEEDDISPATCH = 1, SVGIO_BACKGROUND = 0;
 
-    private static void ShellExecuteFromDesktop(string file, string dir)
+    private static void ShellExecuteFromDesktop(string file, string dir, string arguments = "")
     {
         var type = Type.GetTypeFromCLSID(CLSID_ShellWindows) ?? throw new InvalidOperationException("Windows' shell is not available.");
         dynamic windows = Activator.CreateInstance(type)!;
@@ -62,7 +78,7 @@ public static class Launcher
         view.GetItemObject(SVGIO_BACKGROUND, ref iidDispatch, out var folderViewObj);
         dynamic folderView = folderViewObj;
         dynamic shell = folderView.Application;
-        shell.ShellExecute(file, "", dir, "open", 1);
+        shell.ShellExecute(file, arguments, dir, "open", 1);
     }
 
     [ComImport, Guid("6D5140C1-7436-11CE-8034-00AA006009FA"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

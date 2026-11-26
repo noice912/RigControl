@@ -3,6 +3,7 @@ import { call } from "../bridge";
 import { useAction, useLive } from "../hooks";
 import type { LinkStatus } from "../types";
 import { Notice, useConfirm } from "./controls";
+import { useApp } from "../appContext";
 
 function when(iso: string | null) {
   if (!iso) return "never";
@@ -67,6 +68,18 @@ export function PhoneLinkPanel() {
     if (r) setData(r);
   };
 
+  const [apple, setApple] = useState<{ signIn: boolean; usb: boolean; storeUrl: string } | null>(null);
+  useEffect(() => {
+    call<{ signIn: boolean; usb: boolean; storeUrl: string }>("link.getAppleComponents")
+      .then(setApple)
+      .catch(() => setApple(null));
+  }, []);
+  const { openUrl } = useApp();
+
+  const openInstaller = async () => {
+    await run("iphone", () => call("link.openIphoneInstaller"));
+  };
+
   const pairing = s?.pairing ?? null;
   const expired = countdown !== null && countdown.left === 0;
 
@@ -87,6 +100,29 @@ export function PhoneLinkPanel() {
           </button>
         )}
       </div>
+
+      <div className="phone-install">
+        <div className="sub">
+          No RigControl Mobile on your iPhone yet? Plug the iPhone in with a USB cable and RigControl puts the app on it,
+          signed with your own free Apple ID, and signs it again every week while it's plugged in.
+        </div>
+        <button
+          className="btn"
+          disabled={busy !== null || (apple !== null && (!apple.signIn || !apple.usb))}
+          onClick={() => void openInstaller()}
+        >
+          Install on iPhone
+        </button>
+      </div>
+      {apple && (!apple.signIn || !apple.usb) && (
+        <Notice tone="warn" title="Apple's Windows components are needed first">
+          RigControl uses Apple's own components to sign in to your Apple ID and to reach your iPhone over USB. They
+          come with the free Apple Devices app (iTunes also works).{" "}
+          <button className="btn small" onClick={() => openUrl(apple.storeUrl)}>
+            Get Apple Devices
+          </button>
+        </Notice>
+      )}
 
       {error && <Notice tone="error" title="The phone link isn't available">{error}</Notice>}
       {s && !s.relaySet && (

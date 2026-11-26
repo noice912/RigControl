@@ -83,6 +83,29 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // "--iphone": the iPhone installer, a separate window without administrator rights (IPhone\IphoneHelper.cs). It
+        // never touches hardware or settings and runs beside the main copy, so it comes before the single-instance check.
+        if (IPhone.IphoneHelper.Wants(e.Args))
+        {
+            Interlocked.Exchange(ref _exitStarted, 1);
+            var iphoneLog = _log.For("iphone");
+            bool running;
+            try
+            {
+                running = IPhone.IphoneHelper.Run(this, e.Args, m => iphoneLog.Info(m));
+            }
+            catch (Exception ex)
+            {
+                iphoneLog.Error("The iPhone installer could not start.", ex);
+                System.Windows.MessageBox.Show("The iPhone installer could not start: " + ex.Message, "RigControl",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                running = false;
+            }
+            if (!running)
+                Shutdown(0);
+            return;
+        }
+
         // Setup or the updater is replacing the files right now: wait for it, so this copy doesn't hold the exe.
         Install.RunningCopy.WaitWhileUpdating(TimeSpan.FromMinutes(2), m => _log.For("install").Info(m));
 

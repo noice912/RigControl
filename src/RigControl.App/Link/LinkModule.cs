@@ -120,10 +120,14 @@ public sealed class LinkModule : IAppModule, IPcLinkHost
 
     // ---------------------------------------------------------------- start / stop
 
+    private IPhone.IphoneRenewal? _iphoneRenewal;
+
     public Task StartAsync(ModuleContext context, CancellationToken ct)
     {
         _ctx = context;
         _log = context.Log;
+        // Signs RigControl Mobile on a connected iPhone again before its free 7-day signature runs out.
+        _iphoneRenewal = new IPhone.IphoneRenewal(_log);
         _bus.Published += (topic, payload) =>
         {
             if (topic == "sensors.snapshot" && payload is SensorSnapshotDto s) _sensors = s;
@@ -247,6 +251,7 @@ public sealed class LinkModule : IAppModule, IPcLinkHost
 
     public async ValueTask DisposeAsync()
     {
+        if (_iphoneRenewal is not null) await _iphoneRenewal.DisposeAsync().ConfigureAwait(false);
         PcSide? pc;
         lock (_gate)
         {
@@ -270,8 +275,44 @@ public sealed class LinkModule : IAppModule, IPcLinkHost
             case "cancelPairing": await CancelPairingAsync().ConfigureAwait(false); return BuildStatus();
             case "removePhone": await RemovePhoneAsync(RpcArgs.Require<PhoneArgs>(args).Id).ConfigureAwait(false); return BuildStatus();
             case "resetKeys": ResetKeys(RpcArgs.Require<ResetArgs>(args).Confirm); return BuildStatus();
+            case "openIphoneInstaller": OpenIphoneInstaller(); return null;
+            case "getAppleComponents": return await AppleComponentsAsync(ct).ConfigureAwait(false);
             default: throw RpcException.UnknownMethod(Name, method);
         }
+    }
+
+    /// <summary>
+    /// Opens RigControl's iPhone installer: this same exe with "--iphone", started WITHOUT administrator rights, so the
+    /// Apple ID password and the signing key never reach this (elevated) process.
+    /// </summary>
+    private static void OpenIphoneInstaller()
+    {
+        var exe = System.Environment.ProcessPath ?? throw new InvalidOperationException("RigControl can't find its own program file.");
+        RigControl.Presence.Launcher.StartProgram(exe, "--iphone");
+    }
+
+    /// <summary>
+    /// Whether Apple's Windows components the iPhone installer needs are on this PC: the sign-in component (CoreADI,
+    /// from Apple Devices, iTunes or Apple Application Support) and Apple's USB service (usbmuxd on 127.0.0.1:27015).
+    /// Nothing is loaded here; the files are only looked for.
+    /// </summary>
+    private static async Task<object> AppleComponentsAsync(CancellationToken ct)
+    {
+        var signIn = RigControl.iPhone.Anisette.CoreAdiLibrary.Candidates().Count > 0;
+        bool usb;
+        try
+        {
+            using var tcp = new System.Net.Sockets.TcpClient();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(1));
+            await tcp.ConnectAsync(System.Net.IPAddress.Loopback, 27015, timeout.Token).ConfigureAwait(false);
+            usb = true;
+        }
+        catch (Exception ex) when (ex is System.Net.Sockets.SocketException or OperationCanceledException)
+        {
+            usb = false;
+        }
+        return new { signIn, usb, storeUrl = "https://apps.microsoft.com/detail/9NP83LWLPZ9K" };
     }
 
     private sealed class PhoneArgs

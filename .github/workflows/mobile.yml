@@ -80,18 +80,18 @@ jobs:
         run: |
           cd "$RUNNER_TEMP"
           (sha256sum RigControl-Mobile.apk 2>/dev/null || shasum -a 256 RigControl-Mobile.apk) > RigControl-Mobile.apk.sha256
-          mkdir -p "$RUNNER_TEMP/out-apk" && mv RigControl-Mobile.apk RigControl-Mobile.apk.sha256 "$RUNNER_TEMP/out-apk/"
+          mkdir -p "$GITHUB_WORKSPACE/handover/apk" && mv RigControl-Mobile.apk RigControl-Mobile.apk.sha256 "$GITHUB_WORKSPACE/handover/apk/"
       # Handed to the upload job through the build cache (its own storage allowance; the artifact quota is full).
       # This job runs the build tools, so it gets no write access at all.
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ runner.temp }}/out-apk
+          path: handover/apk   # relative: same path on Linux and the Mac, so the cache entry matches
           key: mobile-${{ github.run_id }}-apk
 
   # ------------------------------------------------------------------ iPhone (unsigned .ipa)
   ios:
     name: iPhone (unsigned .ipa)
-    # .NET 10's current iOS tools need Xcode 27; the newer macOS image has it (macos-latest had 26.6).
+    # macOS 26 image: has Xcode 26.6 (the newest GitHub offers so far).
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -102,14 +102,19 @@ jobs:
         with:
           dotnet-version: ${{ env.SDK_VERSION }}
       # The newest .NET iOS tools (27.x) need Xcode 27, which GitHub's Macs don't have yet. The iOS workload is pinned to
-      # the last release for Xcode 26.5, and the matching Xcode is selected.
-      - name: Pick Xcode 26.5
+      # the last 26.x release (26.5.10318, which needs Xcode 26.6), and the matching Xcode is selected.
+      - name: Pick Xcode 26.6 (what iOS tools 26.5.10318 need)
         run: |
           ls -d /Applications/Xcode_*.app
-          x=$(ls -d /Applications/Xcode_26.5*.app 2>/dev/null | sort -V | tail -n 1)
-          if [ -z "$x" ]; then echo "::error::No Xcode 26.5 on this runner"; exit 1; fi
+          x=/Applications/Xcode_26.6.app
+          [ -d "$x" ] || x=$(ls -d /Applications/Xcode_26.6*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$x" ]; then echo "::error::No Xcode 26.6 on this runner"; exit 1; fi
           sudo xcode-select -s "$x/Contents/Developer"
+          sudo xcodebuild -runFirstLaunch
           xcodebuild -version
+          xcodebuild -showsdks
+          ls "$(xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs" || true
+          xcrun --find actool
       - name: Install the MAUI iOS workload (iOS tools pinned to 26.5)
         working-directory: mobile
         run: |
@@ -143,12 +148,12 @@ jobs:
         run: |
           cd "$RUNNER_TEMP"
           (sha256sum RigControl-Mobile.ipa 2>/dev/null || shasum -a 256 RigControl-Mobile.ipa) > RigControl-Mobile.ipa.sha256
-          mkdir -p "$RUNNER_TEMP/out-ipa" && mv RigControl-Mobile.ipa RigControl-Mobile.ipa.sha256 "$RUNNER_TEMP/out-ipa/"
+          mkdir -p "$GITHUB_WORKSPACE/handover/ipa" && mv RigControl-Mobile.ipa RigControl-Mobile.ipa.sha256 "$GITHUB_WORKSPACE/handover/ipa/"
       # Handed to the upload job through the build cache (its own storage allowance; the artifact quota is full).
       # This job runs the build tools, so it gets no write access at all.
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ runner.temp }}/out-ipa
+          path: handover/ipa   # relative: same path on Linux and the Mac, so the cache entry matches
           key: mobile-${{ github.run_id }}-ipa
 
   # ------------------------------------------------------------------ hand the files over
@@ -167,11 +172,11 @@ jobs:
     steps:
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ runner.temp }}/out-apk
+          path: handover/apk   # relative: same path on Linux and the Mac, so the cache entry matches
           key: mobile-${{ github.run_id }}-apk
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ runner.temp }}/out-ipa
+          path: handover/ipa   # relative: same path on Linux and the Mac, so the cache entry matches
           key: mobile-${{ github.run_id }}-ipa
       - name: Upload to the mobile-dev pre-release
         env:
@@ -179,7 +184,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           shopt -s nullglob
-          files=("$RUNNER_TEMP"/out-apk/* "$RUNNER_TEMP"/out-ipa/*)
+          files=("$GITHUB_WORKSPACE"/handover/apk/* "$GITHUB_WORKSPACE"/handover/ipa/*)
           if [ ${#files[@]} -eq 0 ]; then echo "::error::Nothing was built"; exit 1; fi
           ls -l "${files[@]}"
           if ! gh release view mobile-dev >/dev/null 2>&1; then

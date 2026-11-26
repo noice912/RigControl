@@ -63,6 +63,7 @@
     <ProjectReference Include="..\RigControl.Updates\RigControl.Updates.csproj" />
     <!-- RigControl Link: phones see this PC and use a few controls through the relay (only outgoing connections). -->
     <ProjectReference Include="..\RigControl.Link\RigControl.Link.csproj" />
+    <ProjectReference Include="..\RigControl.iPhone\RigControl.iPhone.csproj" />
     <!-- The merged Audio Controller (soundboard, virtual mic, EQ, "also play on"), hosted as the Audio section. -->
     <ProjectReference Include="..\Audio\AudioController.App\AudioController.App.csproj" />
   </ItemGroup>

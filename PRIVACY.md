@@ -73,6 +73,37 @@ small relay (a Cloudflare Worker with Durable Objects, run by RigControl's autho
   phone is linked RigControl disconnects from the relay. Deleting `settings.json` (or the `link` section) forgets the
   keys too.
 
+### Installing the phone app on an iPhone (Apple ID)
+
+Settings > Phone > "Install on iPhone" puts RigControl Mobile on an iPhone connected by USB, signed with your own
+Apple ID (a free one is enough). It runs in a separate RigControl window **without administrator rights**, and only
+when you open it (or, for the weekly re-signing below, when you connected an iPhone it installed the app on).
+
+- **Who it talks to:** Apple only: `gsa.apple.com` (Apple ID sign-in) and `developerservices2.apple.com` (Apple's
+  developer services), plus GitHub to download the phone app from this release. No other server, and never a
+  third-party "anisette" server.
+- **Your Apple ID password and verification code** are typed into that window and sent to Apple only, as Apple's own
+  sign-in does (the password goes as a cryptographic proof, not in clear). RigControl **never saves them** and never
+  writes them to its log.
+- **What Apple receives:** your Apple ID and the sign-in proof; device information that Apple's own Windows apps send
+  (made by Apple's own component from the Apple Devices app or iTunes on your PC: an identifier derived from this
+  PC's hardware, Windows version, time zone and language); your iPhone's name and its device id (UDID), which Apple
+  needs to register the iPhone with your free developer team; a signing certificate request named "RigControl"; and
+  the app's id (`io.github.rigcontrol.mobile.` plus your team id).
+- **What is kept on this PC** (`%LOCALAPPDATA%\RigControl\iphone`, for your Windows user only): the sign-in Apple
+  gives back for its developer services and the private key of your signing certificate, both **encrypted for your
+  Windows user** (DPAPI); a random id for this PC (so RigControl only ever replaces certificates it made on this PC);
+  a private copy of Apple's sign-in component taken from your Apple Devices/iTunes install (checked to be signed by
+  Apple); and `status.json` (which iPhone has the app, when it was signed and when that runs out; nothing secret).
+- **Weekly re-signing:** free Apple IDs sign apps for 7 days. While RigControl runs, it checks (through Apple's USB
+  service on this PC) whether that iPhone is connected and its app has a day or less left, and then opens the
+  installer window to sign it again with the saved sign-in. If the saved sign-in has run out, it asks you to sign in.
+- **Your iPhone:** over USB, RigControl uses Apple's own USB service and the trust you already gave this PC on the
+  iPhone. It reads the iPhone's name, model, iOS version and whether Developer Mode is on, copies the app to it and
+  asks iOS to install it. It reads nothing else on the iPhone.
+- **Removing it:** "Sign out" in the installer window deletes the saved sign-in. Deleting the `iphone` folder removes
+  everything listed above. The certificate can be revoked at https://developer.apple.com/account.
+
 ### What Discord and your friends see
 
 With Discord status on, RigControl hands a card to the Discord desktop app on your PC, and Discord shows it on your

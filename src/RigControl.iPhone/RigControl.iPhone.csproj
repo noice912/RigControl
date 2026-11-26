@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RigControl's own iPhone installer (Step 4 of the phone plan): Apple sign-in with a free Apple ID, Apple's developer
+    services, re-signing an .ipa, and installing it over USB through Apple's usbmuxd service. Written for RigControl;
+    open-source projects were read only as protocol references (see README.md in this folder).
+
+    Platform-neutral except Anisette/CoreAdi*.cs (Apple's CoreADI64.dll, Windows only, behind IAnisetteProvider).
+    Runs ONLY inside the non-admin helper process: the Apple ID password and the signing key never enter the
+    elevated app.
+  -->
+  <PropertyGroup>
+    <TargetFramework>$(RigPortableTfm)</TargetFramework>
+    <RootNamespace>RigControl.iPhone</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.iPhone.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Microsoft's CMS (SignedCms) for code signatures and provisioning profiles. MIT. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="8.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Apple's public CA certificates that go in every signature (hashes pinned in Signing/AppleCertificates.cs). -->
+    <EmbeddedResource Include="Signing\AppleCertificates\*.cer" LogicalName="RigControl.iPhone.Signing.AppleCertificates.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
