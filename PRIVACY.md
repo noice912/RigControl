@@ -116,6 +116,9 @@ RigControl does not see or store your password.
   picture is not kept.
 - The sound your PC plays, as loudness of bass, mids and treble, only while a sound-driven light effect or the
   cooler screen's visualiser is on. Nothing is recorded by this.
+- The capture card's sound (Recording page, "Capture card sound"), only while that is switched on, and only to play
+  it straight away on the output you chose. It is held in memory for a few milliseconds on the way; nothing is
+  recorded, saved or sent anywhere.
 - OBS's WebSocket settings, as described above.
 - If the separate RichPresence app was used on this PC: its settings, copied once, and its Discord web sign-in for
   the in-game panel, copied once. Its own folder is never changed.

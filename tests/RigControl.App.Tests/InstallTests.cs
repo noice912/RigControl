@@ -501,3 +501,35 @@ public class InstallTests
         Assert.NotNull(Uninstaller.UserDataProblem(data, profile, d => d == profile));
     }
 }
+
+public class UpdatingWaitTests
+{
+    [Fact]
+    public void A_copy_started_during_an_update_waits_until_it_is_finished()
+    {
+        var calls = 0;
+        var waited = RigControl.App.Install.RunningCopy.WaitWhile(() => ++calls < 4, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(1), _ => { });
+        Assert.True(waited);
+        Assert.Equal(4, calls);
+    }
+
+    [Fact]
+    public void Without_an_update_nothing_waits()
+        => Assert.False(RigControl.App.Install.RunningCopy.WaitWhile(() => false, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(1), _ => { }));
+
+    [Fact]
+    public void The_update_mark_is_seen_while_held_and_gone_after()
+    {
+        using (RigControl.App.Install.RunningCopy.HoldUpdating(_ => { }))
+        {
+            var seen = false;
+            var t = new Thread(() => seen = RigControl.App.Install.RunningCopy.WaitWhile(
+                () => System.Threading.Mutex.TryOpenExisting(@"Local\RigControl.Updating", out var m) && Release(m), TimeSpan.Zero, TimeSpan.FromMilliseconds(1), _ => { }));
+            t.Start(); t.Join();
+            Assert.True(seen);
+        }
+        Assert.False(System.Threading.Mutex.TryOpenExisting(@"Local\RigControl.Updating", out _));
+    }
+
+    private static bool Release(System.Threading.Mutex m) { m.Dispose(); return true; }
+}

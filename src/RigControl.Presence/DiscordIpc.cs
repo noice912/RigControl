@@ -404,7 +404,7 @@ internal sealed class DiscordConnection : IDiscordConnection
     {
         if (_pipe is null || !AppIds.IsId(ClientId)) throw new IOException("Discord is not connected.");
         var args = new JsonObject { ["pid"] = _pid };
-        if (activity is not null) args["activity"] = activity;
+        if (activity is not null) args["activity"] = ActivityText.FitDiscordLimits(activity);
         var cmd = new JsonObject { ["cmd"] = "SET_ACTIVITY", ["nonce"] = Guid.NewGuid().ToString(), ["args"] = args };
         Send(1, cmd.ToJsonString());
         var r = Read() ?? throw new IOException("Discord did not answer.");

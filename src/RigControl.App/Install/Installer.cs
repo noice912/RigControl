@@ -34,6 +34,9 @@ internal static class Installer
         if (InstallLayout.RootProblem(request.Root) is { } problem) throw new InstallFailedException(problem);
         var layout = new InstallLayout(request.Root);
         var notes = new List<string>();
+        // While the files are replaced, a RigControl started meanwhile (a click on the Start menu, say) waits instead
+        // of starting and holding the exe that is being replaced.
+        using var updating = RunningCopy.HoldUpdating(log);
 
         // 1. The running RigControl closes first: it holds its exe, the fans and the audio engine.
         progress(1, "Closing RigControl…");
@@ -169,11 +172,11 @@ internal static class Installer
                     File.Move(temp, target, overwrite: true);
                     break;
                 }
-                catch (IOException) when (attempt < 20)
+                catch (IOException) when (attempt < 60)
                 {
                     Thread.Sleep(500);
                 }
-                catch (UnauthorizedAccessException) when (attempt < 20)
+                catch (UnauthorizedAccessException) when (attempt < 60)
                 {
                     Thread.Sleep(500);
                 }

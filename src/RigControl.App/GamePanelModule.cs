@@ -43,6 +43,7 @@ internal sealed class GamePanelModule : IRpcModule
         ["xbox.cloud"] = "https://www.xbox.com/play",
         ["xbox.profile"] = "https://account.xbox.com/Profile",
         ["ps.remoteplay"] = "psremoteplay",
+        ["ps.chiaki"] = "chiaki",
         ["ps.library"] = "https://library.playstation.com/",
         ["ps.store"] = "https://store.playstation.com/",
     };
@@ -178,6 +179,12 @@ internal sealed class GamePanelModule : IRpcModule
         System.Windows.Application.Current.Dispatcher.Invoke(() => _panel()?.Hide());
         try
         {
+            if (target == "chiaki")
+            {
+                // chiaki-ng's installer puts it in Program Files; without it, its download page.
+                var exe = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"chiaki-ng\chiaki.exe");
+                target = System.IO.File.Exists(exe) ? exe : "https://github.com/streetpea/chiaki-ng/releases/latest";
+            }
             if (target == "psremoteplay")
             {
                 var exe = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Sony\PS Remote Play\RemotePlay.exe");

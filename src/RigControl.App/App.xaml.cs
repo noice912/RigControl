@@ -83,6 +83,9 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // Setup or the updater is replacing the files right now: wait for it, so this copy doesn't hold the exe.
+        Install.RunningCopy.WaitWhileUpdating(TimeSpan.FromMinutes(2), m => _log.For("install").Info(m));
+
         WaitForPreviousInstance(e.Args);
 
         // "RigControl.exe --exit": ask the running copy to close properly (finishing recordings, handing fans back).
@@ -201,6 +204,8 @@ public partial class App : System.Windows.Application
             cooling,
             lighting,
             capture,
+            // The capture card's sound on the headphones (Recording page). Off until switched on; nothing is recorded.
+            new RigControl.Capture.Listen.ListenModule(new RigControl.Capture.Listen.WasapiListenEngine()),
             new DriversModule(),
             new RigControl.Bios.BiosModule(),
             // The processor page for any PC: what the processor is, and Windows' own power-plan settings.

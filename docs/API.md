@@ -432,6 +432,12 @@ The older Nanoleaf calls still work and act on the same paired Nanoleaf: `lighti
 - Screen is captured with the bundled ffmpeg (`ddagrab` -> NVENC); system sound is fed in through a pipe from WASAPI loopback. Instant replay is a ring of 5-second MPEG-TS pieces in `<data>\replay-buffer`, deleted when switched off and on exit.
 - `app.pickFolder { title? }` -> `{ path }`.
 
+### listen (new module: capture card sound, Windows only)
+- `listen.getStatus` -> `{ enabled, state: "off" | "running" | "waiting", inputName, outputName, level, problem, settings }`; `level` is the loudest sample after boost and limiter (0-1). Event `listen.status` carries the same object, about 10 times a second while running and on every change.
+- `listen.setSettings { enabled?, inputId?, outputId?, gainPercent?, latencyMs? }` -> status. `inputId: ""` = automatic (the input on MacroSilicon's USB id VID_534D, else one named "USB Digital Audio"); `outputId: ""` = Windows' default output. `gainPercent` is clamped to 100-600 (default 500), `latencyMs` to 10-200 (default 30). Settings section `listen`.
+- `listen.listDevices` -> `{ inputs: [{ id, name, captureCard, isDefault }], outputs: [...] }` (connected devices only).
+- WASAPI shared capture -> gain -> look-ahead peak limiter (ceiling 0.98) -> queue capped at 2x latency (oldest dropped) -> WDL resampler when rates differ -> WASAPI shared output. Missing or unplugged devices and default-output changes are retried every 2 s. Nothing is recorded or sent.
+
 ### nvidia
 - `nvidia.installDriver` -> `{ started, version }`. Downloads only from `*.download.nvidia.com` over https, requires a valid Authenticode signature by NVIDIA Corporation, then starts NVIDIA's installer. Progress event `nvidia.driverDownload { version, receivedMB, totalMB, percent }`. `checkDriverUpdate` gains `canInstall`. When NVIDIA's installer closes, event `nvidia.driverChanged { driverVersion }`; `getInfo` and `checkDriverUpdate` report the version Windows has installed now (WMI), falling back to the one read at start.
 - New curated settings (group "DLSS and RTX"): `dlssOverride`, `dlssPreset`, `dlssRayReconstruction`, `dlssFrameGen`, `smoothMotion`, `rtxHdr`, `rtxHdrProcessing`. Ids from NVIDIA Profile Inspector's CustomSettingNames.xml; each is offered only if the installed driver knows it.

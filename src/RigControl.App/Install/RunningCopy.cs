@@ -13,6 +13,68 @@ internal static class RunningCopy
 
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
 
+    /// <summary>Held by setup and the updater while they replace RigControl's files.</summary>
+    internal const string UpdatingMutex = @"Local\RigControl.Updating";
+
+    /// <summary>Marks "RigControl's files are being replaced" until disposed. Null when it can't be made (then nothing waits).</summary>
+    public static IDisposable? HoldUpdating(Action<string> log)
+    {
+        try
+        {
+            var m = new Mutex(true, UpdatingMutex, out var created);
+            if (created) return new Held(m);
+            m.Dispose();
+            return null; // another setup is already replacing the files; it holds the mark
+        }
+        catch (Exception ex)
+        {
+            log("Could not mark the update as running: " + ex.Message);
+            return null;
+        }
+    }
+
+    private sealed class Held(Mutex m) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { m.ReleaseMutex(); } catch { /* already released */ }
+            m.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Waits (up to <paramref name="max"/>) while setup or the updater replaces RigControl's files, so a copy started in
+    /// the middle does not hold the exe being replaced. True when it had to wait.
+    /// </summary>
+    public static bool WaitWhileUpdating(TimeSpan max, Action<string> log) => WaitWhile(UpdateRunning, max, TimeSpan.FromMilliseconds(500), log);
+
+    internal static bool WaitWhile(Func<bool> busy, TimeSpan max, TimeSpan step, Action<string> log)
+    {
+        if (!busy()) return false;
+        log("RigControl is being updated; this copy waits until that is finished.");
+        var until = DateTime.UtcNow + max;
+        while (busy() && DateTime.UtcNow < until) Thread.Sleep(step);
+        return true;
+    }
+
+    private static bool UpdateRunning()
+    {
+        try
+        {
+            if (!Mutex.TryOpenExisting(UpdatingMutex, out var m)) return false;
+            m.Dispose();
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true; // made by the setup that runs as administrator: it is there
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>True while a RigControl runs in this Windows session.</summary>
     public static bool IsRunning()
     {

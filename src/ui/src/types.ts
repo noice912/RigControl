@@ -297,6 +297,31 @@ export type CaptureStatus = {
   settings: CaptureSettings;
 };
 
+// ---------- listen (capture card sound) ----------
+export type ListenSettings = {
+  enabled: boolean;
+  /** null = automatic: the capture card. */
+  inputId: string | null;
+  /** null = Windows' default output. */
+  outputId: string | null;
+  gainPercent: number;
+  latencyMs: number;
+};
+
+export type ListenStatus = {
+  enabled: boolean;
+  state: "off" | "running" | "waiting";
+  inputName: string | null;
+  outputName: string | null;
+  /** Loudest sample after the boost, 0 to 1. */
+  level: number;
+  problem: string | null;
+  settings: ListenSettings;
+};
+
+export type ListenDevice = { id: string; name: string; captureCard: boolean; isDefault: boolean };
+export type ListenDevices = { inputs: ListenDevice[]; outputs: ListenDevice[] };
+
 // ---------- cooling ----------
 export type CoolingChannel = {
   id: string;
@@ -812,6 +837,7 @@ export interface EventMap {
   "cooling.status": CoolingStatus;
   "lighting.changed": LightingStatus;
   "capture.status": CaptureStatus;
+  "listen.status": ListenStatus;
   "drivers.status": DriversStatus;
   "presence.status": PresenceStatus;
   "health.report": HealthReport;

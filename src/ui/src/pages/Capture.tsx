@@ -4,6 +4,7 @@ import { useAction, useLive } from "../hooks";
 import { Notice, Segmented, Slider, Switch } from "../components/controls";
 import { ModuleProblem } from "../components/ModuleProblem";
 import { HealthNotice } from "../components/HealthFindings";
+import { CaptureCardSound } from "../components/CaptureCardSound";
 import type { CaptureSettings, CaptureStatus } from "../types";
 
 function elapsed(since: string | null, now: number): string {
@@ -105,6 +106,8 @@ export function Capture() {
           {p}
         </Notice>
       ))}
+
+      <CaptureCardSound />
 
       {status && s && (
         <>

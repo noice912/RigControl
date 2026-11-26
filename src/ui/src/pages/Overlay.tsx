@@ -82,7 +82,7 @@ function Presence({ s, setS }: { s: PresenceStatus | null; setS: (v: PresenceSta
 const STORES: { name: string; items: [string, string][] }[] = [
   { name: "Steam", items: [["steam.library", "Library"], ["steam.bigpicture", "Big Picture"], ["steam.friends", "Friends"]] },
   { name: "Xbox", items: [["xbox.app", "Xbox app"], ["xbox.cloud", "Cloud"], ["xbox.profile", "Profile"]] },
-  { name: "PlayStation", items: [["ps.remoteplay", "Remote Play"], ["ps.library", "Library"], ["ps.store", "Store"]] },
+  { name: "PlayStation", items: [["ps.remoteplay", "Remote Play"], ["ps.chiaki", "chiaki-ng"], ["ps.library", "Library"], ["ps.store", "Store"]] },
 ];
 
 function Stores() {

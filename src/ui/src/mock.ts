@@ -55,6 +55,39 @@ let captureStatus: any = {
   },
 };
 
+let listenStatus: any = {
+  enabled: false,
+  state: "off",
+  inputName: null,
+  outputName: null,
+  level: 0,
+  problem: null,
+  settings: { enabled: false, inputId: null, outputId: null, gainPercent: 500, latencyMs: 30 },
+};
+const listenDevices = {
+  inputs: [
+    { id: "in-card", name: "Digital Audio Interface (USB Digital Audio)", captureCard: true, isDefault: false },
+    { id: "in-mic", name: "Microphone (Realtek USB Audio)", captureCard: false, isDefault: false },
+  ],
+  outputs: [
+    { id: "out-hp", name: "Headphones (Realtek USB Audio)", captureCard: false, isDefault: true },
+    { id: "out-tv", name: "LG TV (NVIDIA High Definition Audio)", captureCard: false, isDefault: false },
+  ],
+};
+function refreshListen() {
+  const s = listenStatus.settings;
+  const input = s.inputId ? listenDevices.inputs.find((d) => d.id === s.inputId) : listenDevices.inputs[0];
+  const output = s.outputId ? listenDevices.outputs.find((d) => d.id === s.outputId) : listenDevices.outputs[0];
+  listenStatus = {
+    ...listenStatus,
+    enabled: s.enabled,
+    state: s.enabled ? "running" : "off",
+    inputName: s.enabled ? (input?.name ?? null) : null,
+    outputName: s.enabled ? (output?.name ?? null) : null,
+    level: 0,
+  };
+}
+
 export function createMockBackend() {
   let settings: AppSettings = {
     minimizeToTray: true,
@@ -1185,6 +1218,12 @@ export function createMockBackend() {
         emit("sensors.snapshot", snapshot());
         emit("cooling.status", coolingStatus());
       }, 1000);
+      window.setInterval(() => {
+        if (listenStatus.state !== "running") return;
+        const g = listenStatus.settings.gainPercent / 100;
+        listenStatus = { ...listenStatus, level: Math.min(0.98, Math.random() * 0.08 * g) };
+        emit("listen.status", listenStatus);
+      }, 100);
     },
 
     async call(method: string, params: any): Promise<unknown> {
@@ -2409,6 +2448,19 @@ export function createMockBackend() {
             restartNeeded: false,
             status: null,
           });
+        case "listen.getStatus":
+          return ok(listenStatus);
+        case "listen.listDevices":
+          return ok(listenDevices);
+        case "listen.setSettings": {
+          const next = { ...listenStatus.settings, ...params };
+          if (next.inputId === "") next.inputId = null;
+          if (next.outputId === "") next.outputId = null;
+          next.gainPercent = Math.min(600, Math.max(100, next.gainPercent));
+          listenStatus = { ...listenStatus, settings: next };
+          refreshListen();
+          return ok(listenStatus);
+        }
         case "capture.getStatus":
         case "capture.openFolder":
           return ok(captureStatus);

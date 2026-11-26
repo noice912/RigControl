@@ -59,7 +59,7 @@ export function PanelSettings() {
             checked={s.pauseRemotePlay}
             disabled={busy !== null || !s.enabled}
             onChange={(v) => void save({ pauseRemotePlay: v })}
-            label="Pause PS Remote Play while the panel is open, so the PlayStation doesn't get the controller"
+            label="Pause PS Remote Play and chiaki-ng while the panel is open, so the PlayStation doesn't get the controller"
           />
           <div className="sub faint">
             The game still gets the same button presses. In Steam, turn off Settings &gt; Controller &gt; "Guide button focuses Steam" if Steam takes the button.

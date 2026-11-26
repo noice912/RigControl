@@ -172,7 +172,7 @@ public class ModuleCatalogTests
     public void The_catalogue_has_every_module_once_with_parts_named_after_it()
     {
         var names = ModuleCatalog.All.Select(m => m.Name).ToArray();
-        Assert.Equal(new[] { "sensors", "nvidia", "cooling", "lighting", "capture", "drivers", "bios", "cpu", "presence", "health" }, names);
+        Assert.Equal(new[] { "sensors", "nvidia", "cooling", "lighting", "capture", "listen", "drivers", "bios", "cpu", "presence", "health" }, names);
         foreach (var m in ModuleCatalog.All)
         {
             Assert.Contains(HostPlatform.Windows, m.Platforms);

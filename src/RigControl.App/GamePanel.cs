@@ -319,6 +319,12 @@ public sealed class GamePanel
     // ---------------------------------------------------------------- PS Remote Play
 
     /// <summary>
+    /// The Remote Play apps whose process is paused: Sony's PS Remote Play, and chiaki-ng (the open-source Remote Play
+    /// client, which also takes a DualSense over Bluetooth).
+    /// </summary>
+    internal static readonly string[] RemotePlayProcesses = { "RemotePlay", "chiaki" };
+
+    /// <summary>
     /// PS Remote Play reads the controller whether or not its window is active, so it is paused (every thread, with
     /// only the suspend/resume right) while the panel is open, and un-paused on close, on quit and at the next start.
     /// </summary>
@@ -326,7 +332,7 @@ public sealed class GamePanel
     {
         var s = _services.Settings.Get<GamePanelSettings>(GamePanelSettings.Section);
         if (!s.PauseRemotePlay || !IsOpen || s.PausedPids.Count > 0) return;
-        foreach (var p in System.Diagnostics.Process.GetProcessesByName("RemotePlay"))
+        foreach (var p in RemotePlayProcesses.SelectMany(System.Diagnostics.Process.GetProcessesByName))
         {
             using (p)
             {
@@ -338,7 +344,7 @@ public sealed class GamePanel
             _services.Settings.Set(GamePanelSettings.Section, s);
             _lastRun = DateTime.UtcNow;
             _keepAlive.Start();
-            _log.Info("PS Remote Play paused while the panel is open.");
+            _log.Info("Remote Play (PS Remote Play / chiaki-ng) paused while the panel is open.");
         }
     }
 
@@ -389,13 +395,13 @@ public sealed class GamePanel
             try
             {
                 using var p = System.Diagnostics.Process.GetProcessById(pid);
-                if (string.Equals(p.ProcessName, "RemotePlay", StringComparison.OrdinalIgnoreCase)) SuspendResume(pid, false);
+                if (RemotePlayProcesses.Contains(p.ProcessName, StringComparer.OrdinalIgnoreCase)) SuspendResume(pid, false);
             }
             catch { /* gone */ }
         }
         s.PausedPids.Clear();
         _services.Settings.Set(GamePanelSettings.Section, s);
-        _log.Info("PS Remote Play un-paused.");
+        _log.Info("Remote Play un-paused.");
     }
 
     private static bool SuspendResume(int pid, bool pause)

@@ -54,6 +54,7 @@ public static class ModuleCatalog
             ("lighting.openrgbServer", WindowsOnly),
             ("lighting.gcc", WindowsOnly)),
         Module("capture", "Recording and instant replay", WindowsOnly),
+        Module("listen", "Capture card sound", WindowsOnly),
         Module("drivers", "Device drivers", WindowsOnly),
         Module("bios", "BIOS settings", WindowsOnly),
         Module("cpu", "Processor", WindowsOnly),
