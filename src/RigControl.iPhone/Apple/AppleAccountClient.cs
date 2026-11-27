@@ -86,7 +86,7 @@ public sealed class AppleAccountClient
                 login = await LoginAfterCodeAsync(username, passwordHash, cancellationToken).ConfigureAwait(false);
             }
 
-            var (token, expires) = await GetAppTokenAsync(login, cancellationToken).ConfigureAwait(false);
+            var (token, expires) = await WithAnisetteRepairAsync(() => GetAppTokenAsync(login, cancellationToken), cancellationToken).ConfigureAwait(false);
             var session = new AppleSession(username, login.Adsid, login.Dsid, token, expires);
             var (pet, petExpires) = ReadPet(login.Spd);
             return new AppleSignIn(session, pet, petExpires, login.Spd.String("fn"), login.Spd.String("ln"));
@@ -162,13 +162,17 @@ public sealed class AppleAccountClient
         public bool Reprovision { get; } = reprovision;
     }
 
-    private async Task<GsaLogin> LoginAsync(string username, byte[] passwordHash, CancellationToken ct)
+    private Task<GsaLogin> LoginAsync(string username, byte[] passwordHash, CancellationToken ct) =>
+        WithAnisetteRepairAsync(() => LoginOnceAsync(username, passwordHash, ct), ct);
+
+    /// <summary>Runs one GrandSlam step; if Apple asks for the device identification to be repaired, repairs and repeats (twice at most).</summary>
+    private async Task<T> WithAnisetteRepairAsync<T>(Func<Task<T>> step, CancellationToken ct)
     {
         for (var repairs = 0; ; repairs++)
         {
             try
             {
-                return await LoginOnceAsync(username, passwordHash, ct).ConfigureAwait(false);
+                return await step().ConfigureAwait(false);
             }
             catch (AnisetteRepairNeeded need) when (repairs < 2 && _anisette is IAnisetteRepair repair
                                                     && (need.Reprovision || need.Sim is not null))
@@ -394,7 +398,7 @@ public sealed class AppleAccountClient
         if (status.Long("hsc") == 434)
         {
             byte[]? sim = null;
-            try { sim = status.String("X-Apple-I-MD-DATA") is { Length: > 0 and < 65536 } s ? Convert.FromBase64String(s) : null; }
+            try { sim = status.String("X-Apple-I-MD-DATA") is { Length: > 0 and <= 8192 } s ? Convert.FromBase64String(s) : null; }
             catch (FormatException) { }
             throw new AnisetteRepairNeeded(sim, reprovision: false);
         }
