@@ -45,23 +45,39 @@ public sealed class WhisperSpeech : ISpeech
     /// </summary>
     public static WhisperSpeech Load(byte[] model, IEnumerable<string> nativeFolders, ILog log)
     {
-        var folders = nativeFolders.Where(Directory.Exists).ToList();
-        string? Find(params string[] parts) => folders.Select(f => Path.Combine([f, .. parts])).FirstOrDefault(File.Exists);
         lock (LoadGate)
         {
             if (_chosenLibrary is null)
             {
-                var gpu = HasVulkan() ? Find("runtimes", "vulkan", "win-x64", "whisper.dll") : null;
-                _chosenLibrary = gpu ?? Find("runtimes", "win-x64", "whisper.dll")
+                var choice = ChooseLibrary(nativeFolders, HasVulkan()) ?? ChooseLibrary(nativeFolders, vulkan: false)
                     ?? throw new InvalidOperationException("This copy of RigControl doesn't include the speech engine.");
-                RuntimeOptions.LibraryPath = _chosenLibrary;
+                // Whisper.net looks under (folder of LibraryPath)/runtimes/... first; only the chosen build is allowed.
+                RuntimeOptions.LibraryPath = choice.LibraryPath;
+                RuntimeOptions.RuntimeLibraryOrder = [choice.OnGpu ? RuntimeLibrary.Vulkan : RuntimeLibrary.Cpu];
+                _chosenLibrary = choice.LibraryPath;
+                _onGpu = choice.OnGpu;
             }
-            var onGpu = _chosenLibrary.Contains(Path.Combine("runtimes", "vulkan"), StringComparison.OrdinalIgnoreCase);
-            var factory = WhisperFactory.FromBuffer(model, new WhisperFactoryOptions { UseGpu = onGpu });
-            log.Info("In-game radio: speech recognition runs on the " + (onGpu ? "graphics card." : "processor."));
-            return new WhisperSpeech(factory, onGpu ? Build(factory) : Build(factory, threads: Math.Clamp(Environment.ProcessorCount / 4, 2, 4)),
-                onGpu ? "gpu" : "cpu");
+            var factory = WhisperFactory.FromBuffer(model, new WhisperFactoryOptions { UseGpu = _onGpu });
+            log.Info("In-game radio: speech recognition runs on the " + (_onGpu ? "graphics card." : "processor."));
+            return new WhisperSpeech(factory, _onGpu ? Build(factory) : Build(factory, threads: Math.Clamp(Environment.ProcessorCount / 4, 2, 4)),
+                _onGpu ? "gpu" : "cpu");
         }
+    }
+
+    private static bool _onGpu;
+
+    /// <summary>
+    /// The first of <paramref name="folders"/> holding the wanted build (runtimesulkan\win-x64 or runtimes\win-x64),
+    /// as the LibraryPath Whisper.net wants: a file name inside that folder (it only uses the folder part).
+    /// </summary>
+    internal static (string LibraryPath, bool OnGpu)? ChooseLibrary(IEnumerable<string> folders, bool vulkan)
+    {
+        foreach (var f in folders.Where(Directory.Exists))
+        {
+            var dll = vulkan ? Path.Combine(f, "runtimes", "vulkan", "win-x64", "whisper.dll") : Path.Combine(f, "runtimes", "win-x64", "whisper.dll");
+            if (File.Exists(dll)) return (Path.Combine(Path.TrimEndingDirectorySeparator(f), "whisper.dll"), vulkan);
+        }
+        return null;
     }
 
     /// <summary>Windows' Vulkan loader, by full path from System32 (never a search path), and whether it loads.</summary>

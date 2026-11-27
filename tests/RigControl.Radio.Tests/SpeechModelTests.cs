@@ -76,4 +76,25 @@ public class SpeechModelTests : IDisposable
         Assert.Equal(190085487, SpeechModelSpec.SmallQ5.Size);
         Assert.Equal("huggingface.co", SpeechModelSpec.SmallQ5.Url.Host);
     }
+
+    [Fact]
+    public void Points_Whisper_at_the_folder_that_holds_runtimes()
+    {
+        // Whisper.net looks for whisper.dll under: (folder of LibraryPath) / runtimes / vulkan / win-x64.
+        var unpacked = Path.Combine(_dir, "unpacked");
+        Directory.CreateDirectory(Path.Combine(unpacked, "runtimes", "vulkan", "win-x64"));
+        Directory.CreateDirectory(Path.Combine(unpacked, "runtimes", "win-x64"));
+        File.WriteAllText(Path.Combine(unpacked, "runtimes", "vulkan", "win-x64", "whisper.dll"), "");
+        File.WriteAllText(Path.Combine(unpacked, "runtimes", "win-x64", "whisper.dll"), "");
+        var empty = Path.Combine(_dir, "empty");
+        Directory.CreateDirectory(empty);
+
+        var gpu = WhisperSpeech.ChooseLibrary([empty, unpacked], vulkan: true)!.Value;
+        Assert.Equal(unpacked, Path.GetDirectoryName(gpu.LibraryPath));
+        Assert.True(gpu.OnGpu);
+        var cpu = WhisperSpeech.ChooseLibrary([empty, unpacked], vulkan: false)!.Value;
+        Assert.Equal(unpacked, Path.GetDirectoryName(cpu.LibraryPath));
+        Assert.False(cpu.OnGpu);
+        Assert.Null(WhisperSpeech.ChooseLibrary([empty], vulkan: true));
+    }
 }
