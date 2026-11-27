@@ -103,7 +103,7 @@ public class StoreTests : IDisposable
         store.Learn("Song", "Band", "", null, Prints(5, 0, 10), 0);
         store.Save();
         Assert.True(File.Exists(File_));
-        Assert.False(File.Exists(File_ + ".new"));
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
     }
 
     [Fact]
@@ -150,5 +150,53 @@ public class StoreTests : IDisposable
         store.Learn("Song", "Band", "", null, Prints(9, 0, 10), 0);
         Assert.Throws<IOException>(() => store.Save());
         Assert.Empty(Directory.GetFiles(target));
+    }
+
+    [Fact]
+    public void Never_writes_into_a_planted_hard_link()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var victim = Path.Combine(_dir, "victim.txt");
+        File.WriteAllText(victim, "keep me");
+        var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /H \"{File_}.new\" \"{victim}\"") { CreateNoWindow = true, UseShellExecute = false })!;
+        p.WaitForExit();
+        Assert.True(File.Exists(File_ + ".new"));
+        var store = LearnedSongs.Load(File_, new ListLog());
+        store.Learn("Song", "Band", "", null, Prints(10, 0, 10), 0);
+        store.Save();
+        Assert.Equal("keep me", File.ReadAllText(victim));
+        Assert.Single(LearnedSongs.Load(File_, new ListLog()).Songs);
+    }
+
+    [Fact]
+    public void Never_reads_through_a_folder_link()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var target = Path.Combine(_dir, "elsewhere2");
+        Directory.CreateDirectory(target);
+        var real = LearnedSongs.Load(Path.Combine(target, "learned.rcfp"), new ListLog());
+        real.Learn("Song", "Band", "", null, Prints(11, 0, 10), 0);
+        real.Save();
+        var link = Path.Combine(_dir, "radio2");
+        var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"") { CreateNoWindow = true, UseShellExecute = false })!;
+        p.WaitForExit();
+        var log = new ListLog();
+        Assert.Empty(LearnedSongs.Load(Path.Combine(link, "learned.rcfp"), log).Songs);
+        Assert.Contains(log.Lines, l => l.StartsWith("WARN"));
+    }
+
+    [Fact]
+    public void Never_creates_its_folder_through_a_linked_parent()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var target = Path.Combine(_dir, "elsewhere3");
+        Directory.CreateDirectory(target);
+        var link = Path.Combine(_dir, "app-data");
+        var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"") { CreateNoWindow = true, UseShellExecute = false })!;
+        p.WaitForExit();
+        var store = LearnedSongs.Load(Path.Combine(link, "radio", "learned.rcfp"), new ListLog());
+        store.Learn("Song", "Band", "", null, Prints(12, 0, 10), 0);
+        Assert.Throws<IOException>(() => store.Save());
+        Assert.False(Directory.Exists(Path.Combine(target, "radio")));
     }
 }
