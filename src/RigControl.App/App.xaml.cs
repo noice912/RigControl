@@ -76,7 +76,8 @@ public partial class App : System.Windows.Application
         }
 
         // Setup, "--update", "--uninstall", or RigControl itself? (Install\InstallEntry.cs; the release is one exe.)
-        if (Install.InstallEntry.Handle(e.Args, _log.For("install")) is { } installExit)
+        // Never for the iPhone installer: whatever else its command line carries, it must not install or update RigControl.
+        if (!IPhone.IphoneHelper.Wants(e.Args) && Install.InstallEntry.Handle(e.Args, _log.For("install")) is { } installExit)
         {
             Interlocked.Exchange(ref _exitStarted, 1);
             Shutdown(installExit);

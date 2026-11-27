@@ -22,6 +22,15 @@ public class InstallTests
     // ---- command line ----
 
     [Fact]
+    public void The_iPhone_installers_update_start_is_never_a_RigControl_update()
+    {
+        // 1.2.3-rc.1 started "--iphone --update", which RigControl read as its own self-update (UAC prompt, reinstall, loop).
+        Assert.NotEqual(InstallCommand.UpdateSwitch, RigControl.App.IPhone.IphoneHelper.UpdateSwitch, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(InstallMode.None, InstallCommand.Parse(new[] { RigControl.App.IPhone.IphoneHelper.Switch, RigControl.App.IPhone.IphoneHelper.UpdateSwitch }).Mode);
+        Assert.Equal(InstallMode.None, InstallCommand.Parse(new[] { RigControl.App.IPhone.IphoneHelper.Switch, RigControl.App.IPhone.IphoneHelper.RenewSwitch }).Mode);
+    }
+
+    [Fact]
     public void The_updaters_command_line_is_read_as_an_update_with_its_pid()
     {
         var c = InstallCommand.Parse(new[] { "--update", "--after-pid", "4321", "--minimized" });

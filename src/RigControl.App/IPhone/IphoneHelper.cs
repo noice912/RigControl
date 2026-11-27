@@ -26,8 +26,11 @@ internal static class IphoneHelper
     /// <summary>Held for this installer process's life (see Run).</summary>
     private static Mutex? _running;
 
-    /// <summary>Started by the main app when this PC's release has a newer phone app than the iPhone (USB or Wi-Fi).</summary>
-    public const string UpdateSwitch = "--update";
+    /// <summary>
+    /// Started by the main app when this PC's release has a newer phone app than the iPhone (USB or Wi-Fi). Its own
+    /// name: plain "--update" is RigControl's self-update (Install\InstallCommand), which 1.2.3-rc.1 hit by mistake.
+    /// </summary>
+    public const string UpdateSwitch = "--iphone-update";
 
     /// <summary>Added when the installer restarts itself without admin rights, so it can't loop if that didn't work.</summary>
     public const string DeelevatedSwitch = "--deelevated";
