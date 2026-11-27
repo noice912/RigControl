@@ -17,13 +17,22 @@ public sealed record InstallerPaths(string Root)
     public string Adi => Path.Combine(Root, "adi");
     public string Status => Path.Combine(Root, "status.json");
     public string Imported => Path.Combine(Root, "imported");
+    public string UpdateTries => Path.Combine(Root, "update-tries.json");
 }
 
 /// <summary>What was installed on one iPhone and when its signature runs out. Nothing secret.</summary>
 /// <param name="Source">How it was signed: "appleid" (free Apple ID), "imported" (the person's .p12 and profile) or "presigned".</param>
 public sealed record InstalledApp(string Udid, string DeviceName, string BundleId, string Version, DateTimeOffset SignedAt,
-    DateTimeOffset Expires, string Source = InstalledApp.AppleIdSource)
+    DateTimeOffset Expires, string Source = InstalledApp.AppleIdSource, string? Release = null)
 {
+    /// <summary>
+    /// True when RigControl <paramref name="release"/> carries a newer phone app than the one on this iPhone and
+    /// RigControl can sign it itself (an app installed pre-signed is the person's own to update). <see cref="Release"/>
+    /// is the RigControl release the installed app came from; null (installed before this was recorded) counts as older.
+    /// </summary>
+    public bool UpdateDue(string release) =>
+        Source != PresignedSource && !string.Equals(Release, release, StringComparison.Ordinal);
+
     public const string AppleIdSource = "appleid";
     public const string ImportedSource = "imported";
     public const string PresignedSource = "presigned";
@@ -287,6 +296,51 @@ public sealed class IphoneInstaller(
         var temp = paths.Status + ".new";
         File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(list, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temp, paths.Status, overwrite: true);
+    }
+
+    /// <summary>How long after an auto-update try (worked or not) the same iPhone and release are left alone.</summary>
+    public static readonly TimeSpan UpdateRetryAfter = TimeSpan.FromHours(3);
+
+    /// <summary>
+    /// Notes that auto-update tried <paramref name="release"/> on iPhone <paramref name="udid"/>, so a failure (no
+    /// network, no phone app for this build) is tried again only after <see cref="UpdateRetryAfter"/>, also after a
+    /// restart. Only a hint for when to try: nothing secret, and a wrong value only delays or hastens a try.
+    /// </summary>
+    public static void NoteUpdateTry(InstallerPaths paths, string udid, string release, DateTimeOffset at)
+    {
+        var tries = LoadUpdateTries(paths);
+        foreach (var old in tries.Where(kv => at - kv.Value > TimeSpan.FromDays(30)).Select(kv => kv.Key).ToList())
+            tries.Remove(old);
+        tries[udid + "|" + release] = at;
+        Directory.CreateDirectory(paths.Root);
+        var temp = paths.UpdateTries + ".new";
+        File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(tries));
+        File.Move(temp, paths.UpdateTries, overwrite: true);
+    }
+
+    /// <summary>True when auto-update tried this iPhone and release less than <see cref="UpdateRetryAfter"/> ago.</summary>
+    public static bool UpdateTriedRecently(InstallerPaths paths, string udid, string release, DateTimeOffset now) =>
+        LoadUpdateTries(paths).TryGetValue(udid + "|" + release, out var at) && now - at < UpdateRetryAfter && at <= now.AddMinutes(5);
+
+    private static Dictionary<string, DateTimeOffset> LoadUpdateTries(InstallerPaths paths)
+    {
+        try
+        {
+            if (!File.Exists(paths.UpdateTries) || new FileInfo(paths.UpdateTries).Length > 64 * 1024) return new(StringComparer.Ordinal);
+            return new(JsonSerializer.Deserialize<Dictionary<string, DateTimeOffset>>(File.ReadAllBytes(paths.UpdateTries))
+                       ?? new Dictionary<string, DateTimeOffset>(), StringComparer.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return new(StringComparer.Ordinal);
+        }
+    }
+
+    /// <summary>Notes which RigControl release the app on iPhone <paramref name="udid"/> came from.</summary>
+    public static void SetRelease(InstallerPaths paths, string udid, string release)
+    {
+        if (LoadStatus(paths).FirstOrDefault(a => a.Udid == udid) is { } app)
+            SaveStatus(paths, app with { Release = release });
     }
 
     /// <summary>True when the app on this iPhone should be signed again now.</summary>

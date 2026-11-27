@@ -23,6 +23,7 @@ internal sealed class InstallerWindow : Window
 {
     private readonly InstallerSession _session;
     private readonly bool _renew;
+    private readonly bool _update;
     private readonly TextBlock _device = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
     private readonly TextBlock _account = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBox _appleId = new() { Margin = new Thickness(0, 2, 0, 8), Padding = new Thickness(4) };
@@ -42,10 +43,11 @@ internal sealed class InstallerWindow : Window
     private DeviceInfo? _phone;
     private bool _busy;
 
-    public InstallerWindow(InstallerSession session, bool renew)
+    public InstallerWindow(InstallerSession session, bool renew, bool update = false)
     {
         _session = session;
         _renew = renew;
+        _update = update;
         Title = "RigControl - Install on iPhone";
         Width = 520;
         SizeToContent = SizeToContent.Height;
@@ -146,6 +148,11 @@ internal sealed class InstallerWindow : Window
         Refresh();
         await FindPhoneAsync();
         _ = WatchAsync();
+        if (_update)
+        {
+            await UpdateAsync();
+            return;
+        }
         if (!_renew)
             return;
         var installer = Installer();
@@ -184,6 +191,74 @@ internal sealed class InstallerWindow : Window
         }
     }
 
+    /// <summary>
+    /// Auto-update (started by the main app): installs this release's phone app with what's already saved (the imported
+    /// certificate, or a usable Apple sign-in) and closes when done. Nothing to do, or nothing it can do without the
+    /// person: it closes quietly. An error stays on screen.
+    /// </summary>
+    private async Task UpdateAsync()
+    {
+        var plan = await PlanUpdateAsync(_session);
+        if (plan is null || _phone is null || _phone.Udid != plan.Value.Udid)
+        {
+            // The iPhone went away (or another one is in front) since the plan was made: try again later.
+            Close();
+            return;
+        }
+        var release = InstallerSession.CurrentRelease();
+        IphoneInstaller.NoteUpdateTry(IphoneHelper.Paths, plan.Value.Udid, release, DateTimeOffset.UtcNow);
+        _session.Log($"iPhone: updating RigControl Mobile on {_phone.Name} to {release} with the " +
+                     (plan.Value.Imported ? "imported certificate." : "saved Apple sign-in."));
+        if (plan.Value.Imported) await InstallImportedAsync();
+        else await InstallAsync();
+        // Done: close. Failed (no network, no phone app for this build...): note it in the log and close too; the
+        // main app tries again in 3 hours. A background update never leaves an error window behind.
+        if (!_status.Text.StartsWith("Done", StringComparison.Ordinal))
+            _session.Log("iPhone: the phone app update didn't finish: " + _status.Text.ReplaceLineEndings(" "));
+        Close();
+    }
+
+    /// <summary>
+    /// What auto-update would do: the iPhone (connected, over USB or Wi-Fi) whose app is older than this release, and
+    /// whether to sign with the imported certificate (only for an app installed with it) or the saved Apple sign-in.
+    /// Null: nothing due, nothing reachable, or nothing it can do without the person.
+    /// </summary>
+    internal static async Task<(string Udid, bool Imported)?> PlanUpdateAsync(InstallerSession session)
+    {
+        try
+        {
+            var release = InstallerSession.CurrentRelease();
+            var now = DateTimeOffset.UtcNow;
+            var due = IphoneInstaller.LoadStatus(IphoneHelper.Paths).Where(a => a.UpdateDue(release)).ToList();
+            if (due.Count == 0) return null;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var reachable = await session.Devices.ListAsync(cts.Token).ConfigureAwait(false);
+            var installer = session.Installer();
+            ImportedIdentityInfo? info = null;
+            try { info = installer.Imported.Info(); }
+            catch (Exception) { /* none usable */ }
+            foreach (var app in due.OrderByDescending(a => reachable.Any(d => d.Udid == a.Udid && d.Usb)))
+            {
+                if (!reachable.Any(d => d.Udid == app.Udid)) continue;
+                if (app.Source == InstalledApp.ImportedSource && info is not null && info.Covers(app.Udid) && info.Expires > now.AddHours(1))
+                    return (app.Udid, true);
+                if (app.Source == InstalledApp.AppleIdSource && installer.CanWorkWithoutPassword())
+                    return (app.Udid, false);
+            }
+            // Note it, so the main app doesn't start this check again for 3 hours.
+            foreach (var app in due.Where(a => reachable.Any(d => d.Udid == a.Udid)))
+                IphoneInstaller.NoteUpdateTry(IphoneHelper.Paths, app.Udid, release, now);
+            session.Log("iPhone: a newer RigControl Mobile is ready, but no reachable iPhone can get it without you " +
+                        "(no saved certificate or sign-in for it).");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            session.Log("iPhone: phone app update check skipped: " + ex.GetType().Name + ": " + ex.Message);
+            return null;
+        }
+    }
+
     private void Refresh()
     {
         var saved = Installer()?.SavedAccount();
@@ -213,7 +288,11 @@ internal sealed class InstallerWindow : Window
         try
         {
             var list = await _session.Devices.ListAsync(_closing.Token);
-            _phone = list.FirstOrDefault(d => d.Usb) ?? list.FirstOrDefault();
+            var due = _update
+                ? IphoneInstaller.LoadStatus(IphoneHelper.Paths).Where(a => a.UpdateDue(InstallerSession.CurrentRelease())).Select(a => a.Udid).ToHashSet()
+                : [];
+            _phone = list.Where(d => due.Contains(d.Udid)).OrderByDescending(d => d.Usb).FirstOrDefault()
+                     ?? list.FirstOrDefault(d => d.Usb) ?? list.FirstOrDefault();
             var installed = _phone is null ? null : IphoneInstaller.LoadStatus(IphoneHelper.Paths).FirstOrDefault(a => a.Udid == _phone.Udid);
             _device.Text = _phone is null
                 ? "No iPhone found. Plug your iPhone in with a USB cable, unlock it, and tap Trust if it asks."
@@ -293,6 +372,7 @@ internal sealed class InstallerWindow : Window
             var progress = new Progress<string>(Status);
             var ipa = await _session.DownloadIpaAsync(progress, _closing.Token);
             var app = await installer.InstallAsync(udid, ipa, progress, _closing.Token);
+            if (_session.LastRelease is { } r) IphoneInstaller.SetRelease(IphoneHelper.Paths, udid, r);
             Status($"Done. RigControl Mobile is on your iPhone, signed until {app.Expires.LocalDateTime:g}. " +
                    "RigControl signs it again before then whenever the iPhone is plugged in.\n" +
                    "First time only: on the iPhone open Settings > General > VPN & Device Management, tap your Apple ID " +
@@ -355,6 +435,7 @@ internal sealed class InstallerWindow : Window
             var progress = new Progress<string>(Status);
             var ipa = await _session.DownloadIpaAsync(progress, _closing.Token);
             var app = await installer.InstallWithImportedAsync(udid, ipa, progress, _closing.Token);
+            if (_session.LastRelease is { } r) IphoneInstaller.SetRelease(IphoneHelper.Paths, udid, r);
             Status($"Done. RigControl Mobile is on your iPhone, signed with your certificate until {app.Expires.LocalDateTime:g}.\n" +
                    "First time only: on the iPhone open Settings > General > VPN & Device Management, tap your developer " +
                    "certificate and tap Trust.");

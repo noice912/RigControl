@@ -63,7 +63,10 @@ internal sealed class IphoneRenewal : IAsyncDisposable
             var installed = IphoneInstaller.LoadStatus(IphoneHelper.Paths);
             var now = DateTimeOffset.UtcNow;
             var due = installed.Where(a => IphoneInstaller.RenewalDue(IphoneHelper.Paths, a.Udid, now)).ToList();
-            if (due.Count == 0) return;
+            var release = InstallerSession.CurrentRelease();
+            var updates = installed.Where(a => !due.Contains(a) && a.UpdateDue(release)
+                                               && !IphoneInstaller.UpdateTriedRecently(IphoneHelper.Paths, a.Udid, release, now)).ToList();
+            if (due.Count == 0 && updates.Count == 0) return;
             // Only the list of connected iPhones from Apple's service: no pairing keys, no sessions in this (elevated) process.
             var connected = await new UsbMuxClient().ListDevicesAsync(_stop.Token).ConfigureAwait(false);
             foreach (var app in due)
@@ -88,6 +91,23 @@ internal sealed class IphoneRenewal : IAsyncDisposable
                 if (exe is not null)
                     RigControl.Presence.Launcher.StartProgram(exe, IphoneHelper.Switch + " " + IphoneHelper.RenewSwitch);
                 return; // one window at a time
+            }
+            // A newer phone app in this release: install it when that iPhone is reachable (USB, or Wi-Fi through Apple
+            // Devices), at most once every 3 hours per iPhone and release, so a failure never turns into a loop.
+            foreach (var app in updates)
+            {
+                if (!connected.Any(d => d.Udid == app.Udid)) continue;
+                lock (_started)
+                {
+                    var key = app.Udid + "|update|" + release;
+                    if (_started.TryGetValue(key, out var last) && now - last < NotAgainWithin) continue;
+                    _started[key] = now;
+                }
+                _log?.Info($"iPhone: RigControl {release} has a newer RigControl Mobile than {app.DeviceName} ({app.Release ?? "older"}); starting the installer to update it.");
+                var exe = Environment.ProcessPath;
+                if (exe is not null)
+                    RigControl.Presence.Launcher.StartProgram(exe, IphoneHelper.Switch + " " + IphoneHelper.UpdateSwitch);
+                return;
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)

@@ -23,6 +23,12 @@ internal static class IphoneHelper
     public const string Switch = "--iphone";
     public const string RenewSwitch = "--renew";
 
+    /// <summary>Held for this installer process's life (see Run).</summary>
+    private static Mutex? _running;
+
+    /// <summary>Started by the main app when this PC's release has a newer phone app than the iPhone (USB or Wi-Fi).</summary>
+    public const string UpdateSwitch = "--update";
+
     /// <summary>Added when the installer restarts itself without admin rights, so it can't loop if that didn't work.</summary>
     public const string DeelevatedSwitch = "--deelevated";
 
@@ -51,7 +57,8 @@ internal static class IphoneHelper
         {
             var exe = Environment.ProcessPath ?? throw new InvalidOperationException("RigControl can't find its own program file.");
             var rest = string.Join(' ', args
-                .Where(a => string.Equals(a, Switch, StringComparison.OrdinalIgnoreCase) || string.Equals(a, RenewSwitch, StringComparison.OrdinalIgnoreCase))
+                .Where(a => string.Equals(a, Switch, StringComparison.OrdinalIgnoreCase) || string.Equals(a, RenewSwitch, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(a, UpdateSwitch, StringComparison.OrdinalIgnoreCase))
                 .Select(a => a.ToLowerInvariant())
                 .Append(DeelevatedSwitch));
             log("The iPhone installer was started with administrator rights; starting it again without them.");
@@ -72,7 +79,26 @@ internal static class IphoneHelper
             e.SetObserved();
         };
         var renew = args.Any(a => string.Equals(a, RenewSwitch, StringComparison.OrdinalIgnoreCase));
-        var window = new InstallerWindow(CreateSession(log), renew);
+        var update = args.Any(a => string.Equals(a, UpdateSwitch, StringComparison.OrdinalIgnoreCase));
+        // One installer at a time for the background starts: never two processes installing to the same iPhone.
+        _running = new Mutex(false, @"Local\RigControl.iPhoneInstaller", out _);
+        bool owned;
+        try { owned = _running.WaitOne(0); }
+        catch (AbandonedMutexException) { owned = true; }
+        if (!owned && (renew || update))
+        {
+            log("iPhone installer: another installer window is open; this background start was skipped.");
+            return false;
+        }
+        var session = CreateSession(log);
+        if (update)
+        {
+            // Decide before any window appears: nothing to do, or nothing it can do alone, means no window at all.
+            var plan = Task.Run(() => InstallerWindow.PlanUpdateAsync(session)).GetAwaiter().GetResult();
+            if (plan is null)
+                return false;
+        }
+        var window = new InstallerWindow(session, renew, update);
         app.ShutdownMode = System.Windows.ShutdownMode.OnMainWindowClose;
         app.MainWindow = window;
         window.Show();
@@ -107,6 +133,12 @@ internal sealed class InstallerSession(HttpClient http, Action<string> log)
     private IphoneInstaller? _installer;
 
     public Action<string> Log { get; } = log;
+
+    /// <summary>The RigControl release the last downloaded phone app belongs to.</summary>
+    public string? LastRelease { get; private set; }
+
+    /// <summary>The release this PC runs: the phone app it carries is the one auto-update installs.</summary>
+    public static string CurrentRelease() => RunningVersion.Resolve(null).ToString();
     public DeviceService Devices { get; } = new();
 
     /// <summary>Loads Apple's CoreADI (first use only) and builds the installer.</summary>
@@ -129,6 +161,7 @@ internal sealed class InstallerSession(HttpClient http, Action<string> log)
     public async Task<string> DownloadIpaAsync(IProgress<string> progress, CancellationToken ct)
     {
         var version = RunningVersion.Resolve(null);
+        LastRelease = version.ToString();
         var gh = GitHubHttp.CreateClient();
         var baseUrl = GitHubHosts.ReleaseDownloadPrefix + version.Tag + "/";
         progress.Report("Checking the phone app for RigControl " + version + "...");
