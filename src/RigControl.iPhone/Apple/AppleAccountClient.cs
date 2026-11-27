@@ -151,7 +151,45 @@ public sealed class AppleAccountClient
 
     internal sealed record GsaLogin(PlistDict Spd, string Adsid, string Dsid, string IdmsToken, NextStep Next);
 
+    /// <summary>
+    /// Apple asked for this PC's device identification to be re-synced (434, with data) or set up again (433). Not a
+    /// password failure: the provider repairs itself and the same sign-in step is done once more.
+    /// </summary>
+    internal sealed class AnisetteRepairNeeded(byte[]? sim, bool reprovision)
+        : AppleException(AppleErrors.Describe(-80045, null), -80045)
+    {
+        public byte[]? Sim { get; } = sim;
+        public bool Reprovision { get; } = reprovision;
+    }
+
     private async Task<GsaLogin> LoginAsync(string username, byte[] passwordHash, CancellationToken ct)
+    {
+        for (var repairs = 0; ; repairs++)
+        {
+            try
+            {
+                return await LoginOnceAsync(username, passwordHash, ct).ConfigureAwait(false);
+            }
+            catch (AnisetteRepairNeeded need) when (repairs < 2 && _anisette is IAnisetteRepair repair
+                                                    && (need.Reprovision || need.Sim is not null))
+            {
+                try
+                {
+                    if (need.Reprovision)
+                        await repair.ReprovisionAsync(ct).ConfigureAwait(false);
+                    else
+                        await repair.ResyncAsync(need.Sim!, ct).ConfigureAwait(false);
+                }
+                catch (Exception e) when (e is not OperationCanceledException and not AppleException)
+                {
+                    throw new AppleException("Apple asked RigControl to refresh this PC's device identification, and that " +
+                        "didn't work: " + e.Message, -80045, e);
+                }
+            }
+        }
+    }
+
+    private async Task<GsaLogin> LoginOnceAsync(string username, byte[] passwordHash, CancellationToken ct)
     {
         var anisette = await AppleHttp.AnisetteAsync(_anisette, ct).ConfigureAwait(false);
         var cpd = ClientProvidedData(anisette);
@@ -354,7 +392,14 @@ public sealed class AppleAccountClient
     {
         var status = response.Dict("Status") ?? response;
         if (status.Long("hsc") == 434)
-            throw new AppleException(AppleErrors.Describe(-80045, null), -80045);
+        {
+            byte[]? sim = null;
+            try { sim = status.String("X-Apple-I-MD-DATA") is { Length: > 0 and < 65536 } s ? Convert.FromBase64String(s) : null; }
+            catch (FormatException) { }
+            throw new AnisetteRepairNeeded(sim, reprovision: false);
+        }
+        if (status.Long("hsc") == 433)
+            throw new AnisetteRepairNeeded(null, reprovision: true);
         var ec = status.Long("ec") ?? 0;
         if (ec != 0)
             throw new AppleException(AppleErrors.Describe(ec, status.String("em")), (int)Math.Clamp(ec, int.MinValue, int.MaxValue));

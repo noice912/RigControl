@@ -11,7 +11,7 @@ namespace RigControl.iPhone.Anisette;
 /// Apple app has set up yet, the machine is provisioned with Apple (GrandSlam midStartProvisioning /
 /// midFinishProvisioning, the same exchange Apple's apps make). After that every request gets a fresh one-time code.
 /// </summary>
-public sealed class CoreAdiAnisette : IAnisetteProvider
+public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
 {
     /// <summary>The account id Apple's apps use for the machine itself.</summary>
     public const long MachineDsId = -2;
@@ -119,6 +119,56 @@ public sealed class CoreAdiAnisette : IAnisetteProvider
         {
             _provisioning.Release();
         }
+    }
+
+    /// <summary>
+    /// Apple's status 434: CoreADI answers Apple's re-sync data with (mid, srm), which go to midSyncMachine; Apple may
+    /// send a new routing value back.
+    /// </summary>
+    public async Task ResyncAsync(byte[] sim, CancellationToken cancellationToken)
+    {
+        await _provisioning.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var bag = await LookupAsync(cancellationToken).ConfigureAwait(false);
+            var url = AppleUrl(bag.String("midSyncMachine"));
+            var (mid, srm) = _adi.Synchronize(MachineDsId, sim);
+            var body = new PlistDict
+            {
+                ["Header"] = new PlistDict(),
+                ["Request"] = new PlistDict
+                {
+                    ["X-Apple-I-MD-M"] = Convert.ToBase64String(mid),
+                    ["srm"] = Convert.ToBase64String(srm),
+                },
+            };
+            using var request = Request(HttpMethod.Post, url);
+            request.Content = new ByteArrayContent(PlistFile.ToXml(body));
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("text/x-xml-plist");
+            var reply = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var rinfo = reply.String("X-Apple-I-MD-RINFO") ?? reply.Long("X-Apple-I-MD-RINFO")?.ToString(CultureInfo.InvariantCulture);
+            if (ulong.TryParse(rinfo, NumberStyles.None, CultureInfo.InvariantCulture, out var routing))
+                _adi.SetRouting(MachineDsId, routing);
+        }
+        finally
+        {
+            _provisioning.Release();
+        }
+    }
+
+    /// <summary>Apple's status 433: forget this machine's setup and set it up with Apple again.</summary>
+    public async Task ReprovisionAsync(CancellationToken cancellationToken)
+    {
+        await _provisioning.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _adi.EraseProvisioning(MachineDsId);
+        }
+        finally
+        {
+            _provisioning.Release();
+        }
+        await ProvisionAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<PlistDict> LookupAsync(CancellationToken cancellationToken)

@@ -14,6 +14,7 @@ public interface ICoreAdi
     void EndProvisioning(uint session, byte[] ptm, byte[] tk);
     void DestroyProvisioningSession(uint session);
     (byte[] Mid, byte[] Srm) Synchronize(long dsId, byte[] sim);
+    void EraseProvisioning(long dsId);
 }
 
 /// <summary>
@@ -35,6 +36,7 @@ public sealed unsafe class CoreAdi : ICoreAdi, IDisposable
     private const uint GetIdmsRouting = 0x85fe63b0;
     private const uint SynchronizeCode = 0xa54951ec;
     private const uint RequestOtpCode = 0xcfe0b46a;
+    private const uint ProvisioningErase = 0x7715488c;
     private const uint StorageDispose = 0x3e58e7f9;
     private const uint TearDown = 0x08c0fe9e;
 
@@ -163,6 +165,9 @@ public sealed unsafe class CoreAdi : ICoreAdi, IDisposable
             Dispose(srmP);
         }
     }
+
+    public void EraseProvisioning(long dsId) =>
+        Check("reset", Call(ProvisioningErase, new FieldWriter().I64(dsId).ToArray()));
 
     public void Dispose()
     {

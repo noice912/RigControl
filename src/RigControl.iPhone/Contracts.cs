@@ -18,6 +18,16 @@ namespace RigControl.iPhone.Anisette
     {
         Task<IReadOnlyDictionary<string, string>> GetHeadersAsync(CancellationToken cancellationToken = default);
     }
+
+    /// <summary>
+    /// A provider Apple can ask to repair itself during sign-in: status 434 hands over re-sync data ("sim") for
+    /// <see cref="ResyncAsync"/>, status 433 asks for the machine to be set up again (<see cref="ReprovisionAsync"/>).
+    /// </summary>
+    public interface IAnisetteRepair
+    {
+        Task ResyncAsync(byte[] sim, CancellationToken cancellationToken);
+        Task ReprovisionAsync(CancellationToken cancellationToken);
+    }
 }
 
 namespace RigControl.iPhone.Apple
@@ -66,7 +76,7 @@ namespace RigControl.iPhone.Apple
 
     public sealed record AppId(string Id, string Identifier, string Name);
 
-    public sealed class AppleException(string message, int code = 0, Exception? inner = null) : Exception(message, inner)
+    public class AppleException(string message, int code = 0, Exception? inner = null) : Exception(message, inner)
     {
         /// <summary>Apple's own error code when it gave one (for example -20101 wrong password).</summary>
         public int Code { get; } = code;

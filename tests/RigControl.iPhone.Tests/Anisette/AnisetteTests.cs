@@ -28,7 +28,12 @@ public class AnisetteTests
             Provisioned = true;
         }
         public void DestroyProvisioningSession(uint session) => Calls.Add($"destroy {session}");
-        public (byte[] Mid, byte[] Srm) Synchronize(long dsId, byte[] sim) => ([], []);
+        public (byte[] Mid, byte[] Srm) Synchronize(long dsId, byte[] sim)
+        {
+            Calls.Add("sync " + Encoding.ASCII.GetString(sim));
+            return ("MID"u8.ToArray(), "SRM"u8.ToArray());
+        }
+        public void EraseProvisioning(long dsId) { Calls.Add("erase"); Provisioned = false; }
     }
 
     private sealed class FakeApple(Func<HttpRequestMessage, string> answer) : HttpMessageHandler
@@ -54,11 +59,16 @@ public class AnisetteTests
             {
                 ["midStartProvisioning"] = "https://gsa.apple.com/grandslam/MidService/startMachineProvisioning",
                 ["midFinishProvisioning"] = "https://gsa.apple.com/grandslam/MidService/finishMachineProvisioning",
+                ["midSyncMachine"] = "https://gsa.apple.com/grandslam/MidService/syncMachine",
             },
         }),
         "/grandslam/MidService/startMachineProvisioning" => Plist(new PlistDict
         {
             ["Response"] = new PlistDict { ["spim"] = Convert.ToBase64String("SPIM"u8.ToArray()), ["Status"] = new PlistDict { ["ec"] = 0L } },
+        }),
+        "/grandslam/MidService/syncMachine" => Plist(new PlistDict
+        {
+            ["Response"] = new PlistDict { ["X-Apple-I-MD-RINFO"] = "999", ["Status"] = new PlistDict { ["ec"] = 0L } },
         }),
         "/grandslam/MidService/finishMachineProvisioning" => Plist(new PlistDict
         {
@@ -104,6 +114,27 @@ public class AnisetteTests
         Assert.Contains(Convert.ToBase64String("CPIM"u8.ToArray()), apple.Bodies[2]);
         Assert.Equal(3, apple.Requests.Count);
         Assert.NotNull(h["X-Apple-I-MD"]);
+    }
+
+    [Fact]
+    public async Task Resync_sends_CoreADIs_answer_to_Apple_and_keeps_the_new_routing()
+    {
+        var adi = new FakeAdi { Provisioned = true };
+        var apple = new FakeApple(Answer);
+        await Make(adi, apple).ResyncAsync("SIM"u8.ToArray(), CancellationToken.None);
+        Assert.Contains("sync SIM", adi.Calls);
+        Assert.Contains("routing 999", adi.Calls);
+        Assert.Contains(Convert.ToBase64String("SRM"u8.ToArray()), apple.Bodies[^1]);
+    }
+
+    [Fact]
+    public async Task Reprovision_erases_then_sets_the_machine_up_again()
+    {
+        var adi = new FakeAdi { Provisioned = true };
+        var apple = new FakeApple(Answer);
+        await Make(adi, apple).ReprovisionAsync(CancellationToken.None);
+        Assert.Equal("erase", adi.Calls.First(c => c is "erase" or "start SPIM"));
+        Assert.Contains("end 7 PTM TK", adi.Calls);
     }
 
     [Fact]
