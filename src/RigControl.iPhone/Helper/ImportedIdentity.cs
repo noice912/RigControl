@@ -35,6 +35,9 @@ public sealed class ImportedIdentityStore(string folder, ISecretProtector protec
     private const string ProfileFile = "profile.mobileprovision";
     private const int MaxP12Bytes = 1 << 20;
 
+    /// <summary>The largest profile accepted (Apple's are a few kB to tens of kB).</summary>
+    public const int MaxProfileBytes = Signing.ProvisioningProfile.MaxSize;
+
     private string KeyPath => Path.Combine(folder, KeyFile);
     private string ProfilePath => Path.Combine(folder, ProfileFile);
 
@@ -84,20 +87,23 @@ public sealed class ImportedIdentityStore(string folder, ISecretProtector protec
         if (!File.Exists(KeyPath) || !File.Exists(ProfilePath))
             return null;
         byte[]? plain = null;
+        X509Certificate2? certificate = null;
         try
         {
             plain = protector.Unprotect(File.ReadAllBytes(KeyPath));
-            var certificate = new X509Certificate2(plain, (string?)null,
+            certificate = new X509Certificate2(plain, (string?)null,
                 X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
             if (!certificate.HasPrivateKey)
             {
                 certificate.Dispose();
                 return null;
             }
-            return (certificate, File.ReadAllBytes(ProfilePath));
+            var profile = File.ReadAllBytes(ProfilePath);
+            return (certificate, profile);
         }
         catch (Exception e) when (e is CryptographicException or IOException or UnauthorizedAccessException)
         {
+            certificate?.Dispose();
             return null;
         }
         finally

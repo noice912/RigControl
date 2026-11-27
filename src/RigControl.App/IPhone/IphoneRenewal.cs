@@ -23,6 +23,7 @@ internal sealed class IphoneRenewal : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _loop;
     private readonly Dictionary<string, DateTimeOffset> _started = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _reminded = new(StringComparer.Ordinal);
 
     public IphoneRenewal(ILog? log)
     {
@@ -70,8 +71,17 @@ internal sealed class IphoneRenewal : IAsyncDisposable
                 if (!connected.Any(d => d.Udid == app.Udid)) continue;
                 lock (_started)
                 {
-                    if (_started.TryGetValue(app.Udid, out var last) && now - last < NotAgainWithin) continue;
-                    _started[app.Udid] = now;
+                    // An app signed with the person's own certificate, or installed pre-signed, can only be renewed by
+                    // them (a new profile): the window opens once per installed app to say so, not every 3 hours.
+                    if (app.Source != InstalledApp.AppleIdSource)
+                    {
+                        if (!_reminded.Add(app.Udid + "|" + app.Expires.ToString("O"))) continue;
+                    }
+                    else
+                    {
+                        if (_started.TryGetValue(app.Udid, out var last) && now - last < NotAgainWithin) continue;
+                        _started[app.Udid] = now;
+                    }
                 }
                 _log?.Info($"iPhone: RigControl Mobile on {app.DeviceName} expires {app.Expires:u}; starting the installer to sign it again.");
                 var exe = Environment.ProcessPath;

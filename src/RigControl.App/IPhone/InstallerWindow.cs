@@ -321,9 +321,22 @@ internal sealed class InstallerWindow : Window
         if (password is null) return;
         await Busy("Checking the certificate and profile...", () =>
         {
-            var p12 = File.ReadAllBytes(p12Dialog.FileName);
-            var profile = File.ReadAllBytes(profileDialog.FileName);
-            var info = installer.Imported.Import(p12, password, profile);
+            ImportedIdentityInfo info;
+            try
+            {
+                // Sizes first: a .p12 is a few kB and a profile well under 4 MB.
+                if (new FileInfo(p12Dialog.FileName).Length > 1 << 20)
+                    throw new InvalidDataException("That .p12 file is too large to be a signing certificate.");
+                if (new FileInfo(profileDialog.FileName).Length > RigControl.iPhone.Helper.ImportedIdentityStore.MaxProfileBytes)
+                    throw new InvalidDataException("That .mobileprovision file is too large to be a provisioning profile.");
+                var p12 = File.ReadAllBytes(p12Dialog.FileName);
+                var profile = File.ReadAllBytes(profileDialog.FileName);
+                info = installer.Imported.Import(p12, password, profile);
+            }
+            finally
+            {
+                Array.Clear(password);
+            }
             Status($"Imported {info.CertificateName}. Apps signed with it open until {info.Expires.LocalDateTime:g}." +
                    (_phone is not null && !info.Covers(_phone.Udid) ? " Note: this profile doesn't include the connected iPhone." : ""));
             return Task.CompletedTask;
