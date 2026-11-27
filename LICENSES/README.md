@@ -14,6 +14,7 @@ licence, GPL-3.0, is [LICENSE](../LICENSE) in the folder above.
 | `BSD-3-Clause.txt` | BSD 3-Clause License | The standard wording; each component's own copyright line is in the notices file |
 | `WebView2-LICENSE.txt` | Microsoft's licence for the WebView2 SDK (BSD-3-Clause wording) | The `LICENSE.txt` inside the `Microsoft.Web.WebView2` package |
 | `NAudio-LICENSE.txt` | MIT, with NAudio's copyright line | The `license.txt` inside the `NAudio` package |
+| `OpenSans-LICENSE.txt` | Apache-2.0, with the Open Sans font's copyright line (phone app) | The name table of the font files in `mobile/RigControl.Mobile/Resources/Fonts`, then the Apache Software Foundation's standard text |
 | `HidSharp-LICENSE.txt` | Apache-2.0, with HidSharp's copyright line | The `LICENSE.txt` inside the `HidSharp` package |
 | `React-LICENSE.txt` | MIT, with React's copyright line | The `LICENSE` inside the `react` and `react-dom` packages (the same file) |
 | `Barlow-OFL-1.1.txt`, `Barlow-Condensed-OFL-1.1.txt` | SIL Open Font License 1.1, with the fonts' copyright lines | The `LICENSE` inside the `@fontsource/barlow` and `@fontsource/barlow-condensed` packages |

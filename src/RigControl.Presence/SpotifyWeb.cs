@@ -27,6 +27,8 @@ public sealed class SpotifyWebSource
     /// <summary>RigControl's public Spotify client id (PKCE: there is no client secret).</summary>
     public const string ClientId = "891243e2ce084409945d7f5e49b95fc8";
     public const string ExpiredMessage = "Spotify sign-in expired, connect again from the phone";
+    public const string NotAllowedMessage = "Spotify hasn't let this account use RigControl yet (for now only accounts the developer added can)";
+    internal static readonly TimeSpan NotAllowedWait = TimeSpan.FromHours(6);
     public static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(10);
     /// <summary>A reading older than this no longer counts as playing (the last few polls failed).</summary>
     public static readonly TimeSpan Fresh = TimeSpan.FromSeconds(35);
@@ -197,6 +199,18 @@ public sealed class SpotifyWebSource
                     continue;
                 case HttpStatusCode.TooManyRequests:
                     BackOff(gen, res);
+                    return;
+                case HttpStatusCode.Forbidden:
+                    // In Spotify's Development mode an account the app's owner hasn't added is refused. That won't
+                    // change on its own: say so plainly and only ask again every few hours.
+                    lock (_gate)
+                    {
+                        if (gen != _generation) return;
+                        _current = null;
+                        _problem = NotAllowedMessage;
+                    }
+                    Later(gen, NotAllowedWait);
+                    Note(gen, NotAllowedMessage + ".", warn: true);
                     return;
                 default:
                     Note(gen, $"Spotify answered {(int)res.StatusCode}; trying again.", warn: (int)res.StatusCode < 500);

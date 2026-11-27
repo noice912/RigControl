@@ -177,6 +177,24 @@ public class SpotifyWebTests
     }
 
     [Fact]
+    public async Task An_account_Spotify_refuses_says_so_and_waits_hours()
+    {
+        var s = Make();
+        _fake.Playing = _ => new HttpResponseMessage(HttpStatusCode.Forbidden);
+        await s.TickAsync(default);
+        Assert.Equal(SpotifyWebSource.NotAllowedMessage, s.Problem);
+        Assert.True(s.Connected);
+        var polls = _fake.Polls;
+        _now = _now.AddHours(5);
+        await s.TickAsync(default);
+        Assert.Equal(polls, _fake.Polls); // not asked again within hours
+        _fake.Playing = null;
+        _now = _now.AddHours(2);
+        await s.TickAsync(default);
+        Assert.Null(s.Problem); // let in later: fine again
+    }
+
+    [Fact]
     public async Task Only_the_sign_in_in_use_counts_as_current()
     {
         var s = Make();

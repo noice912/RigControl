@@ -171,7 +171,7 @@ export function Games() {
                 </button>
               </div>
             )}
-            {!s.spotifyConnected && s.spotifyProblem && <div className="sub">{s.spotifyProblem}</div>}
+            {s.spotifyProblem && <div className="sub">{s.spotifyProblem}.</div>}
             {s.importedFromRichPresence && <div className="sub faint">Your RichPresence settings were copied in on {new Date(s.importedFromRichPresence).toLocaleDateString()}.</div>}
           </section>
 

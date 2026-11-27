@@ -103,8 +103,9 @@ export function PhoneLinkPanel() {
 
       <div className="phone-install">
         <div className="sub">
-          No RigControl Mobile on your iPhone yet? Plug the iPhone in with a USB cable and RigControl puts the app on it,
-          signed with your own free Apple ID, and signs it again every week while it's plugged in.
+          No RigControl Mobile on your iPhone yet? You need a paid Apple developer certificate (a .p12 file and a
+          .mobileprovision profile that lists your iPhone), or an .ipa that is already signed. Plug the iPhone in with a
+          USB cable and RigControl puts the app on it. Signing in with a free Apple ID is blocked by Apple for now.
         </div>
         <button
           className="btn"

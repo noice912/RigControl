@@ -1,13 +1,17 @@
 # RigControl Mobile
 
-The phone app for RigControl (iPhone and Android, one .NET MAUI code base). It does two things:
+The phone app for RigControl (one .NET MAUI code base for iPhone and Android; Android is not released, only a test
+build signed with a throwaway key exists). It does two things:
 
 1. **Your PCs**: every PC running RigControl 1.2.2 or later can be linked by scanning the QR code it shows
    (Settings > Phone > Link a phone) or typing its 20-character code. The phone then shows the PC's temperatures,
    fan speeds, CPU and GPU load and recording state, and can switch the lights on or off, pick a lighting effect,
    start or stop a recording and save an instant replay. Nothing riskier (fan curves, overclocking, BIOS, drivers)
    can be done from the phone.
-2. **Discord status from the phone** (next version): what you play and listen to on the phone, on your Discord profile.
+2. **Music on your Discord status**: "Connect Spotify" lets your PCs read what your Spotify account plays on any
+   device, and "Share my iPhone's Music app song" sends the Music app's song to the PCs while this app is open. A PC
+   then shows it on your Discord card. For now Spotify only lets in accounts the developer added by hand (Spotify's
+   limit for apps in development mode, at most 25).
 
 Phone and PC talk through a small relay that both connect out to, end-to-end encrypted
 ([docs/protocols/link.md](../docs/protocols/link.md)). The PC opens no incoming ports.
@@ -36,7 +40,7 @@ there by asking it for a snapshot: the PCs list asks every 20 s, the PC screen e
 | `global.json` | Pins the .NET SDK to 10.0.404 (a PC may also have a newer preview SDK) |
 
 `rigcontrol://pair?relay=<host>&code=<code>` (the PC's QR code, also when opened from the phone's own camera app)
-and `rigcontrol://callback` (the end of a browser sign-in, later for Spotify) open the app. A pairing link only fills
+and `rigcontrol://callback` (the end of the Spotify sign-in in the browser) open the app. A pairing link only fills
 in the Link a PC screen: linking always waits for a tap on **Link**.
 
 ## Building on Windows (Android)
@@ -82,12 +86,19 @@ iPhone app can only be packaged on a Mac.
   `RigControl-Mobile.ipa`.
 
 Both files appear under the run's **Artifacts** (kept 14 days). No secrets or certificates are used: the .ipa is
-signed later, on your own PC, with your own Apple ID.
+signed later, on your own PC, with your own certificate.
 
 ## Installing on an iPhone (sideloading)
 
-The app is not on the App Store. A free Apple ID is enough; apps signed with a free Apple ID stop opening after
-**7 days** and must be signed again (re-sideloaded), and at most 3 sideloaded apps can be active at once.
+The app is not on the App Store. **It needs a paid Apple developer certificate.** The easy way is RigControl's own
+installer on the PC: Settings > Phone > "Install on iPhone", with the iPhone plugged in by USB. There, "Import
+certificate" takes a `.p12` and a `.mobileprovision` profile from your paid Apple Developer account (the profile must
+list your iPhone), or "Install pre-signed .ipa" installs an `.ipa` that is already signed.
+
+Free Apple IDs: since October 2026 Apple blocks free Apple ID sign-in from Windows clients (it fails at the "app
+token" step). RigControl's installer still has the sign-in and says so when Apple refuses it. Where a free Apple ID
+still works (for example in a tool on a Mac), apps signed with it stop opening after **7 days** and must be signed
+again, and at most 3 such apps can be active at once. The tools below may hit the same block from Windows.
 
 **Sideloadly** (Windows or Mac):
 1. Install Apple's USB driver: "Apple Devices" from the Microsoft Store (or iTunes from apple.com).
@@ -99,13 +110,11 @@ The app is not on the App Store. A free Apple ID is enough; apps signed with a f
 **AltStore** (altstore.io): install AltServer on the PC and AltStore on the iPhone as its guide says, then in
 AltStore tap **+** and pick the .ipa. AltStore re-signs it in the background while the iPhone and PC share Wi-Fi.
 
-**Coming in Step 4:** RigControl's own installer on the PC (Phone page) will notice the iPhone over USB, sign and
-install the app itself, and sign it again before the 7 days run out.
+RigControl's own installer is described in [src/RigControl.iPhone/README.md](../src/RigControl.iPhone/README.md).
 
 ## What is left
 
-- **A real-world try**: the link has only been tested against the in-memory relay, not the deployed one or a real phone.
 - Custom Discord statuses are read from the snapshot and `presence.setCustom` works, but no screen shows them yet.
-- **Discord status (Step 3)**: Discord Social SDK through a thin C# wrapper, Spotify sign-in (PKCE, no secret) on
-  `rigcontrol://callback`, the iPhone Music app, custom statuses. Settings has its placeholder section.
-- A release signing key for Android; an AltStore source file.
+- Spotify for everyone: Spotify's extended access, so accounts the developer has not added can connect.
+- Android: a release signing key, and a release.
+- An AltStore source file.

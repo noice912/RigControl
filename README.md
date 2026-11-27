@@ -12,6 +12,7 @@ on it.
 - [What it installs and why it runs as administrator](#what-it-installs-and-why-it-runs-as-administrator)
 - [Installing](#installing)
 - [What each page does](#what-each-page-does)
+- [Phone (RigControl Mobile)](#phone-rigcontrol-mobile)
 - [Safety](#safety)
 - [Building from source](#building-from-source)
 - [Linux and macOS](#linux-and-macos)
@@ -208,6 +209,26 @@ browser profile never feed your card. It is off until you turn it on.
 The browser extension in [`extension/`](extension/README.md) (Chrome and Edge) tells RigControl what you are
 watching. Use the **Get the browser extension** button on the Games page: that copy only talks to your own
 RigControl on this PC (`127.0.0.1`, ports 47610 to 47619).
+
+## Phone (RigControl Mobile)
+
+The phone app links to your PCs (Settings > Phone > Link a phone, then scan the QR code). It shows each PC's
+temperatures, fans, loads and recording state, and can switch the lights, pick an effect, start or stop a recording
+and save an instant replay. It can also put music on your Discord status: what you play on Spotify (on any device),
+or the song in the iPhone's Music app while RigControl Mobile is open. Nothing riskier (fan curves, overclocking,
+BIOS, drivers) can be done from a phone. More: [mobile/README.md](mobile/README.md).
+
+- **iPhone:** needs a paid Apple developer certificate. Settings > Phone > "Install on iPhone" signs and installs
+  the app over USB with your `.p12` and `.mobileprovision` (the profile must list your iPhone), or installs an `.ipa`
+  that is already signed. Signing in with a free Apple ID is blocked by Apple for now.
+- **Android:** not released yet.
+- **Spotify:** for now only Spotify accounts the developer added by hand can connect (Spotify's limit for apps in
+  development mode).
+- **The relay:** phone and PC both connect out to a small relay on Cloudflare's free plan, so the PC opens no port.
+  Messages are end-to-end encrypted; the relay sees ids, sizes, times and IP addresses, never what is inside. It has
+  daily request quotas and may stop until the next day. There is no uptime promise.
+
+What the phone and the PC send and keep: [PRIVACY.md](PRIVACY.md).
 
 ## Safety
 

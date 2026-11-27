@@ -38,6 +38,19 @@ if (!AppVersion.TryParse(options["--version"], out var version))
     return 2;
 }
 
+// The exe must say it is this version itself, or the app would keep offering the same update forever.
+if (File.Exists(options["--exe"]))
+{
+    var own = System.Diagnostics.FileVersionInfo.GetVersionInfo(options["--exe"]).ProductVersion ?? "";
+    var plus = own.IndexOf('+');
+    if (plus >= 0) own = own[..plus];
+    if (!string.Equals(own, version.ToString(), StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine($"The exe says it is version {(own.Length == 0 ? "(none)" : own)}, not {version}. Build it with that version first. Nothing was written.");
+        return 1;
+    }
+}
+
 try
 {
     using var key = EcSignature.ImportPrivateKeyPem(File.ReadAllText(options["--key"]));

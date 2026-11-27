@@ -35,9 +35,12 @@ issue.
 | **GitHub** (`api.github.com`, and GitHub's release download hosts) | The update check: 1 minute after RigControl starts and every 6 hours, while "Check for updates automatically" is on (Settings > Updates; on by default), and when you press "Check now" | A plain request for RigControl's latest release page (with "Get development builds" on, which only people who may publish RigControl can turn on: the list of RigControl's newest releases instead). When you press "Update", the new version's setup file is downloaded. No account or id of yours is sent. |
 | **GitHub** (`github.com`, `api.github.com`) | Only if you sign in with GitHub (Settings > GitHub account), and while you stay signed in | Signing in uses GitHub's device sign-in: you confirm a short code on github.com in your normal browser. RigControl then holds a GitHub sign-in token for your account, **encrypted for your Windows user** (Windows DPAPI) in `settings.json`. It is used only to talk to GitHub: to post a review you write, and to check whether your account may change the maintainers' private development repository (GitHub answers "not found" to anyone else). For the repository's maintainers it is also used to publish releases and to list reviews. Signing out deletes it. |
 | **The phone link relay** (the address is shown on Settings > Phone; a Cloudflare Worker run by RigControl's author) | Only while at least one phone is linked, and while a pairing code is shown on Settings > Phone. Nothing connects before you press "Link a phone". | See "The phone link" below. In short: this PC's public link key and id, the ids of your linked phones, and sealed (end-to-end encrypted) messages the relay cannot read. |
+| **Spotify** (`api.spotify.com`, and `accounts.spotify.com` to renew the sign-in) | Only after you pressed "Connect Spotify" in the phone app and the phone handed the sign-in to this PC, and only while Discord status and its music card are on: at most once every 10 seconds | Spotify's read-only sign-in for your account (scopes `user-read-currently-playing` and `user-read-playback-state`), to ask what that account is playing on any device. Spotify answers with the song, artist, album, times and the cover's address. See "The phone link" below. |
+| **Spotify's image server** (`i.scdn.co`) | While a song read from Spotify is shown on your Discord card | Only the cover's address that Spotify gave. RigControl hands that address to Discord, which loads the picture from there. |
 | **GitHub issues** (`api.github.com`) | Only when you press "Send" on a review | Your star rating, the text you wrote and RigControl's version become a **public** issue on github.com/noice912/RigControl under your GitHub name. Nothing about your PC is added. |
 
-Apart from the GitHub rows and the phone link relay above, RigControl contacts no other site. Every update is checked before it is used: its
+RigControl contacts no site that is not in this table (the iPhone installer's own list is in "Installing the phone
+app on an iPhone" below). Every update is checked before it is used: its
 details carry a signature that only the author's update key can make, and the file must match them exactly. Links in
 the app (to a download page, a store, a help page) open in your normal browser when you press them.
 
@@ -65,21 +68,54 @@ small relay (a Cloudflare Worker with Durable Objects, run by RigControl's autho
   this PC (its Windows computer name) and the phone's name go to the other device inside those boxes.
 - **What a phone can do:** read a snapshot (temperatures, fans, loads, recording state, lighting effect, what is
   playing, the names of your custom statuses) and ask for: lighting effect or scene, lights on or off, start or stop a
-  recording, save an instant replay, switch one of your custom Discord statuses on or off. Nothing else: fan curves,
-  overclocking, BIOS, drivers and installing are not reachable from a phone. Every action shows a notice on the PC.
+  recording, save an instant replay, switch one of your custom Discord statuses on or off, show the song playing in
+  the iPhone's Music app (`presence.phoneMusic`), use a Spotify sign-in (`presence.spotifyConnect`) and forget it
+  (`presence.spotifyDisconnect`). Nothing else: fan curves, overclocking, BIOS, drivers and installing are not
+  reachable from a phone. Every action shows a notice on the PC.
+- **The iPhone's Music app song:** if you switch on "Share my iPhone's Music app song" in the phone app, the phone
+  sends the song's title, artist, album and times as plain text inside the sealed link, only while RigControl Mobile
+  is open. The PC shows it on your Discord card like a song it plays itself.
+- **Spotify:** "Connect Spotify" in the phone app opens Spotify's own sign-in page. The phone then hands Spotify's
+  read-only sign-in (a refresh token) to each linked PC inside the sealed link and keeps none of it itself. Each PC
+  keeps it **encrypted for your Windows user** (Windows DPAPI) in `settings.json` and uses it only to ask Spotify what
+  you play (see the Spotify rows above). "Disconnect Spotify" in the phone app tells the PCs to forget it. For now
+  RigControl's Spotify app is in Spotify's "development mode": only Spotify accounts the developer added by hand (at
+  most 25, Spotify's limit) can use it, and Spotify refuses any other account.
 - **On this PC** (`settings.json`, section `link`): this PC's link keys, **encrypted for your Windows user** (Windows
   DPAPI), and for each linked phone its name, public keys, when it was linked and last seen.
 - **Unlinking:** Settings > Phone > Remove. The PC refuses that phone at once, tells the relay to drop it, and once no
   phone is linked RigControl disconnects from the relay. Deleting `settings.json` (or the `link` section) forgets the
   keys too.
+- **The relay's limits:** it runs on Cloudflare's free plan, which has daily request quotas. When a quota is used up,
+  the link may stop until the next day. There is no uptime promise.
+
+### The phone app (RigControl Mobile)
+
+- **Who it talks to:** the phone link relay (as above), and, only if you press "Connect Spotify", Spotify's own
+  sign-in page (`accounts.spotify.com`). No other server, no analytics, no crash upload.
+- **What it keeps on the phone:** its link keys in the phone's secure storage (the iPhone's Keychain, Android's
+  Keystore); the list of linked PCs (ids, names, the PCs' public keys, the relay address, when each was last seen) in
+  the app's own settings. It keeps **no Spotify token**: the sign-in goes straight to your PCs.
+- **The camera** is used only to scan a PC's QR code while the "Link a PC" screen is open.
+- **The Music app song** is read only while the app is open and "Share my iPhone's Music app song" is on.
+- **Removing it:** delete the app. Remove the phone on each PC (Settings > Phone > Remove) as well.
 
 ### Installing the phone app on an iPhone (Apple ID)
 
-Settings > Phone > "Install on iPhone" puts RigControl Mobile on an iPhone connected by USB, signed with your own
-Apple ID (a free one is enough). It runs in a separate RigControl window **without administrator rights**, and only
-when you open it (or, for the weekly re-signing below, when you connected an iPhone it installed the app on).
+Settings > Phone > "Install on iPhone" puts RigControl Mobile on an iPhone connected by USB. **It needs a paid Apple
+developer certificate:** "Import certificate" takes a `.p12` and a `.mobileprovision` profile from your paid Apple
+Developer account (the profile must list your iPhone), or "Install pre-signed .ipa" installs an app that is already
+signed. Signing in with a free Apple ID is **currently blocked by Apple**: since October 2026 Apple refuses that
+sign-in from Windows clients (it fails at the "app token" step). The sign-in is still in the window and says so
+when Apple refuses it; the points about your Apple ID below apply only if you try it. The installer runs in a
+separate RigControl window **without administrator rights**, and only when you open it (or, for the re-signing
+below, when you connected an iPhone it installed the app on).
 
-- **Who it talks to:** Apple only: `gsa.apple.com` (Apple ID sign-in) and `developerservices2.apple.com` (Apple's
+- **With your own certificate:** the `.p12` password is used once to open the file and is never saved. The
+  certificate and profile are kept **encrypted for your Windows user** (DPAPI) in the `iphone` folder below. No
+  Apple server is contacted: RigControl downloads the phone app from GitHub, signs it on this PC and installs it over
+  USB. A pre-signed `.ipa` you pick is installed over USB as it is.
+- **With a free Apple ID, who it talks to:** Apple only: `gsa.apple.com` (Apple ID sign-in) and `developerservices2.apple.com` (Apple's
   developer services), plus GitHub to download the phone app from this release. No other server, and never a
   third-party "anisette" server.
 - **Your Apple ID password and verification code** are typed into that window and sent to Apple only, as Apple's own
@@ -95,7 +131,7 @@ when you open it (or, for the weekly re-signing below, when you connected an iPh
   Windows user** (DPAPI); a random id for this PC (so RigControl only ever replaces certificates it made on this PC);
   a private copy of Apple's sign-in component taken from your Apple Devices/iTunes install (checked to be signed by
   Apple); and `status.json` (which iPhone has the app, when it was signed and when that runs out; nothing secret).
-- **Weekly re-signing:** free Apple IDs sign apps for 7 days. While RigControl runs, it checks (through Apple's USB
+- **Weekly re-signing (free Apple ID only):** free Apple IDs sign apps for 7 days. While RigControl runs, it checks (through Apple's USB
   service on this PC) whether that iPhone is connected and its app has a day or less left, and then opens the
   installer window to sign it again with the saved sign-in. If the saved sign-in has run out, it asks you to sign in.
 - **Your iPhone:** over USB, RigControl uses Apple's own USB service and the trust you already gave this PC on the

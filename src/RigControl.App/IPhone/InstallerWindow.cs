@@ -56,14 +56,16 @@ internal sealed class InstallerWindow : Window
         root.Children.Add(Heading("Your iPhone"));
         root.Children.Add(_device);
 
-        root.Children.Add(Heading("Your Apple ID"));
+        root.Children.Add(Heading("Free Apple ID (blocked by Apple for now)"));
         root.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8),
-            Text = "A free Apple ID is enough. Your password and the code Apple sends are passed to Apple only: " +
-                   "RigControl never saves them. What's kept (encrypted for your Windows account) is the sign-in Apple " +
-                   "gives back and your signing certificate, so the app can be signed again each week.",
+            Text = "Since October 2026 Apple blocks free Apple ID sign-in from Windows, so this part will most likely " +
+                   "fail. Use your own certificate below instead (it needs a paid Apple developer account). If you try it: " +
+                   "your password and the code Apple sends are passed to Apple only, and RigControl never saves them. " +
+                   "What's kept (encrypted for your Windows account) is the sign-in Apple gives back and your signing " +
+                   "certificate, so the app can be signed again each week.",
         });
         _signInPanel.Children.Add(new TextBlock { Text = "Apple ID (email)" });
         _signInPanel.Children.Add(_appleId);
@@ -78,13 +80,13 @@ internal sealed class InstallerWindow : Window
         root.Children.Add(_install);
         root.Children.Add(_status);
 
-        root.Children.Add(Heading("Or use your own signing certificate"));
+        root.Children.Add(Heading("Your own signing certificate (paid Apple developer account)"));
         root.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8),
-            Text = "If Apple won't give this PC a free developer token, sign the app with a certificate and provisioning " +
-                   "profile you already have (from a Mac's Xcode or your Apple developer account). The .p12 password is " +
+            Text = "This needs a paid Apple developer certificate: a .p12 and a .mobileprovision profile from your Apple " +
+                   "developer account (or a Mac's Xcode), and the profile must list this iPhone. The .p12 password is " +
                    "used once to open the file and is never saved; the certificate is kept encrypted for your Windows account.",
         });
         root.Children.Add(_imported);

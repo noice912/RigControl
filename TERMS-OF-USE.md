@@ -71,11 +71,20 @@ works with or resembles.
 
 ## 6a. The phone link relay
 
-The phone link (Settings > Phone) uses a relay run by RigControl's author on Cloudflare. It is offered as it is, for
-free, with no promise that it is available, and it may be changed or stopped. When it is down, a phone cannot reach the
+The phone link (Settings > Phone) uses a relay run by RigControl's author on Cloudflare's free plan. It is offered as
+it is, for free, with no promise that it is available, and it may be changed or stopped. The free plan has daily
+request quotas: when one is used up, the relay may stop until the next day. When it is down, a phone cannot reach the
 PC; the PC itself works as before. The relay passes on sealed messages it cannot read; what it stores is listed in
 [PRIVACY.md](PRIVACY.md). Do not use it to send anything other than what RigControl sends, and do not try to overload
 it. Remove a phone on Settings > Phone to unlink it.
+
+## 6b. The iPhone installer
+
+The iPhone installer (Settings > Phone > "Install on iPhone") talks to Apple's servers the way Apple's own tools do.
+Apple may not allow this, and it may refuse or change it at any time (since October 2026 it already refuses free
+Apple ID sign-in from Windows). Using it is at your own risk, also for your Apple ID and your Apple developer account.
+Apple's own terms apply to your Apple ID, your developer account and the certificates you use. RigControl is not made
+or endorsed by Apple.
 
 ## 7. Changes to these terms
 

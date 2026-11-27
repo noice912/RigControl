@@ -89,6 +89,7 @@ Versions are the ones the project files and the package restore name.
 | HidSharp | 2.6.4 | Apache-2.0 ([text with its copyright line](LICENSES/HidSharp-LICENSE.txt)) | https://software.seekye.com/hidsharp |
 | NAudio, NAudio.Core, NAudio.Wasapi, NAudio.WinMM, NAudio.WinForms, NAudio.Asio, NAudio.Midi | 2.2.1 | MIT, Copyright 2020 Mark Heath ([text](LICENSES/NAudio-LICENSE.txt)) | https://github.com/naudio/NAudio |
 | NvAPIWrapper.Net | 0.8.1.101 | LGPL-3.0 per its repository ([text](LICENSES/LGPL-3.0.txt)). To be confirmed against the package. | https://github.com/falahati/NvAPIWrapper |
+| System.Security.Cryptography.Pkcs (used by the iPhone installer to sign the phone app) | 8.0.2 | MIT, Copyright (c) .NET Foundation and Contributors ([text](LICENSES/MIT.txt)) | https://github.com/dotnet/runtime |
 | QRCoder | 1.9.0 | MIT, Copyright (c) 2013-2025 Raffael Herrmann, Copyright (c) 2024-2025 Shane Krueger ([text](LICENSES/MIT.txt)) | https://github.com/Shane32/QRCoder |
 | Microsoft.Web.WebView2 (SDK) | 1.0.4314.35 | Microsoft's WebView2 SDK licence, BSD-3-Clause wording, Copyright (C) Microsoft Corporation ([text](LICENSES/WebView2-LICENSE.txt)) | https://aka.ms/webview |
 | Mono.Posix.NETStandard (used by LibreHardwareMonitorLib) | 1.0.0 | MIT. To be confirmed: the package only links to its licence. | https://github.com/mono/mono |
@@ -117,6 +118,26 @@ Windows-only libraries (no NAudio, no WebView2, no WPF).
 
 The web view itself is the system's and is not carried: WebKitGTK (`libwebkit2gtk-4.1`, LGPL-2.1 and BSD) on Linux,
 which you install as a system package, and Apple's WKWebView on macOS.
+
+### Only in the phone app, RigControl Mobile (`mobile/`)
+
+The PC app does not carry these. The phone app carries them inside its own package, together with the .NET runtime
+for iOS or Android (MIT, Copyright (c) .NET Foundation and Contributors, https://github.com/dotnet/runtime) and
+RigControl's own link code (`src/RigControl.Link`, GPL-3.0). Versions are the ones `mobile/RigControl.Mobile`
+names and its package restore resolves.
+
+| Library | Version | Licence | Source |
+|---|---|---|---|
+| Microsoft.Maui.Controls (.NET MAUI, with Microsoft.Maui.Core, Essentials and Graphics) | 10.0.110 | MIT, Copyright (c) .NET Foundation and Contributors ([text](LICENSES/MIT.txt)) | https://github.com/dotnet/maui |
+| Microsoft.Extensions.* (DependencyInjection, Logging, Configuration and others, used by .NET MAUI) | 10.0.0 | MIT, Copyright (c) .NET Foundation and Contributors | https://github.com/dotnet/runtime |
+| CommunityToolkit.Mvvm | 8.4.2 | MIT, (c) .NET Foundation and Contributors ([text](LICENSES/MIT.txt)) | https://github.com/CommunityToolkit/dotnet |
+| ZXing.Net.Maui.Controls (with ZXing.Net.Maui): the QR code scanner | 0.10.4 | MIT, Copyright (c) Redth ([text](LICENSES/MIT.txt)) | https://github.com/Redth/ZXing.Net.Maui |
+| ZXing.Net (used by ZXing.Net.Maui) | 0.16.11 | Apache-2.0 ([text](LICENSES/Apache-2.0.txt)) | https://github.com/micjahn/ZXing.Net |
+| Open Sans font (`OpenSans-Regular.ttf`, `OpenSans-Semibold.ttf` in `mobile/RigControl.Mobile/Resources/Fonts`) | 1.10 | Apache-2.0, as the font files themselves state; "Digitized data copyright (c) 2010-2011, Google Corporation" ([text](LICENSES/OpenSans-LICENSE.txt)). Open Sans is a trademark of Google. | https://github.com/googlefonts/opensans |
+
+The Android build (not released; only a test build signed with a throwaway key exists) also carries the AndroidX,
+Google Material, Kotlin and Glide libraries that .NET MAUI and ZXing.Net.Maui pull in on Android. They are listed
+here before an Android release.
 
 ## 3. Interface (npm)
 
@@ -176,6 +197,20 @@ this has been tried on a real device yet.
 | Q42.HueApi | The Hue Bridge's local API in practice | MIT | https://github.com/michielpost/Q42.HueApi |
 | OpenHue | A written description of the Hue Bridge's local API | Apache-2.0 | https://github.com/openhue/openhue-api |
 | SignalRGB's public LeetDesk add-on | Behaviour only: which pages a LeetDesk Aura answers on. LeetDesk publishes no protocol. | Not checked; nothing was copied | SignalRGB's public add-on collection |
+
+### iPhone: protocol descriptions
+
+The iPhone installer (`src/RigControl.iPhone`) was written from these projects' documentation, source and issue
+reports. **No code was copied from any of them.** Apple's device-identification library (CoreADI) is not carried:
+RigControl loads it from an Apple app already installed on your PC. Details: [src/RigControl.iPhone/README.md](src/RigControl.iPhone/README.md).
+
+| Project | What it was used for | Licence | Source |
+|---|---|---|---|
+| Dadoum's apple-crates | How Apple's CoreADI library is called (function codes and message layouts) and how it is set up on Windows | No licence stated in the repository (read 2026-11-27); nothing was copied | https://github.com/Dadoum/apple-crates |
+| AltStore and AltSign | How the Apple ID sign-in and Apple's developer services are used to sign an app, and which client description Apple accepts (AltSign issue 61) | AltStore: AGPL-3.0. AltSign: no licence file in the repository (read 2026-11-27). Nothing was copied. | https://github.com/altstoreio/AltStore, https://github.com/rileytestut/AltSign |
+| iloader | Fixes for Apple's sign-in changes of October 2026 (iloader issue 1304) | MIT | https://github.com/nab138/iloader |
+| zagstore | An issue report (number 48) on what Apple's own iTunes for Windows sends at sign-in | Not checked; only the issue was read | The code names the project and issue only; its address is not recorded |
+| apple-codesign (in apple-platform-rs) | A cross-check of Apple's public CA certificates that a code signature carries | MPL-2.0 | https://github.com/indygreg/apple-platform-rs |
 
 ## 6. Used by tests only (not carried in the exe)
 

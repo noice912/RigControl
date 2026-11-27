@@ -521,7 +521,7 @@ public sealed class PresenceEngine
             var hover = m.Album != "" ? $"{m.Title} - {m.Album}" : m.Title;
             // The phone's song: a small hint where it plays, when the hover text has room for it.
             if (source == "phone" && hover.Length + PhoneHint.Length <= 128) hover += PhoneHint;
-            if (hover.Length > 128) hover = hover[..125] + "...";
+            hover = Ellipsis(hover);
             var startMs = NowMs - (long)Math.Round(m.PositionSec * 1000);
             var ts = new JsonObject { ["start"] = startMs };
             if (m.DurationSec > 0) ts["end"] = startMs + (long)Math.Round(m.DurationSec * 1000);
@@ -575,7 +575,7 @@ public sealed class PresenceEngine
                 if (isNew || _appStartMs == 0) _appStartMs = NowMs;
                 // Browsers: just the tab's title.
                 var detail = System.Text.RegularExpressions.Regex.Replace(ForegroundSource.BrowserSuffix.Replace(fg.Title, ""), @"\s+and \d+ more pages?.*$", "");
-                if (detail.Length > 128) detail = detail[..125] + "...";
+                detail = Ellipsis(detail);
                 var a = new JsonObject { ["type"] = 0, ["name"] = fg.Label, ["timestamps"] = new JsonObject { ["start"] = _appStartMs } };
                 if (detail != "" && detail != fg.Label) a["details"] = detail;
                 a["assets"] = new JsonObject { ["large_image"] = fg.Icon ?? GenericAppIcon, ["large_text"] = fg.Label };
@@ -651,8 +651,8 @@ public sealed class PresenceEngine
                 a["assets"] = new JsonObject { ["large_image"] = poster, ["large_text"] = show.Length >= 2 ? show : w.Svc.Name, ["small_image"] = logo, ["small_text"] = w.Svc.Name };
             else if (svcId is null)
                 a["assets"] = new JsonObject { ["large_image"] = logo, ["large_text"] = w.Svc.Name };
-            if (show.Length >= 2) a["details"] = show.Length > 128 ? show[..125] + "..." : show;
-            if (s.ShowWatchTitle && w.Sub.Length >= 2) a["state"] = w.Sub.Length > 128 ? w.Sub[..125] + "..." : w.Sub;
+            if (show.Length >= 2) a["details"] = Ellipsis(show);
+            if (s.ShowWatchTitle && w.Sub.Length >= 2) a["state"] = Ellipsis(w.Sub);
             // A real progress bar when the site reports where you are, otherwise time since it started.
             if (w.Dur > 60 && w.Pos >= 0 && w.Pos <= w.Dur)
             {
@@ -722,5 +722,13 @@ public sealed class PresenceEngine
         foreach (var k in _customStart.Keys.Where(k => !keys.Contains(k)).ToList()) _customStart.Remove(k);
         foreach (var k in _customErrors.Keys.Where(k => !keys.Contains(k)).ToList()) _customErrors.Remove(k);
         return (cards.Count, skipped);
+    }
+
+    /// <summary>At most 128 characters, ending in "..." when cut; never splits an emoji (surrogate pair).</summary>
+    internal static string Ellipsis(string s)
+    {
+        if (s.Length <= 128) return s;
+        var end = char.IsHighSurrogate(s[124]) ? 124 : 125;
+        return s[..end] + "...";
     }
 }
