@@ -34,6 +34,16 @@ public class PlistTests
     }
 
     [Fact]
+    public void A_bare_dict_without_the_plist_wrapper_is_read()
+    {
+        // GrandSlam's decrypted spd looks like this.
+        var d = PlistFile.ParseDict(Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><dict><key>adsid</key><string>X</string></dict>"));
+        Assert.Equal("X", d.String("adsid"));
+        Assert.Equal("Y", PlistFile.ParseDict(Encoding.UTF8.GetBytes("<dict><key>a</key><string>Y</string></dict>")).String("a"));
+        Assert.ThrowsAny<FormatException>(() => PlistFile.Parse(Encoding.UTF8.GetBytes("<html><body/></html>")));
+    }
+
+    [Fact]
     public void Long_form_booleans_and_a_doctype_are_read()
     {
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n" +

@@ -39,10 +39,18 @@ public static class PlistFile
         using var stream = new MemoryStream(bytes.ToArray(), writable: false);
         using var reader = XmlReader.Create(stream, settings);
         reader.MoveToContent();
-        if (reader.Name != "plist")
-            throw new PlistFormatException("Not a property list.");
-        reader.Read();
-        reader.MoveToContent();
+        // Usually <plist><dict>...</dict></plist>, but some Apple replies (GrandSlam's spd) are a bare <dict>.
+        if (reader.Name == "plist")
+        {
+            reader.Read();
+            reader.MoveToContent();
+        }
+        else if (reader.Name is not ("dict" or "array"))
+        {
+            // The outer element's name is structure, not content; only a short plain one is named.
+            var root = reader.Name.Length <= 20 && reader.Name.All(char.IsAsciiLetterOrDigit) ? reader.Name : "?";
+            throw new PlistFormatException($"Not a property list (outer element <{root}>).");
+        }
         return ReadXmlValue(reader, 0);
     }
 
