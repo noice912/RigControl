@@ -31,6 +31,11 @@ internal sealed class InstallerWindow : Window
     private readonly Button _signOut = new() { Content = "Sign out", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(12, 0, 0, 0) };
     private readonly Button _install = new() { Content = "Install RigControl Mobile", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 16, 0, 8), HorizontalAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DimGray };
+    private readonly TextBlock _imported = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
+    private readonly Button _import = new() { Content = "Import certificate (.p12 + .mobileprovision)...", Padding = new Thickness(12, 6, 12, 6), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 6) };
+    private readonly Button _installImported = new() { Content = "Install with my certificate", Padding = new Thickness(12, 6, 12, 6) };
+    private readonly Button _removeImported = new() { Content = "Remove", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(8, 0, 0, 0) };
+    private readonly Button _installPresigned = new() { Content = "Install a pre-signed .ipa...", Padding = new Thickness(12, 6, 12, 6), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
     private readonly StackPanel _signInPanel = new();
     private readonly StackPanel _signedInPanel = new() { Orientation = Orientation.Horizontal };
     private readonly CancellationTokenSource _closing = new();
@@ -72,7 +77,34 @@ internal sealed class InstallerWindow : Window
 
         root.Children.Add(_install);
         root.Children.Add(_status);
+
+        root.Children.Add(Heading("Or use your own signing certificate"));
+        root.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+            Text = "If Apple won't give this PC a free developer token, sign the app with a certificate and provisioning " +
+                   "profile you already have (from a Mac's Xcode or your Apple developer account). The .p12 password is " +
+                   "used once to open the file and is never saved; the certificate is kept encrypted for your Windows account.",
+        });
+        root.Children.Add(_imported);
+        root.Children.Add(_import);
+        var importedButtons = new StackPanel { Orientation = Orientation.Horizontal };
+        importedButtons.Children.Add(_installImported);
+        importedButtons.Children.Add(_removeImported);
+        root.Children.Add(importedButtons);
+        root.Children.Add(_installPresigned);
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+
+        _import.Click += async (_, _) => await ImportAsync();
+        _installImported.Click += async (_, _) => await InstallImportedAsync();
+        _installPresigned.Click += async (_, _) => await InstallPresignedAsync();
+        _removeImported.Click += (_, _) =>
+        {
+            try { Installer()?.Imported.Delete(); Status("The imported certificate and profile were removed."); }
+            catch (Exception ex) { ShowError(ex); }
+            Refresh();
+        };
 
         _signIn.Click += async (_, _) => await SignInAsync();
         _password.KeyDown += async (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) await SignInAsync(); };
@@ -112,13 +144,39 @@ internal sealed class InstallerWindow : Window
         Refresh();
         await FindPhoneAsync();
         _ = WatchAsync();
-        if (_renew && _phone is not null && Installer()?.CanWorkWithoutPassword() == true)
+        if (!_renew)
+            return;
+        var installer = Installer();
+        var installed = _phone is null ? null : IphoneInstaller.LoadStatus(IphoneHelper.Paths).FirstOrDefault(a => a.Udid == _phone.Udid);
+        if (installed?.Source == InstalledApp.ImportedSource)
+        {
+            // Re-signing only helps with a profile that runs longer than the one on the iPhone.
+            var info = installer?.Imported.Info();
+            if (info is not null && info.Covers(_phone!.Udid) && info.Expires > installed.Expires.AddHours(1))
+            {
+                await InstallImportedAsync();
+                if (_status.Text.StartsWith("Done", StringComparison.Ordinal))
+                    Close();
+            }
+            else
+            {
+                Status($"RigControl Mobile on your iPhone stops opening {installed.Expires.LocalDateTime:g}, when your imported " +
+                       "profile or certificate runs out. Import a renewed .mobileprovision (and .p12 if needed), then press " +
+                       "\"Install with my certificate\".");
+            }
+        }
+        else if (installed?.Source == InstalledApp.PresignedSource)
+        {
+            Status($"The app you installed from a pre-signed .ipa stops opening {installed.Expires.LocalDateTime:g}. " +
+                   "Install a newly signed .ipa before then.");
+        }
+        else if (_phone is not null && installer?.CanWorkWithoutPassword() == true)
         {
             await InstallAsync();
             if (_status.Text.StartsWith("Done", StringComparison.Ordinal))
                 Close();
         }
-        else if (_renew)
+        else
         {
             Status("RigControl Mobile on your iPhone needs signing again. Sign in with your Apple ID and press Install.");
         }
@@ -133,6 +191,18 @@ internal sealed class InstallerWindow : Window
         _account.Text = signedIn ? "Signed in as " + saved!.Session.AppleId : "";
         if (saved is not null && !signedIn) _appleId.Text = saved.Session.AppleId;
         _install.IsEnabled = !_busy && signedIn && _phone is not null;
+        ImportedIdentityInfo? imported = null;
+        try { imported = Installer()?.Imported.Info(); }
+        catch (Exception) { /* shown as "none" */ }
+        _imported.Text = imported is null
+            ? "No certificate imported."
+            : $"{imported.CertificateName} (team {imported.TeamId}), profile \"{imported.ProfileName}\" for {imported.AppId}, " +
+              $"valid until {imported.Expires.LocalDateTime:g}." +
+              (_phone is not null && !imported.Covers(_phone.Udid) ? " This profile doesn't include the connected iPhone." : "");
+        _import.IsEnabled = !_busy;
+        _installImported.IsEnabled = !_busy && imported is not null && _phone is not null;
+        _removeImported.IsEnabled = !_busy && imported is not null;
+        _installPresigned.IsEnabled = !_busy && _phone is not null;
         _signIn.IsEnabled = !_busy;
     }
 
@@ -229,6 +299,75 @@ internal sealed class InstallerWindow : Window
         await FindPhoneAsync();
     }
 
+    private async Task ImportAsync()
+    {
+        var installer = Installer();
+        if (installer is null || _busy) return;
+        var p12Dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose your signing certificate (.p12)",
+            Filter = "Signing certificate (*.p12;*.pfx)|*.p12;*.pfx",
+            CheckFileExists = true,
+        };
+        if (p12Dialog.ShowDialog(this) != true) return;
+        var profileDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose its provisioning profile (.mobileprovision)",
+            Filter = "Provisioning profile (*.mobileprovision)|*.mobileprovision",
+            CheckFileExists = true,
+        };
+        if (profileDialog.ShowDialog(this) != true) return;
+        var password = PasswordDialog.Ask(this, "Password of " + Path.GetFileName(p12Dialog.FileName));
+        if (password is null) return;
+        await Busy("Checking the certificate and profile...", () =>
+        {
+            var p12 = File.ReadAllBytes(p12Dialog.FileName);
+            var profile = File.ReadAllBytes(profileDialog.FileName);
+            var info = installer.Imported.Import(p12, password, profile);
+            Status($"Imported {info.CertificateName}. Apps signed with it open until {info.Expires.LocalDateTime:g}." +
+                   (_phone is not null && !info.Covers(_phone.Udid) ? " Note: this profile doesn't include the connected iPhone." : ""));
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task InstallImportedAsync()
+    {
+        var installer = Installer();
+        if (installer is null || _phone is null || _busy) return;
+        var udid = _phone.Udid;
+        await Busy("Starting...", async () =>
+        {
+            var progress = new Progress<string>(Status);
+            var ipa = await _session.DownloadIpaAsync(progress, _closing.Token);
+            var app = await installer.InstallWithImportedAsync(udid, ipa, progress, _closing.Token);
+            Status($"Done. RigControl Mobile is on your iPhone, signed with your certificate until {app.Expires.LocalDateTime:g}.\n" +
+                   "First time only: on the iPhone open Settings > General > VPN & Device Management, tap your developer " +
+                   "certificate and tap Trust.");
+        });
+        await FindPhoneAsync();
+    }
+
+    private async Task InstallPresignedAsync()
+    {
+        var installer = Installer();
+        if (installer is null || _phone is null || _busy) return;
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose a signed .ipa to install",
+            Filter = "iPhone app (*.ipa)|*.ipa",
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var udid = _phone.Udid;
+        await Busy("Starting...", async () =>
+        {
+            var progress = new Progress<string>(Status);
+            var app = await installer.InstallPresignedAsync(udid, dialog.FileName, progress, _closing.Token);
+            Status($"Done. The app is on your iPhone; its signature runs until {app.Expires.LocalDateTime:g}.");
+        });
+        await FindPhoneAsync();
+    }
+
     private async Task Busy(string start, Func<Task> work)
     {
         _busy = true;
@@ -262,6 +401,58 @@ internal sealed class InstallerWindow : Window
     {
         _session.Log("iPhone installer: " + ex.GetType().Name + ": " + ex.Message);
         Status(ex.Message);
+    }
+}
+
+/// <summary>Asks for a .p12 password; returns it as a char[] the caller wipes, or null when cancelled.</summary>
+[SupportedOSPlatform("windows")]
+internal static class PasswordDialog
+{
+    public static char[]? Ask(Window owner, string title)
+    {
+        var dialog = new Window
+        {
+            Owner = owner,
+            Title = title,
+            Width = 380,
+            SizeToContent = SizeToContent.Height,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        var panel = new StackPanel { Margin = new Thickness(16) };
+        panel.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+            Text = "The password you set when exporting the certificate. It's used once to open the file and isn't saved.",
+        });
+        var box = new PasswordBox { Padding = new Thickness(4), Margin = new Thickness(0, 0, 0, 10) };
+        panel.Children.Add(box);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        var ok = new Button { Content = "Open", IsDefault = true, Padding = new Thickness(12, 4, 12, 4) };
+        var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(8, 0, 0, 0) };
+        ok.Click += (_, _) => dialog.DialogResult = true;
+        buttons.Children.Add(ok);
+        buttons.Children.Add(cancel);
+        panel.Children.Add(buttons);
+        dialog.Content = panel;
+        dialog.Loaded += (_, _) => box.Focus();
+        if (dialog.ShowDialog() != true)
+            return null;
+        var secure = box.SecurePassword;
+        var ptr = Marshal.SecureStringToGlobalAllocUnicode(secure);
+        try
+        {
+            var chars = new char[secure.Length];
+            Marshal.Copy(ptr, chars, 0, chars.Length);
+            return chars;
+        }
+        finally
+        {
+            Marshal.ZeroFreeGlobalAllocUnicode(ptr);
+            secure.Dispose();
+            box.Clear();
+        }
     }
 }
 

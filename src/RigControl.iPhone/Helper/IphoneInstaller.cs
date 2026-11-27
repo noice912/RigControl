@@ -16,10 +16,18 @@ public sealed record InstallerPaths(string Root)
     public string Work => Path.Combine(Root, "work");
     public string Adi => Path.Combine(Root, "adi");
     public string Status => Path.Combine(Root, "status.json");
+    public string Imported => Path.Combine(Root, "imported");
 }
 
 /// <summary>What was installed on one iPhone and when its signature runs out. Nothing secret.</summary>
-public sealed record InstalledApp(string Udid, string DeviceName, string BundleId, string Version, DateTimeOffset SignedAt, DateTimeOffset Expires);
+/// <param name="Source">How it was signed: "appleid" (free Apple ID), "imported" (the person's .p12 and profile) or "presigned".</param>
+public sealed record InstalledApp(string Udid, string DeviceName, string BundleId, string Version, DateTimeOffset SignedAt,
+    DateTimeOffset Expires, string Source = InstalledApp.AppleIdSource)
+{
+    public const string AppleIdSource = "appleid";
+    public const string ImportedSource = "imported";
+    public const string PresignedSource = "presigned";
+}
 
 /// <summary>
 /// The whole job: sign in once (password and code typed into this helper only), then for an iPhone: register it with
@@ -37,6 +45,9 @@ public sealed class IphoneInstaller(
     public static readonly TimeSpan RenewWhenLeft = TimeSpan.FromDays(1);
 
     private readonly SessionStore _store = new(paths.Account, protector);
+
+    /// <summary>The person's own certificate and profile, when they imported them.</summary>
+    public ImportedIdentityStore Imported { get; } = new(paths.Imported, protector);
 
     public StoredAppleAccount? SavedAccount() => _store.Load(null);
 
@@ -125,6 +136,104 @@ public sealed class IphoneInstaller(
         SaveStatus(paths, record);
         progress?.Report("Done. RigControl Mobile is on your iPhone.");
         return record;
+    }
+
+    /// <summary>
+    /// Signs <paramref name="ipaPath"/> with the imported .p12 and profile (no Apple sign-in) and installs it on the
+    /// iPhone <paramref name="udid"/>, which the profile must list.
+    /// </summary>
+    public async Task<InstalledApp> InstallWithImportedAsync(string udid, string ipaPath, IProgress<string>? progress, CancellationToken ct)
+    {
+        var loaded = Imported.Load() ?? throw new InvalidDataException("Import a certificate (.p12) and provisioning profile first.");
+        using var certificate = loaded.Certificate;
+        var info = ImportedIdentityStore.Describe(certificate, Signing.ProvisioningProfile.Parse(loaded.Profile));
+        if (info.Expires <= DateTimeOffset.UtcNow)
+            throw new InvalidDataException($"The imported certificate or profile expired on {info.Expires.LocalDateTime:g}. Import a renewed one.");
+
+        var device = await FindDeviceAsync(udid, progress, ct).ConfigureAwait(false);
+        if (!info.Covers(udid))
+            throw new InvalidDataException("The imported provisioning profile doesn't include this iPhone. Add the iPhone's UDID " +
+                $"({udid}) to the profile in your Apple developer account, download it again and import it.");
+
+        var bundles = IpaInspector.ListBundles(ipaPath);
+        var main = bundles.FirstOrDefault(b => !b.IsExtension) ?? throw new InvalidDataException("The phone app file has no app inside.");
+        var mainId = ImportedIdentityStore.BundleIdFor(info, main.OriginalBundleId);
+        // One profile for every bundle: an explicit App ID covers only the app itself, so extensions need a wildcard.
+        var profiles = bundles.ToDictionary(b => b.OriginalBundleId, _ => loaded.Profile, StringComparer.Ordinal);
+
+        await SignAndInstallAsync(udid, ipaPath, certificate, mainId, profiles, progress, ct).ConfigureAwait(false);
+        var record = new InstalledApp(udid, device.Name, mainId, ReadVersion(ipaPath), DateTimeOffset.UtcNow, info.Expires,
+            InstalledApp.ImportedSource);
+        SaveStatus(paths, record);
+        progress?.Report("Done. RigControl Mobile is on your iPhone.");
+        return record;
+    }
+
+    /// <summary>Installs an .ipa that is already signed (nothing is changed in it) on the iPhone <paramref name="udid"/>.</summary>
+    public async Task<InstalledApp> InstallPresignedAsync(string udid, string ipaPath, IProgress<string>? progress, CancellationToken ct)
+    {
+        var device = await FindDeviceAsync(udid, progress, ct).ConfigureAwait(false);
+        var bundles = IpaInspector.ListBundles(ipaPath);
+        var main = bundles.FirstOrDefault(b => !b.IsExtension) ?? throw new InvalidDataException("That .ipa has no app inside.");
+        var embedded = ReadEntry(ipaPath, main.Path + "/embedded.mobileprovision", Signing.ProvisioningProfile.MaxSize);
+        var expires = (embedded is null ? null : ImportedIdentityStore.ProfileExpiry(embedded)) ?? DateTimeOffset.UtcNow.AddDays(7);
+
+        progress?.Report("Installing on your iPhone...");
+        var install = new Progress<InstallProgress>(p => progress?.Report($"{p.Stage} ({p.Percent}%)"));
+        await devices.InstallAsync(udid, ipaPath, install, ct).ConfigureAwait(false);
+        var record = new InstalledApp(udid, device.Name, main.OriginalBundleId, ReadVersion(ipaPath), DateTimeOffset.UtcNow,
+            expires, InstalledApp.PresignedSource);
+        SaveStatus(paths, record);
+        progress?.Report("Done. The app is on your iPhone.");
+        return record;
+    }
+
+    private async Task<DeviceInfo> FindDeviceAsync(string udid, IProgress<string>? progress, CancellationToken ct)
+    {
+        progress?.Report("Looking at your iPhone...");
+        var device = (await devices.ListAsync(ct).ConfigureAwait(false)).FirstOrDefault(d => d.Udid == udid)
+            ?? throw new DeviceException("That iPhone isn't connected any more. Plug it in and try again.");
+        if (await devices.DeveloperModeEnabledAsync(udid, ct).ConfigureAwait(false) == false)
+            throw new DeviceException("Turn on Developer Mode on your iPhone first: Settings > Privacy & Security > " +
+                "Developer Mode, then restart the iPhone and confirm.");
+        return device;
+    }
+
+    private async Task SignAndInstallAsync(string udid, string ipaPath, System.Security.Cryptography.X509Certificates.X509Certificate2 certificate,
+        string mainId, IReadOnlyDictionary<string, byte[]> profiles, IProgress<string>? progress, CancellationToken ct)
+    {
+        Directory.CreateDirectory(paths.Work);
+        var signed = Path.Combine(paths.Work, "RigControl-Mobile-signed.ipa");
+        try
+        {
+            progress?.Report("Signing the app for your iPhone...");
+            await IpaSigner.SignAsync(new SignRequest(ipaPath, signed, certificate, mainId, profiles), progress, ct).ConfigureAwait(false);
+            progress?.Report("Installing on your iPhone...");
+            var install = new Progress<InstallProgress>(p => progress?.Report($"{p.Stage} ({p.Percent}%)"));
+            await devices.InstallAsync(udid, signed, install, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(signed); } catch (IOException) { }
+        }
+    }
+
+    private static byte[]? ReadEntry(string ipaPath, string name, int max)
+    {
+        try
+        {
+            using var zip = System.IO.Compression.ZipFile.OpenRead(ipaPath);
+            var entry = zip.GetEntry(name);
+            if (entry is null || entry.Length > max) return null;
+            using var s = entry.Open();
+            using var ms = new MemoryStream();
+            s.CopyTo(ms);
+            return ms.ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The profile's ExpirationDate (the CMS content is the profile plist).</summary>

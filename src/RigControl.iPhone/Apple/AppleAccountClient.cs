@@ -72,21 +72,15 @@ public sealed class AppleAccountClient
         try
         {
             var username = NormalizeAppleId(appleId);
-            // A -22410 at the token step means the sign-in was made under a device identification Apple no longer
-            // pairs with this client: set the identification up again and sign in from the start, once.
-            for (var pass = 0; ; pass++)
+            try
             {
-                try
-                {
-                    return await SignInPassAsync(username, passwordHash, prompt, cancellationToken).ConfigureAwait(false);
-                }
-                // A fresh identity and a second full sign-in didn't help (rc.13) and cost another code: stop at once.
-                catch (AnisetteRepairNeeded need) when (need.Ec == -22410 && need.Stage == "apptokens")
-                {
-                    _ = pass;
-                    throw new AppleException("Apple accepted the password and code but refused the developer token " +
-                        "(code -22410 at the apptokens step).", -22410);
-                }
+                return await SignInPassAsync(username, passwordHash, prompt, cancellationToken).ConfigureAwait(false);
+            }
+            // Apple refuses the free developer token to Windows CoreADI clients; trying other identities or a fresh
+            // sign-in doesn't help and costs codes. Say so and point to the import option.
+            catch (AnisetteRepairNeeded need) when (need.Ec == -22410 && need.Stage == "apptokens")
+            {
+                throw new AppleException(WindowsTokenBlocked + " (Apple code -22410.)", -22410);
             }
         }
         finally
@@ -147,6 +141,16 @@ public sealed class AppleAccountClient
 
     /// <summary>AppleException.Code for Apple's "busy" answers (HTTP 503/429).</summary>
     internal const int BusyCode = 503;
+
+    /// <summary>
+    /// Shown when Apple signs the person in but won't issue the free Xcode developer token (-22410 / -80046 at
+    /// "apptokens"): since Apple's October 2026 change its server refuses that token to Windows CoreADI clients
+    /// (rileytestut/AltSign#61, nab138/iloader#1304). The installer window shows the import option right below.
+    /// </summary>
+    public const string WindowsTokenBlocked =
+        "Your Apple ID signed in, but Apple's server currently won't give a free developer token to Windows sign-in " +
+        "clients (Apple changed this in October 2026; every Windows sideloading tool is affected). Use \"Import " +
+        "certificate (.p12 + .mobileprovision)\" below to sign the app with your own certificate instead.";
 
     internal static string NormalizeAppleId(string? appleId)
     {
@@ -752,8 +756,7 @@ public sealed class AppleAccountClient
             }
         }
         if (response is null || accepted is null)
-            throw new AppleException("Apple accepted the password and code but wouldn't give RigControl the developer token (" +
-                string.Join("; ", refused) + ").", -80046);
+            throw new AppleException(WindowsTokenBlocked + " (Apple: " + string.Join("; ", refused) + ".)", -80046);
         LastTokenClientInfo = accepted;
 
         var et = response.Data("et") ?? throw Malformed("et");
@@ -787,11 +790,9 @@ public sealed class AppleAccountClient
     /// <summary>Descriptions tried for the developer token, most likely first.</summary>
     internal static IEnumerable<string> TokenClientInfos(string? provider)
     {
-        // The identification's own client first: Apple wants them to match.
-        var list = new List<string>();
-        if (provider is not null) list.Add(provider);
-        list.Add(RigControl.iPhone.Anisette.CoreAdiAnisette.MacAkdClientInfo);
-        return list.Distinct(StringComparer.Ordinal);
+        // Only the identification's own client: Apple wants them to match, and trying other descriptions
+        // (rc.8-rc.14) never got the token.
+        return provider is null ? [] : [provider];
     }
 
     private static string Short(string clientInfo) =>

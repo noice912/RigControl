@@ -89,7 +89,7 @@ internal static class IphoneHelper
 
 /// <summary>DPAPI for the current Windows user, with a fixed purpose so other RigControl secrets can't be swapped in.</summary>
 [SupportedOSPlatform("windows")]
-internal sealed class IphoneSecretProtector : ISecretProtector
+public sealed class IphoneSecretProtector : ISecretProtector
 {
     private static readonly byte[] Purpose = "RigControl.iPhoneInstaller.v1"u8.ToArray();
     private readonly RigControl.Core.Platform.DpapiSecretProtector _dpapi = new();
