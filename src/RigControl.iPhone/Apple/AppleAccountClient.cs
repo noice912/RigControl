@@ -67,6 +67,8 @@ public sealed class AppleAccountClient
             Array.Clear(password);
         }
 
+        _passwordProofs = 0;
+        _codePrompts = 0;
         try
         {
             var username = NormalizeAppleId(appleId);
@@ -267,6 +269,11 @@ public sealed class AppleAccountClient
             CryptographicOperations.ZeroMemory(passwordKey);
         }
 
+        // One sign-in sends the password proof only a few times, whatever Apple answers (retries, repairs, a fresh
+        // start): many proofs in a row could get the Apple ID locked.
+        if (++_passwordProofs > MaxPasswordProofs)
+            throw new AppleException("Apple kept asking RigControl to sign in again, so it stopped to keep your Apple ID safe. " +
+                "Wait about 15 minutes, then try once more.");
         try
         {
             var complete = await GsaRequestAsync(anisette, new PlistDict
@@ -573,8 +580,16 @@ public sealed class AppleAccountClient
             : AppleErrors.Describe(ParseCode(error.Code), error.Message), ParseCode(error?.Code));
     }
 
-    private static async Task<SecondFactorAnswer> AskAsync(ISecondFactorPrompt prompt, SecondFactorRequest request, CancellationToken ct)
+    private const int MaxPasswordProofs = 5;
+    private const int MaxCodePrompts = 3;
+    private int _passwordProofs;
+    private int _codePrompts;
+
+    private async Task<SecondFactorAnswer> AskAsync(ISecondFactorPrompt prompt, SecondFactorRequest request, CancellationToken ct)
     {
+        if (++_codePrompts > MaxCodePrompts)
+            throw new AppleException("Apple asked for a verification code too many times in one sign-in, so RigControl stopped. " +
+                "Wait about 15 minutes, then try once more.");
         var answer = await prompt.AskAsync(request, ct).ConfigureAwait(false);
         if (answer is null || (answer.Code is null && answer.SmsPhone is null))
             throw new OperationCanceledException("The Apple ID sign-in was cancelled.");

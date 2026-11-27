@@ -23,8 +23,7 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
 
     private readonly ICoreAdi _adi;
     private readonly HttpClient _http;
-    private string _deviceId;
-    private string _localUser;
+    private (string DeviceId, string LocalUser) _id;
     private readonly string? _identityFile;
     private readonly string _clientInfo;
     private readonly Func<DateTimeOffset> _now;
@@ -43,11 +42,18 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
     {
         _adi = adi;
         _http = http;
-        _deviceId = deviceId;
-        _localUser = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(deviceId + "|" + userKey)));
+        _id = (deviceId, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(deviceId + "|" + userKey))));
         _identityFile = identityFile;
         if (identityFile is not null)
+        {
+            var created = !File.Exists(identityFile);
             UseIdentity(LoadOrMakeIdentity(identityFile, renew: false));
+            // A new identity must not reuse a setup made under another one (Apple answers -22410): start clean.
+            if (created)
+            {
+                try { _adi.EraseProvisioning(MachineDsId); } catch (AnisetteException) { /* nothing to erase */ }
+            }
+        }
         // Since October 2026 Apple only accepts a sign-in whose X-MMe-Client-Info and User-Agent are exactly those of
         // the client that made the device identification. For Windows CoreADI (iTunes ADI) that is this pair, as used by
         // AltStore/AltSign and iloader's fixes (tested end to end with free Apple IDs). Not the real Windows version.
@@ -84,6 +90,7 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
 
     private Dictionary<string, string> Build(byte[] mid, byte[] otp, ulong routing)
     {
+        var who = _id; // one read: device id and local user always belong together
         var tz = TimeZoneInfo.Local;
         var iana = TimeZoneInfo.TryConvertWindowsIdToIanaId(tz.Id, out var id) ? id : "UTC";
         var locale = CultureInfo.CurrentCulture.Name.Replace('-', '_');
@@ -93,9 +100,9 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
             ["X-Apple-I-MD"] = Convert.ToBase64String(otp),
             ["X-Apple-I-MD-M"] = Convert.ToBase64String(mid),
             ["X-Apple-I-MD-RINFO"] = routing.ToString(CultureInfo.InvariantCulture),
-            ["X-Apple-I-MD-LU"] = _localUser,
+            ["X-Apple-I-MD-LU"] = who.LocalUser,
             ["X-Apple-I-SRL-NO"] = "0",
-            ["X-Mme-Device-Id"] = _deviceId,
+            ["X-Mme-Device-Id"] = who.DeviceId,
             ["X-Mme-Client-Info"] = _clientInfo,
             ["User-Agent"] = WindowsITunesUserAgent,
             ["X-Apple-I-Client-Time"] = _now().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
@@ -187,8 +194,7 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
 
     private void UseIdentity(byte[] identity)
     {
-        _deviceId = new Guid(identity, bigEndian: true).ToString("D").ToUpperInvariant();
-        _localUser = Convert.ToHexString(SHA256.HashData(identity));
+        _id = (new Guid(identity, bigEndian: true).ToString("D").ToUpperInvariant(), Convert.ToHexString(SHA256.HashData(identity)));
     }
 
     private static byte[] LoadOrMakeIdentity(string file, bool renew)
@@ -198,7 +204,10 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
             if (!renew && File.Exists(file) && new FileInfo(file).Length == 16)
                 return File.ReadAllBytes(file);
         }
-        catch (IOException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (!renew) throw new AnisetteException("RigControl couldn't read this PC's Apple device identity file.", 0, ex);
+        }
         var identity = RandomNumberGenerator.GetBytes(16);
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         var temp = file + ".new";
@@ -208,7 +217,7 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
     }
 
     /// <summary>The device id sent to Apple (for tests and the log).</summary>
-    public string DeviceId => _deviceId;
+    public string DeviceId => _id.DeviceId;
 
     /// <summary>
     /// Apple's status 433 or -22410: forget this machine's setup, take a new anisette identity (device id and local user),
@@ -219,9 +228,9 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
         await _provisioning.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            _adi.EraseProvisioning(MachineDsId);
             if (_identityFile is not null)
                 UseIdentity(LoadOrMakeIdentity(_identityFile, renew: true));
-            _adi.EraseProvisioning(MachineDsId);
         }
         finally
         {
@@ -244,8 +253,9 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
         var request = new HttpRequestMessage(method, url);
         request.Headers.TryAddWithoutValidation("User-Agent", WindowsITunesUserAgent);
         request.Headers.TryAddWithoutValidation("X-Mme-Client-Info", _clientInfo);
-        request.Headers.TryAddWithoutValidation("X-Mme-Device-Id", _deviceId);
-        request.Headers.TryAddWithoutValidation("X-Apple-I-MD-LU", _localUser);
+        var id = _id;
+        request.Headers.TryAddWithoutValidation("X-Mme-Device-Id", id.DeviceId);
+        request.Headers.TryAddWithoutValidation("X-Apple-I-MD-LU", id.LocalUser);
         request.Headers.TryAddWithoutValidation("X-Apple-I-SRL-NO", "0");
         request.Headers.TryAddWithoutValidation("X-Apple-I-Client-Time",
             _now().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
