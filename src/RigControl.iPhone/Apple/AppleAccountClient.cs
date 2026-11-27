@@ -87,7 +87,7 @@ public sealed class AppleAccountClient
             }
 
             var (token, expires) = await WithAnisetteRepairAsync(() => GetAppTokenAsync(login, cancellationToken), cancellationToken).ConfigureAwait(false);
-            var session = new AppleSession(username, login.Adsid, login.Dsid, token, expires);
+            var session = new AppleSession(username, login.Adsid, login.Dsid, token, expires, LastTokenClientInfo);
             var (pet, petExpires) = ReadPet(login.Spd);
             return new AppleSignIn(session, pet, petExpires, login.Spd.String("fn"), login.Spd.String("ln"));
         }
@@ -309,7 +309,8 @@ public sealed class AppleAccountClient
         return cpd;
     }
 
-    private async Task<PlistDict> GsaRequestAsync(IReadOnlyDictionary<string, string> anisette, PlistDict request, CancellationToken ct)
+    private async Task<PlistDict> GsaRequestAsync(IReadOnlyDictionary<string, string> anisette, PlistDict request, CancellationToken ct,
+        string? clientInfoOverride = null)
     {
         var body = new PlistDict
         {
@@ -323,9 +324,8 @@ public sealed class AppleAccountClient
         message.Content.Headers.TryAddWithoutValidation("Content-Type", "text/x-xml-plist");
         message.Headers.TryAddWithoutValidation("Accept", "*/*");
         message.Headers.TryAddWithoutValidation("User-Agent", GsaUserAgent);
-        // Every GrandSlam request (sign-in and the app token) names Apple's AuthKit/akd as the asking app, as Apple's
-        // own sign-in daemon does; the iCloud identity is refused for developer tokens (-80046 at "apptokens").
-        var clientInfo = AppleHttp.AuthKitClientInfo(AppleHttp.Find(anisette, "X-Mme-Client-Info"));
+        // Sign-in: the provider's own description (Apple's Windows one). The app-token step passes its candidates.
+        var clientInfo = clientInfoOverride ?? AppleHttp.Find(anisette, "X-Mme-Client-Info");
         if (clientInfo is not null)
             message.Headers.TryAddWithoutValidation("X-MMe-Client-Info", clientInfo);
 
@@ -426,8 +426,9 @@ public sealed class AppleAccountClient
         if (ec != 0)
         {
             var text = AppleErrors.Describe(ec, status.String("em"));
-            if (ec is -80045 or -80046)
-                text += $" (Apple code {ec} at the {stage} step{(status.String("em") is { Length: > 0 and < 300 } em ? ": " + em : "")})";
+            text += ec is -80045 or -80046
+                ? $" (Apple code {ec} at the {stage} step{(status.String("em") is { Length: > 0 and < 300 } em ? ": " + em : "")})"
+                : $" [at the {stage} step]";
             throw new AppleException(text, (int)Math.Clamp(ec, int.MinValue, int.MaxValue));
         }
     }
@@ -662,17 +663,40 @@ public sealed class AppleAccountClient
         var c = login.Spd.Data("c") ?? throw Malformed("c");
         if (sk.Length != 32 || c.Length > 4096)
             throw Malformed("sk");
-        var anisette = await AppleHttp.AnisetteAsync(_anisette, ct).ConfigureAwait(false);
-        var response = await GsaRequestAsync(anisette, new PlistDict
+        // Apple gives the Xcode token only to some client descriptions, and which ones depends on the device
+        // identification. Asking again sends no password (it uses the sign-in's own token), so the candidates are
+        // tried in turn and the first one Apple accepts is kept for developer services.
+        PlistDict? response = null;
+        string? accepted = null;
+        var refused = new List<string>();
+        var provider = AppleHttp.Find(await AppleHttp.AnisetteAsync(_anisette, ct).ConfigureAwait(false), "X-Mme-Client-Info");
+        foreach (var candidate in TokenClientInfos(provider))
         {
-            ["app"] = new List<object> { AppleHttp.XcodeApp },
-            ["c"] = c,
-            ["checksum"] = GsaCrypto.AppTokenChecksum(sk, login.Adsid, AppleHttp.XcodeApp),
-            ["cpd"] = ClientProvidedData(anisette),
-            ["o"] = "apptokens",
-            ["t"] = login.IdmsToken,
-            ["u"] = login.Adsid,
-        }, ct).ConfigureAwait(false);
+            var anisette = await AppleHttp.AnisetteAsync(_anisette, ct).ConfigureAwait(false);
+            try
+            {
+                response = await GsaRequestAsync(anisette, new PlistDict
+                {
+                    ["app"] = new List<object> { AppleHttp.XcodeApp },
+                    ["c"] = c,
+                    ["checksum"] = GsaCrypto.AppTokenChecksum(sk, login.Adsid, AppleHttp.XcodeApp),
+                    ["cpd"] = ClientProvidedData(anisette),
+                    ["o"] = "apptokens",
+                    ["t"] = login.IdmsToken,
+                    ["u"] = login.Adsid,
+                }, ct, candidate).ConfigureAwait(false);
+                accepted = candidate;
+                break;
+            }
+            catch (AppleException e) when (e is not AnisetteRepairNeeded && e.Code is not (-20101 or -20209 or -20210))
+            {
+                refused.Add($"{Short(candidate)}: {(e.Code != 0 ? e.Code.ToString(CultureInfo.InvariantCulture) : e.Message)}");
+            }
+        }
+        if (response is null || accepted is null)
+            throw new AppleException("Apple accepted the password and code but wouldn't give RigControl the developer token (" +
+                string.Join("; ", refused) + ").", -80046);
+        LastTokenClientInfo = accepted;
 
         var et = response.Data("et") ?? throw Malformed("et");
         var plain = GsaCrypto.DecryptAppToken(sk, et);
@@ -698,6 +722,22 @@ public sealed class AppleAccountClient
         var value = Text(app.String("token"), "token", 8192);
         return (value, ExpiryOf(app) ?? DateTimeOffset.UtcNow.AddHours(24));
     }
+
+    /// <summary>The description Apple accepted for the last developer token (saved with the session).</summary>
+    internal string? LastTokenClientInfo { get; private set; }
+
+    /// <summary>Descriptions tried for the developer token, most likely first.</summary>
+    internal static IEnumerable<string> TokenClientInfos(string? provider)
+    {
+        var list = new List<string> { RigControl.iPhone.Anisette.CoreAdiAnisette.MacAkdClientInfo };
+        if (AppleHttp.AuthKitClientInfo(provider) is { } authKit) list.Add(authKit);
+        if (provider is not null) list.Add(provider);
+        return list.Distinct(StringComparer.Ordinal);
+    }
+
+    private static string Short(string clientInfo) =>
+        clientInfo.StartsWith("<MacBookPro", StringComparison.Ordinal) ? "Mac" :
+        clientInfo.Contains("AuthKit/1 (com.apple.akd", StringComparison.Ordinal) ? "Windows+AuthKit" : "Windows";
 
     /// <summary>The PET (password-equivalent token) Apple may include in spd, with its expiry.</summary>
     internal static (string? Pet, DateTimeOffset? Expires) ReadPet(PlistDict spd)

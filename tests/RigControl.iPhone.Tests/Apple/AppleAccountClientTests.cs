@@ -105,7 +105,7 @@ public class AppleAccountClientTests
         var wrong = "not-the-password".ToCharArray();
         var e = await Assert.ThrowsAsync<AppleException>(() => client.SignInAsync(AppleId, wrong, new FakePrompt()));
         Assert.Equal(-20101, e.Code);
-        Assert.Equal("The Apple ID or password is wrong.", e.Message);
+        Assert.StartsWith("The Apple ID or password is wrong.", e.Message);
         Assert.All(wrong, c => Assert.Equal('\0', c));
     }
 

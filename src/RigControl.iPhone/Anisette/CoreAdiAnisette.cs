@@ -52,7 +52,7 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
     /// descriptions get 503. Apple only gives the Xcode developer token to the AuthKit (akd) client, so this one is
     /// used for sign-in, codes, the token and developer services. Machine setup (provisioning) keeps <see cref="ClientInfo"/>.
     /// </summary>
-    public const string SignInClientInfo = "<MacBookPro15,1> <Mac OS X;10.15.2;19C57> <com.apple.AuthKit/1 (com.apple.akd/1.0)>";
+    public const string MacAkdClientInfo = "<MacBookPro15,1> <Mac OS X;10.15.2;19C57> <com.apple.AuthKit/1 (com.apple.akd/1.0)>";
 
     public async Task<IReadOnlyDictionary<string, string>> GetHeadersAsync(CancellationToken cancellationToken = default)
     {
@@ -77,7 +77,8 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
             ["X-Apple-I-MD-LU"] = _localUser,
             ["X-Apple-I-SRL-NO"] = "0",
             ["X-Mme-Device-Id"] = _deviceId,
-            ["X-Mme-Client-Info"] = SignInClientInfo,
+            // Sign-in and codes: Apple's Windows (iCloud) description, accepted with this PC's own identification.
+            ["X-Mme-Client-Info"] = _clientInfo,
             ["X-Apple-I-Client-Time"] = _now().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
             ["X-Apple-I-TimeZone"] = iana,
             ["X-Apple-Locale"] = locale,

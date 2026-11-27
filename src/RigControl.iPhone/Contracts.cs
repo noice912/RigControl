@@ -65,7 +65,9 @@ namespace RigControl.iPhone.Apple
     }
 
     /// <summary>A signed-in account, enough for developer services. No password inside.</summary>
-    public sealed record AppleSession(string AppleId, string Adsid, string Dsid, string XcodeToken, DateTimeOffset Expires);
+    /// <param name="ClientInfo">The X-MMe-Client-Info Apple accepted for the developer token (used for developer services).</param>
+    public sealed record AppleSession(string AppleId, string Adsid, string Dsid, string XcodeToken, DateTimeOffset Expires,
+        string? ClientInfo = null);
 
     public sealed record DeveloperTeam(string Id, string Name, string Type);
 

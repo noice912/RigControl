@@ -67,10 +67,14 @@ internal sealed class FakeGsaServer
     private HttpResponseMessage GsService(Recorded r)
     {
         Assert.Equal("text/x-xml-plist", r.Header("Content-Type"));
-        Assert.StartsWith("<MacBookPro13,2>", r.Header("X-MMe-Client-Info"));
         var body = PlistFile.ParseDict(r.Body);
         Assert.Equal("1.0.1", body.Dict("Header")!.String("Version"));
         var req = body.Dict("Request")!;
+        // Sign-in uses the provider's description; the token step tries its own candidates first.
+        if (req.String("o") == "apptokens")
+            Assert.StartsWith("<MacBookPro", r.Header("X-MMe-Client-Info"));
+        else
+            Assert.StartsWith("<MacBookPro13,2>", r.Header("X-MMe-Client-Info"));
         var cpd = req.Dict("cpd")!;
         Assert.Equal("true", cpd.String("bootstrap"));
         Assert.Equal("iCloud", cpd.String("svct"));

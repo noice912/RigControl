@@ -397,7 +397,8 @@ public sealed class DeveloperServicesClient
         foreach (var (k, v) in anisette)
             if (!string.Equals(k, "X-Mme-Client-Info", StringComparison.OrdinalIgnoreCase))
                 message.Headers.TryAddWithoutValidation(k, v);
-        var clientInfo = AppleHttp.AuthKitClientInfo(AppleHttp.Find(anisette, "X-Mme-Client-Info"));
+        // The description Apple accepted for the developer token, else the AuthKit form of the provider's.
+        var clientInfo = _session.ClientInfo ?? AppleHttp.AuthKitClientInfo(AppleHttp.Find(anisette, "X-Mme-Client-Info"));
         if (clientInfo is not null)
             message.Headers.TryAddWithoutValidation("X-Mme-Client-Info", clientInfo);
         message.Headers.TryAddWithoutValidation("Accept", "text/x-xml-plist");
