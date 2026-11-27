@@ -48,6 +48,8 @@ internal sealed class InstallerWindow : Window
         _session = session;
         _renew = renew;
         _update = update;
+        // A background update never takes the keyboard away from a game.
+        if (update) ShowActivated = false;
         Title = "RigControl - Install on iPhone";
         Width = 520;
         SizeToContent = SizeToContent.Height;
@@ -199,8 +201,15 @@ internal sealed class InstallerWindow : Window
     private async Task UpdateAsync()
     {
         var plan = await PlanUpdateAsync(_session);
+        if (plan is not null && _phone?.Udid != plan.Value.Udid)
+        {
+            // Install on exactly the iPhone the plan chose.
+            await FindPhoneAsync(plan.Value.Udid);
+        }
         if (plan is null || _phone is null || _phone.Udid != plan.Value.Udid)
         {
+            if (plan is not null)
+                IphoneInstaller.NoteUpdateTry(IphoneHelper.Paths, plan.Value.Udid, InstallerSession.CurrentRelease(), DateTimeOffset.UtcNow);
             // The iPhone went away (or another one is in front) since the plan was made: try again later.
             Close();
             return;
@@ -246,7 +255,7 @@ internal sealed class InstallerWindow : Window
                     return (app.Udid, false);
             }
             // Note it, so the main app doesn't start this check again for 3 hours.
-            foreach (var app in due.Where(a => reachable.Any(d => d.Udid == a.Udid)))
+            foreach (var app in due)
                 IphoneInstaller.NoteUpdateTry(IphoneHelper.Paths, app.Udid, release, now);
             session.Log("iPhone: a newer RigControl Mobile is ready, but no reachable iPhone can get it without you " +
                         "(no saved certificate or sign-in for it).");
@@ -255,6 +264,14 @@ internal sealed class InstallerWindow : Window
         catch (Exception ex)
         {
             session.Log("iPhone: phone app update check skipped: " + ex.GetType().Name + ": " + ex.Message);
+            // Noted for every iPhone still due, so the main app waits 3 hours before checking again.
+            try
+            {
+                var release = InstallerSession.CurrentRelease();
+                foreach (var app in IphoneInstaller.LoadStatus(IphoneHelper.Paths).Where(a => a.UpdateDue(release)))
+                    IphoneInstaller.NoteUpdateTry(IphoneHelper.Paths, app.Udid, release, DateTimeOffset.UtcNow);
+            }
+            catch (Exception) { /* best effort */ }
             return null;
         }
     }
@@ -283,7 +300,7 @@ internal sealed class InstallerWindow : Window
         _signIn.IsEnabled = !_busy;
     }
 
-    private async Task FindPhoneAsync()
+    private async Task FindPhoneAsync(string? udid = null)
     {
         try
         {
@@ -291,7 +308,8 @@ internal sealed class InstallerWindow : Window
             var due = _update
                 ? IphoneInstaller.LoadStatus(IphoneHelper.Paths).Where(a => a.UpdateDue(InstallerSession.CurrentRelease())).Select(a => a.Udid).ToHashSet()
                 : [];
-            _phone = list.Where(d => due.Contains(d.Udid)).OrderByDescending(d => d.Usb).FirstOrDefault()
+            _phone = (udid is null ? null : list.FirstOrDefault(d => d.Udid == udid))
+                     ?? list.Where(d => due.Contains(d.Udid)).OrderByDescending(d => d.Usb).FirstOrDefault()
                      ?? list.FirstOrDefault(d => d.Usb) ?? list.FirstOrDefault();
             var installed = _phone is null ? null : IphoneInstaller.LoadStatus(IphoneHelper.Paths).FirstOrDefault(a => a.Udid == _phone.Udid);
             _device.Text = _phone is null
