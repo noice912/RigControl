@@ -98,7 +98,7 @@ public class AnisetteTests
         Assert.Equal("17106176", h["X-Apple-I-MD-RINFO"]);
         Assert.Equal("2026-11-26T09:00:00Z", h["X-Apple-I-Client-Time"]);
         Assert.Equal(64, h["X-Apple-I-MD-LU"].Length);
-        Assert.Equal(CoreAdiAnisette.WindowsITunesClientInfo, h["X-Mme-Client-Info"]);
+        Assert.Equal(CoreAdiAnisette.ITunesClientInfo(Environment.OSVersion.Version.Build), h["X-Mme-Client-Info"]);
         Assert.Equal(CoreAdiAnisette.WindowsITunesUserAgent, h["User-Agent"]);
         Assert.Empty(apple.Requests);
     }

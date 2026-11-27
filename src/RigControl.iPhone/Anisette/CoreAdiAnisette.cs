@@ -58,14 +58,22 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
         // the client that made the device identification. For Windows CoreADI (iTunes ADI) that is this pair, as used by
         // AltStore/AltSign and iloader's fixes (tested end to end with free Apple IDs). Not the real Windows version.
         _ = osDescription;
-        _clientInfo = WindowsITunesClientInfo;
+        _clientInfo = ITunesClientInfo(Environment.OSVersion.Version.Build);
         _now = now ?? (() => DateTimeOffset.UtcNow);
     }
 
     public string ClientInfo => _clientInfo;
 
-    /// <summary>The client description Apple pairs with Windows CoreADI (iTunes) identification.</summary>
+    /// <summary>The older iTunes description some anisette servers report (AltSign #61). Kept for reference and tests.</summary>
     public const string WindowsITunesClientInfo = "<PC> <Windows;6.2(0,0);9200> <com.apple.AuthKit/1 (com.apple.iTunes/12.12.4.1)>";
+
+    /// <summary>
+    /// What real iTunes for Windows 12.13 sends with Windows CoreADI (traced from iTunes.exe, zagstore #48): AuthKitWin and
+    /// iTunes, with this PC's Windows build. AuthKitWin + iCloud got sign-in but no Xcode token (-80046); AuthKit + iTunes
+    /// got -22410 at the token step.
+    /// </summary>
+    public static string ITunesClientInfo(int windowsBuild) =>
+        $"<PC> <Windows;10.0(0,0);{windowsBuild}> <com.apple.AuthKitWin/1 (com.apple.iTunes/12.13.12)>";
 
     /// <summary>The User-Agent that goes with <see cref="WindowsITunesClientInfo"/>.</summary>
     public const string WindowsITunesUserAgent = "akd/1.0 CFNetwork/808.1.4";

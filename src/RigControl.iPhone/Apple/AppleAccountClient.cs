@@ -80,15 +80,12 @@ public sealed class AppleAccountClient
                 {
                     return await SignInPassAsync(username, passwordHash, prompt, cancellationToken).ConfigureAwait(false);
                 }
-                catch (AnisetteRepairNeeded need) when (need.Ec == -22410 && need.Stage == "apptokens" && pass == 0
-                                                        && _anisette is IAnisetteRepair repair)
-                {
-                    await repair.ReprovisionAsync(cancellationToken).ConfigureAwait(false);
-                }
+                // A fresh identity and a second full sign-in didn't help (rc.13) and cost another code: stop at once.
                 catch (AnisetteRepairNeeded need) when (need.Ec == -22410 && need.Stage == "apptokens")
                 {
-                    throw new AppleException("Apple still refused the developer token after this PC's device identification " +
-                        "was set up again and you signed in again (code -22410 at the apptokens step).", -22410);
+                    _ = pass;
+                    throw new AppleException("Apple accepted the password and code but refused the developer token " +
+                        "(code -22410 at the apptokens step).", -22410);
                 }
             }
         }
