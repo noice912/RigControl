@@ -59,6 +59,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>RigControl uses the camera only to read the QR code your PC shows when you link it.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>RigControl shows the song playing in the Music app on your Discord status, through your PC.</string>
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
 </dict>

@@ -17,6 +17,7 @@
     <Compile Remove="LimiterTests.cs" />
     <Compile Remove="MultiUserTests.cs" />
     <Compile Remove="PresenceTests.cs" />
+    <Compile Remove="MusicSourcesTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

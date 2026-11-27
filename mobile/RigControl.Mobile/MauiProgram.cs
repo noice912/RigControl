@@ -73,6 +73,8 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<AppSettings>();
         builder.Services.AddSingleton<DeepLinkRouter>();
+        builder.Services.AddSingleton<SpotifyConnection>();
+        builder.Services.AddSingleton<PhoneMusicService>();
         builder.Services.AddSingleton<AppShell>();
 
         builder.Services.AddTransient<PcsViewModel>();

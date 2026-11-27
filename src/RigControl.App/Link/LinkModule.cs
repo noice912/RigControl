@@ -67,7 +67,8 @@ public sealed record LinkStatusDto(bool Enabled, bool RelaySet, string Relay, st
 /// RigControl Link on the PC (docs/protocols/link.md): pairing codes, linked phones, and answering them through the
 /// relay. Only outgoing connections: nothing connects until a pairing starts or a phone is linked. A phone may only
 /// read a snapshot and run the fixed list in <see cref="LinkActions"/>; every action goes through the normal RPC
-/// dispatcher (so the same checks apply) and shows a tray notice.
+/// dispatcher (so the same checks apply) and shows a tray notice (except the phone's song, which repeats every few
+/// seconds and is only named in the log, at most once a minute).
 /// </summary>
 public sealed class LinkModule : IAppModule, IPcLinkHost
 {
@@ -745,8 +746,23 @@ public sealed class LinkModule : IAppModule, IPcLinkHost
             var (ok, code) = await CallCheckedAsync(method, args, ct).ConfigureAwait(false);
             if (!ok) return RpcFailure(code);
         }
-        Notice(phone, notice);
+        if (notice.Length > 0) Notice(phone, notice);
+        else QuietNote(phone);
         return LinkActionResult.Success;
+    }
+
+    private DateTime _quietLoggedAt = DateTime.MinValue;
+
+    /// <summary>An action without a notice (the phone's song): named in the log at most once a minute, never in the tray.</summary>
+    private void QuietNote(PhoneRecord phone)
+    {
+        var now = DateTime.UtcNow;
+        lock (_gate)
+        {
+            if (now - _quietLoggedAt < TimeSpan.FromMinutes(1)) return;
+            _quietLoggedAt = now;
+        }
+        _log?.Info($"Phone link: {phone.Name} is sending what its Music app plays.");
     }
 
     /// <summary>Which RPCs carry out an allowed action, and the tray notice for it. Never anything outside this list.</summary>
@@ -772,6 +788,14 @@ public sealed class LinkModule : IAppModule, IPcLinkHost
             case LinkActions.PresenceSetCustom:
                 var on = action.Args["on"]?.GetValue<bool>() == true;
                 return (Array.Empty<(string, JsonObject?)>(), on ? "switched a custom Discord status on" : "switched a custom Discord status off");
+            case LinkActions.PresencePhoneMusic:
+                // Arrives every ~15 s while the phone app is open: no notice (see RunAsync).
+                return (new[] { ("presence.setPhoneMusic", (JsonObject?)action.Args.DeepClone().AsObject()) }, "");
+            case LinkActions.PresenceSpotifyConnect:
+                return (new[] { ("presence.connectSpotify", (JsonObject?)new JsonObject { ["refreshToken"] = Str(action.Args, "refreshToken") }) },
+                    "connected Spotify for your Discord status");
+            case LinkActions.PresenceSpotifyDisconnect:
+                return (new[] { ("presence.disconnectSpotify", (JsonObject?)null) }, "disconnected Spotify");
             default:
                 throw new InvalidOperationException("Not an allowed action.");
         }

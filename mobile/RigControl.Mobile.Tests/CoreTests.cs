@@ -105,7 +105,9 @@ public class PcActionTests
     [Fact]
     public void Only_the_D1_actions_exist()
     {
-        Assert.Equal(7, PcAction.Allowed.Count);
+        // The phone's list is exactly the PC's (RigControl.Link LinkActions).
+        Assert.Equal(global::RigControl.Link.LinkActions.Allowed.Order(StringComparer.Ordinal), PcAction.Allowed.Order(StringComparer.Ordinal));
+        Assert.Equal(10, PcAction.Allowed.Count);
         Assert.Equal("lighting.setEffect", PcAction.SetEffect("wave").Name);
         Assert.Equal("wave", PcAction.SetEffect("wave").Args["effect"]);
         Assert.Throws<ArgumentException>(() => PcAction.SetEffect(" "));

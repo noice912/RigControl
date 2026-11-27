@@ -79,7 +79,9 @@ choices (nonce layout, counters, `re`, action arguments).
   `{"re":<n of the get>, ...}`, `result` `{"re":<n of the request>,"ok":true|false,"error":"...","code":"..."}` (`code`, when present, is a short
   reason such as `unavailable` or `internal`; `error` is a short fixed sentence, never the PC's own error text), `event` `{"kind":"...", ...}`.
 - Allowed actions (D1): `lighting.setEffect`/`lighting.off`/`lighting.on`, `capture.start`, `capture.stop`,
-  `capture.saveReplay`, `presence.setCustom`. Everything else is refused on the PC. Arguments (unknown fields refused):
+  `capture.saveReplay`, `presence.setCustom`, `presence.phoneMusic` (the phone Music app's song, plain text, while the
+  phone app is open), `presence.spotifyConnect` (a read-only Spotify sign-in for the PC to read "currently playing";
+  kept encrypted on the PC), `presence.spotifyDisconnect`. Everything else is refused on the PC. Arguments (unknown fields refused):
   `lighting.setEffect` `{"effect":"<effect id>"}` or `{"scene":"<saved scene name>"}`; `presence.setCustom`
   `{"id":"<custom status id>","on":true|false}` (switches a status already made on the PC); the rest take none.
 

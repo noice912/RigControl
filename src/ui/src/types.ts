@@ -506,6 +506,12 @@ export type PresenceStatus = {
   setupNote: string | null;
   /** Card names the user gave their own Discord application id for (never the ids themselves). */
   ownAppIds: string[];
+  /** A linked phone handed over a Spotify sign-in: the account's song shows from any device. */
+  spotifyConnected: boolean;
+  /** Where the music line comes from: this PC's player, Spotify's Web API, or the phone's Music app. */
+  musicSource: "pc" | "spotify" | "phone" | null;
+  /** Why the Spotify account can't be read (for example the sign-in expired); null when fine. */
+  spotifyProblem: string | null;
 };
 
 export type PanelAudio = {

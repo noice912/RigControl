@@ -202,6 +202,14 @@ public sealed class FakeLinkService : ILinkService
                 case PcAction.PresenceSetCustom:
                     notice = "Discord status changed";
                     break;
+                case PcAction.PresencePhoneMusic:
+                    break;
+                case PcAction.PresenceSpotifyConnect:
+                    notice = "Spotify connected";
+                    break;
+                case PcAction.PresenceSpotifyDisconnect:
+                    notice = "Spotify disconnected";
+                    break;
                 default:
                     return ActionResult.Fail("Not allowed.");
             }

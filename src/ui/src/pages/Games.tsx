@@ -102,6 +102,10 @@ export function Games() {
     const r = await run("ext", () => call<{ path: string }>("presence.getExtension"));
     if (r) setExtPath(r.path);
   };
+  const disconnectSpotify = async () => {
+    const r = await run("spotify", () => call<PresenceStatus>("presence.disconnectSpotify"), "Spotify disconnected");
+    if (r) setData(r);
+  };
   const rescan = async () => {
     const r = await run("scan", () => call<PresenceStatus>("presence.rescan"));
     if (r) setData(r);
@@ -153,11 +157,21 @@ export function Games() {
             {s.watching && <div className="sub">Watching {s.watching}</div>}
             {s.music && (
               <div className="sub">
-                {s.music.playing ? "Playing" : "Paused"} in {s.music.player}: {s.music.title}
+                {s.music.playing ? "Playing" : "Paused"} in {s.music.player}
+                {s.musicSource === "phone" ? " on your phone" : s.musicSource === "spotify" ? " (your Spotify account)" : ""}: {s.music.title}
                 {s.music.artist ? ` · ${s.music.artist}` : ""}
                 {s.lyricLine ? ` · “${s.lyricLine}”` : ""}
               </div>
             )}
+            {s.spotifyConnected && (
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <span className="sub">Spotify: connected from your phone</span>
+                <button className="btn small" disabled={busy !== null} onClick={() => void disconnectSpotify()}>
+                  Disconnect
+                </button>
+              </div>
+            )}
+            {!s.spotifyConnected && s.spotifyProblem && <div className="sub">{s.spotifyProblem}</div>}
             {s.importedFromRichPresence && <div className="sub faint">Your RichPresence settings were copied in on {new Date(s.importedFromRichPresence).toLocaleDateString()}.</div>}
           </section>
 

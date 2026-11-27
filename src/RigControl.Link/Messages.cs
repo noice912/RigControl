@@ -108,6 +108,13 @@ public sealed record LinkAction(string Name, JsonObject Args);
 /// <item><c>lighting.off</c>, <c>lighting.on</c>, <c>capture.start</c>, <c>capture.stop</c>, <c>capture.saveReplay</c>: no arguments.</item>
 /// <item><c>presence.setCustom</c>: <c>{"id":"&lt;custom status id&gt;","on":true|false}</c>: switches one of the custom
 ///   statuses already made on the PC on or off. A phone cannot write new status text or links.</item>
+/// <item><c>presence.phoneMusic</c>: <c>{"title":"…","artist":"…","album":"…","playing":true|false,"position":s,"duration":s}</c>:
+///   what the phone's Music app is playing (sent while the phone app is open), for the PC's Discord music card. Plain
+///   text only (no links), each field at most 256 characters, times 0-86400 s. <c>{}</c> = nothing is playing.</item>
+/// <item><c>presence.spotifyConnect</c>: <c>{"refreshToken":"…"}</c>: a Spotify sign-in the phone made (PKCE, the
+///   app's own Spotify client id, read-only "currently playing" scopes), so the PC can read what the account is
+///   playing on any device. The PC keeps it encrypted for its Windows user.</item>
+/// <item><c>presence.spotifyDisconnect</c>: no arguments; the PC forgets the Spotify sign-in.</item>
 /// </list>
 /// </summary>
 public static class LinkActions
@@ -119,11 +126,21 @@ public static class LinkActions
     public const string CaptureStop = "capture.stop";
     public const string CaptureSaveReplay = "capture.saveReplay";
     public const string PresenceSetCustom = "presence.setCustom";
+    public const string PresencePhoneMusic = "presence.phoneMusic";
+    public const string PresenceSpotifyConnect = "presence.spotifyConnect";
+    public const string PresenceSpotifyDisconnect = "presence.spotifyDisconnect";
 
     public static readonly IReadOnlyList<string> Allowed = new[]
     {
         LightingSetEffect, LightingOff, LightingOn, CaptureStart, CaptureStop, CaptureSaveReplay, PresenceSetCustom,
+        PresencePhoneMusic, PresenceSpotifyConnect, PresenceSpotifyDisconnect,
     };
+
+    /// <summary>Longest song title, artist or album accepted from a phone.</summary>
+    public const int MaxMusicText = 256;
+
+    /// <summary>Spotify refresh tokens are opaque URL-safe text; this bounds them.</summary>
+    private static readonly Regex SpotifyToken = new(@"\A[A-Za-z0-9._~+/=-]{16,1024}\z", RegexOptions.CultureInvariant);
 
     // \A and \z, not ^ and $: in .NET "$" also matches before a final "\n", so "abc\n" would pass.
     private static readonly Regex EffectId = new(@"\A[a-z][A-Za-z0-9]{0,31}\z", RegexOptions.CultureInvariant);
@@ -190,6 +207,43 @@ public static class LinkActions
                 }
                 return new LinkAction(action, new JsonObject { ["id"] = id, ["on"] = on.GetValue<bool>() });
             }
+            case PresencePhoneMusic:
+            {
+                if (!OnlyFields(a, out error, "title", "artist", "album", "playing", "position", "duration")) return null;
+                if (a.Count == 0)
+                    return new LinkAction(action, new JsonObject()); // nothing playing
+                if (!MusicText(a["title"], required: true, out var title) || !MusicText(a["artist"], required: false, out var artist)
+                    || !MusicText(a["album"], required: false, out var album))
+                {
+                    error = "That isn't a song's title, artist or album.";
+                    return null;
+                }
+                if (a["playing"] is not JsonValue p || p.GetValueKind() is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    error = "Say whether the song is playing.";
+                    return null;
+                }
+                if (!Seconds(a["position"], out var position) || !Seconds(a["duration"], out var duration))
+                {
+                    error = "The song's times must be 0 to 86400 seconds.";
+                    return null;
+                }
+                return new LinkAction(action, new JsonObject
+                {
+                    ["title"] = title, ["artist"] = artist, ["album"] = album, ["playing"] = p.GetValue<bool>(),
+                    ["position"] = position, ["duration"] = duration,
+                });
+            }
+            case PresenceSpotifyConnect:
+            {
+                if (!OnlyFields(a, out error, "refreshToken")) return null;
+                if (!IsString(a["refreshToken"], out var token) || !SpotifyToken.IsMatch(token))
+                {
+                    error = "That isn't a Spotify sign-in.";
+                    return null;
+                }
+                return new LinkAction(action, new JsonObject { ["refreshToken"] = token });
+            }
             default:
                 if (!OnlyFields(a, out error)) return null;
                 return new LinkAction(action, new JsonObject());
@@ -207,6 +261,35 @@ public static class LinkActions
             }
         }
         error = null;
+        return true;
+    }
+
+    /// <summary>Plain song text: trimmed, no control or format characters, at most <see cref="MaxMusicText"/>.</summary>
+    private static bool MusicText(JsonNode? n, bool required, out string text)
+    {
+        text = "";
+        if (n is null)
+            return !required;
+        if (!IsString(n, out var s))
+            return false;
+        s = s.Trim();
+        if (s.Length > MaxMusicText || s.Any(c => char.IsControl(c) || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format))
+            return false;
+        if (required && s.Length == 0)
+            return false;
+        text = s;
+        return true;
+    }
+
+    private static bool Seconds(JsonNode? n, out double seconds)
+    {
+        seconds = 0;
+        if (n is null)
+            return true;
+        if (n is not JsonValue v || v.GetValueKind() != JsonValueKind.Number || !v.TryGetValue(out double d)
+            || double.IsNaN(d) || d < 0 || d > 86400)
+            return false;
+        seconds = Math.Round(d, 1);
         return true;
     }
 

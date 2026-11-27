@@ -118,6 +118,66 @@ public class LinkModuleTests : IDisposable
     }
 
     [Fact]
+    public async Task The_phones_song_goes_to_presence_without_a_notice()
+    {
+        var (m, fakes, notices, _) = Make();
+        var a = LinkActions.Check("presence.phoneMusic", JsonNode.Parse("""{"title":"Song","artist":"Band","playing":true,"position":12,"duration":200}"""), out _)!;
+        Assert.True((await m.RunAsync(Phone, a, default)).Ok);
+        Assert.True((await m.RunAsync(Phone, a, default)).Ok);
+        Assert.Equal(2, fakes["presence"].Calls.Count);
+        var call = fakes["presence"].Calls[0];
+        Assert.Equal("setPhoneMusic", call.Method);
+        var args = JsonNode.Parse(call.Args!)!;
+        Assert.Equal("Song", (string)args["title"]!);
+        Assert.Equal("", (string)args["album"]!);
+        Assert.True((bool)args["playing"]!);
+        Assert.Empty(notices);
+
+        var nothing = LinkActions.Check("presence.phoneMusic", JsonNode.Parse("{}"), out _)!;
+        Assert.True((await m.RunAsync(Phone, nothing, default)).Ok);
+        Assert.Equal("{}", fakes["presence"].Calls[2].Args);
+        Assert.Empty(notices);
+    }
+
+    [Fact]
+    public async Task Spotify_connect_and_disconnect_reach_presence_with_a_notice_that_never_shows_the_token()
+    {
+        const string token = "AQBxyz-refresh_token.value~0123456789";
+        var (m, fakes, notices, _) = Make();
+        var connect = LinkActions.Check("presence.spotifyConnect", JsonNode.Parse($$"""{"refreshToken":"{{token}}"}"""), out _)!;
+        Assert.True((await m.RunAsync(Phone, connect, default)).Ok);
+        var call = Assert.Single(fakes["presence"].Calls);
+        Assert.Equal("connectSpotify", call.Method);
+        Assert.Equal(token, (string)JsonNode.Parse(call.Args!)!["refreshToken"]!);
+        Assert.Equal("Pixel connected Spotify for your Discord status.", Assert.Single(notices));
+
+        var disconnect = LinkActions.Check("presence.spotifyDisconnect", null, out _)!;
+        Assert.True((await m.RunAsync(Phone, disconnect, default)).Ok);
+        Assert.Equal("disconnectSpotify", fakes["presence"].Calls[1].Method);
+        Assert.Null(fakes["presence"].Calls[1].Args);
+        Assert.Equal("Pixel disconnected Spotify.", notices[1]);
+        Assert.All(notices, n => Assert.DoesNotContain(token, n));
+    }
+
+    [Fact]
+    public void Every_allowed_action_has_a_plan()
+    {
+        var samples = new Dictionary<string, string?>
+        {
+            ["lighting.setEffect"] = """{"effect":"wave"}""",
+            ["presence.setCustom"] = """{"id":"a","on":true}""",
+            ["presence.phoneMusic"] = "{}",
+            ["presence.spotifyConnect"] = """{"refreshToken":"abcdefghijklmnopqrstuvwxyz"}""",
+        };
+        foreach (var name in LinkActions.Allowed)
+        {
+            var a = LinkActions.Check(name, samples.TryGetValue(name, out var j) && j is not null ? JsonNode.Parse(j) : null, out var why);
+            Assert.True(a is not null, $"{name}: {why}");
+            LinkModule.Plan(a!); // throws for an action without a plan
+        }
+    }
+
+    [Fact]
     public async Task Without_a_relay_nothing_connects_and_pairing_says_why()
     {
         var (m, _, _, settings) = Make();

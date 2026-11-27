@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Text.Json;
 using RigControl.Core.Logging;
 using RigControl.Core.Modules;
+using RigControl.Core.Platform;
 using RigControl.Core.Rpc;
 
 namespace RigControl.Presence;
@@ -26,6 +27,9 @@ public sealed record PresenceAttachedDto(string Id, string Name);
 /// <param name="SetUp">False when this build has no Discord application id for any of its main cards (game, music, app).</param>
 /// <param name="SetupNote">What is missing and what to do about it, in plain words; null when every main card has an id.</param>
 /// <param name="OwnAppIds">The card names the user gave their own Discord application id for. Never the ids themselves.</param>
+/// <param name="SpotifyConnected">A linked phone handed over a Spotify sign-in, so the account's song can show from any device.</param>
+/// <param name="MusicSource">Where the music line comes from: "pc" (this PC's player), "spotify" (Spotify's Web API) or "phone" (the phone's Music app).</param>
+/// <param name="SpotifyProblem">Why the Spotify account can't be read, in plain words; null when fine.</param>
 public sealed record PresenceStatusDto(bool Enabled, bool DiscordRunning, string? Blocked, string Status, string? Playing,
     PresenceMusicDto? Music, string? LyricLine, string? App, bool Scanning, string? ScannedAt, IReadOnlyList<PresenceGameDto> Games,
     PresenceSettingsDto Settings, string? ImportedFromRichPresence,
@@ -33,7 +37,8 @@ public sealed record PresenceStatusDto(bool Enabled, bool DiscordRunning, string
     IReadOnlyDictionary<string, string>? CustomErrors = null, bool ExtensionLinked = false,
     PresenceAttachedDto? AttachedUser = null, string DiscordState = "notRunning", string? DiscordReason = null,
     string? AttachNote = null, int? ExtensionPort = null,
-    bool SetUp = true, string? SetupNote = null, IReadOnlyList<string>? OwnAppIds = null);
+    bool SetUp = true, string? SetupNote = null, IReadOnlyList<string>? OwnAppIds = null,
+    bool SpotifyConnected = false, string? MusicSource = null, string? SpotifyProblem = null);
 
 /// <summary>
 /// Discord status (what used to be the standalone RichPresence app, rebuilt here): the game library and the game,
@@ -76,6 +81,14 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
     /// <summary>The ids in use: the built-in ones with the user's own laid over them.</summary>
     private volatile AppIds _ids = AppIds.Empty;
     private IReadOnlyList<string> _ownIds = Array.Empty<string>();
+    private SpotifyWebSource? _spotify;
+    private Task? _spotifyPoll;
+    private readonly PhoneMusic _phone = new();
+    private ISecretProtector? _secrets;
+    /// <summary>Purpose bound into the protected Spotify sign-in, so it can't be read back as anything else.</summary>
+    private static readonly byte[] SpotifyPurpose = "RigControl.Presence.SpotifySignIn.v1"u8.ToArray();
+    private static readonly System.Text.RegularExpressions.Regex SpotifyToken =
+        new(@"\A[A-Za-z0-9._~+/=-]{16,1024}\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
 #if WINDOWS
     public PresenceModule() : this(new DiscordClient(), new PcInputs(), DefaultHttp(), IsRichPresenceRunning) { }
@@ -104,6 +117,9 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
 
     /// <summary>The ids this build carries. Tests pass their own; left alone it is what the build embedded.</summary>
     public AppIds? BuiltInIds { get; init; }
+
+    /// <summary>The client for Spotify's Web API (tests pass a fake handler). Left alone: a dedicated client, no redirects.</summary>
+    public HttpClient? SpotifyHttp { get; init; }
 
     /// <summary>The parts that are not the same on every system (game list, launcher, browser extension link).</summary>
     public PresenceParts Parts { get; init; } = PresenceParts.ForThisBuild();
@@ -176,7 +192,11 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
                 _log.Warn($"Discord status: the \"{name}\" entry under presence > appIds in settings.json was left out: {why}.");
             UseIds(own);
             if (!_ids.SetUp) _log.Info("Discord status: " + NotSetUpNote);
-            _engine = new PresenceEngine(_discord, _inputs, _log, _http, extensionReport: bridge is null ? null : bridge.Get, ids: () => _ids);
+            _secrets = context.Platform.Secrets;
+            var spotify = _spotify = new SpotifyWebSource(SpotifyHttp ?? SpotifyWebSource.CreateHttp(), _log, SpotifyTokenChanged);
+            LoadSpotify();
+            _engine = new PresenceEngine(_discord, _inputs, _log, _http, extensionReport: bridge is null ? null : bridge.Get, ids: () => _ids,
+                spotify: spotify.Get, phoneMusic: _phone.Get);
             _cts = new CancellationTokenSource();
         }
         _status = new ModuleStatus(ModuleState.Ready);
@@ -297,6 +317,9 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
                 {
                     if (!wasRunning) _log.Info("Discord status: started.");
                     wasRunning = true;
+                    // Spotify's Web API is read on its own (every 10 s at most), so a slow answer never holds up the cards.
+                    if (s.ShowSpotify && _spotify is { Connected: true } sp && _spotifyPoll is not { IsCompleted: false })
+                        _spotifyPoll = Task.Run(() => sp.TickAsync(ct), ct);
                     await _engine!.TickAsync(s, lib, ct).ConfigureAwait(false);
                 }
                 else if (wasRunning)
@@ -374,6 +397,9 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
             "play" => Play(RpcArgs.Require<GameArgs>(args)),
             "getArt" => GetArt(RpcArgs.Require<GameArgs>(args)),
             "getExtension" => GetExtension(),
+            "setPhoneMusic" => SetPhoneMusic(args),
+            "connectSpotify" => ConnectSpotify(args),
+            "disconnectSpotify" => DisconnectSpotify(),
             _ => throw RpcException.UnknownMethod(Name, method),
         };
         return Task.FromResult(result);
@@ -416,7 +442,134 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
                 },
                 user is not null ? null : Reason(look),
                 user is not null ? _engine?.AttachNote : null, _bridge?.Port,
-                ids.SetUp, SetupNoteFor(ids), _ownIds);
+                ids.SetUp, SetupNoteFor(ids), _ownIds,
+                _spotify?.Connected ?? false, m is null ? null : now?.MusicSource, _spotify?.Problem);
+        }
+    }
+
+    // ---------------------------------------------------------------- music from the phone, Spotify's Web API
+
+    /// <summary>
+    /// presence.setPhoneMusic: what the linked phone's Music app is playing ({} = nothing). Checked here as well as
+    /// by the link, since the UI can call it too. Counts for the card for 45 s.
+    /// </summary>
+    private object? SetPhoneMusic(JsonElement? args)
+    {
+        if (args is not { ValueKind: JsonValueKind.Object } a) throw RpcException.InvalidArgs("Send the song, or {} for nothing.");
+        var fields = a.EnumerateObject().Select(p => p.Name).ToList();
+        if (fields.Count == 0)
+        {
+            _phone.Set(null);
+            return null;
+        }
+        var allowed = new HashSet<string> { "title", "artist", "album", "playing", "position", "duration" };
+        if (fields.Any(f => !allowed.Contains(f)) || fields.Distinct().Count() != fields.Count) throw RpcException.InvalidArgs("Unknown field in the song.");
+        var title = SongText(a, "title", required: true);
+        var artist = SongText(a, "artist", required: false);
+        var album = SongText(a, "album", required: false);
+        if (!a.TryGetProperty("playing", out var p) || p.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw RpcException.InvalidArgs("Say whether the song is playing.");
+        _phone.Set(new MusicNow("Apple Music", title, artist, album, p.GetBoolean(), SongSeconds(a, "position"), SongSeconds(a, "duration")));
+        return null;
+    }
+
+    private static string SongText(JsonElement a, string name, bool required)
+    {
+        if (!a.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null)
+            return required ? throw RpcException.InvalidArgs("The song has no title.") : "";
+        if (v.ValueKind != JsonValueKind.String) throw RpcException.InvalidArgs("That isn't a song's title, artist or album.");
+        var s = v.GetString()!.Trim();
+        if (s.Length > 256 || s.Any(c => char.IsControl(c) || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format))
+            throw RpcException.InvalidArgs("That isn't a song's title, artist or album.");
+        if (required && s == "") throw RpcException.InvalidArgs("The song has no title.");
+        return s;
+    }
+
+    private static double SongSeconds(JsonElement a, string name)
+    {
+        if (!a.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null) return 0;
+        if (v.ValueKind != JsonValueKind.Number || !v.TryGetDouble(out var d) || double.IsNaN(d) || d < 0 || d > 86400)
+            throw RpcException.InvalidArgs("The song's times must be 0 to 86400 seconds.");
+        return d;
+    }
+
+    /// <summary>presence.connectSpotify: keeps the phone's Spotify sign-in (protected for this Windows user) and starts reading it.</summary>
+    private PresenceStatusDto ConnectSpotify(JsonElement? args)
+    {
+        // Read by hand: a parse error message must never be able to echo the token.
+        if (args is not { ValueKind: JsonValueKind.Object } a || !a.TryGetProperty("refreshToken", out var t) || t.ValueKind != JsonValueKind.String
+            || a.EnumerateObject().Count() != 1 || t.GetString() is not { } token || !SpotifyToken.IsMatch(token))
+            throw RpcException.InvalidArgs("That isn't a Spotify sign-in.");
+        var spotify = _spotify ?? throw RpcException.Unavailable("Discord status isn't ready yet.");
+        // Saved and switched together, so a renewal of the old sign-in can't be saved over this one.
+        lock (_gate)
+        {
+            _settings.SpotifySignIn = Protect(token);
+            Save();
+            spotify.Connect(token);
+        }
+        _log.Info("Discord status: Spotify connected from the phone.");
+        Publish();
+        return GetStatus();
+    }
+
+    /// <summary>presence.disconnectSpotify: forgets the Spotify sign-in.</summary>
+    private PresenceStatusDto DisconnectSpotify()
+    {
+        lock (_gate)
+        {
+            _spotify?.Disconnect();
+            _settings.SpotifySignIn = "";
+            Save();
+        }
+        _log.Info("Discord status: Spotify disconnected.");
+        Publish();
+        return GetStatus();
+    }
+
+    /// <summary>Spotify handed out a new refresh token (kept), or no longer accepts the sign-in (null: forgotten).</summary>
+    private void SpotifyTokenChanged(string? token)
+    {
+        try
+        {
+            lock (_gate)
+            {
+                // Only for the sign-in still in use: a newer connect or a disconnect in the meantime wins.
+                if (_spotify is not { } sp || (token is null ? sp.Connected : !sp.IsCurrent(token))) return;
+                _settings.SpotifySignIn = token is null ? "" : Protect(token);
+                Save();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Not the token itself: only that it couldn't be kept.
+            _log.Warn("Discord status: the renewed Spotify sign-in couldn't be saved (" + ex.GetType().Name + ").");
+        }
+        Publish();
+    }
+
+    private string Protect(string token)
+    {
+        var secrets = _secrets ?? throw RpcException.Unavailable("Discord status isn't ready yet.");
+        return Convert.ToBase64String(secrets.Protect(System.Text.Encoding.UTF8.GetBytes(token), SpotifyPurpose));
+    }
+
+    /// <summary>At start: reads the kept Spotify sign-in back. One that can't be read (another Windows user, a restored backup) is dropped.</summary>
+    private void LoadSpotify()
+    {
+        var stored = _settings.SpotifySignIn;
+        if (string.IsNullOrEmpty(stored) || _secrets is null || _spotify is null) return;
+        try
+        {
+            var token = System.Text.Encoding.UTF8.GetString(_secrets.Unprotect(Convert.FromBase64String(stored), SpotifyPurpose));
+            if (!SpotifyToken.IsMatch(token)) throw new FormatException();
+            _spotify.Connect(token);
+        }
+        catch (Exception)
+        {
+            _log.Warn("Discord status: the saved Spotify sign-in can't be read here; connect Spotify again from the phone.");
+            _settings.SpotifySignIn = "";
+            Save();
         }
     }
 

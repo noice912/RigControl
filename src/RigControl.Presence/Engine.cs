@@ -33,7 +33,7 @@ public sealed class PcInputs : IPresenceInputs
 /// <summary>What the engine is showing right now (for the Games page and, later, the overlay).</summary>
 public sealed record PresenceNow(string Status, string? Playing, IReadOnlyList<string> RunningIds, MusicNow? Music, string? LyricLine, string? App,
     string? Watching = null, int CustomShown = 0, IReadOnlyList<string>? CustomSkipped = null,
-    IReadOnlyDictionary<string, string>? CustomErrors = null);
+    IReadOnlyDictionary<string, string>? CustomErrors = null, string? MusicSource = null);
 
 /// <summary>
 /// The Discord status engine: a game card per running game, a music card and the current-app card, each on its own
@@ -50,6 +50,7 @@ public sealed class PresenceEngine
     /// <summary>What the status says when this build has no ids for its own cards and nothing else is showing.</summary>
     public const string NotSetUp = "Discord status isn't set up in this build";
     private const string FallbackImage = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Apple_Music_icon.svg/240px-Apple_Music_icon.svg.png";
+    private const string PhoneHint = " (on iPhone)";
     private const string GenericAppIcon = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Windows_logo_-_2021.svg/240px-Windows_logo_-_2021.svg.png";
 
     private readonly IDiscordClient _discord;
@@ -61,6 +62,8 @@ public sealed class PresenceEngine
     private readonly Func<string, ExtReport?> _ext;
     private readonly Func<DateTime> _now;
     private readonly Func<AppIds> _ids;
+    private readonly Func<SpotifyNow?> _spotify;
+    private readonly Func<MusicNow?> _phone;
     private int _reopen;
 
     private sealed class Card
@@ -102,8 +105,11 @@ public sealed class PresenceEngine
     private DateTime _switchedAt = DateTime.MinValue;
 
     public PresenceEngine(IDiscordClient discord, IPresenceInputs inputs, ILog log, HttpClient http, Func<DateTime>? now = null,
-        Func<string, ExtReport?>? extensionReport = null, Func<AppIds>? ids = null)
+        Func<string, ExtReport?>? extensionReport = null, Func<AppIds>? ids = null,
+        Func<SpotifyNow?>? spotify = null, Func<MusicNow?>? phoneMusic = null)
     {
+        _spotify = spotify ?? (() => null);
+        _phone = phoneMusic ?? (() => null);
         _ids = ids ?? (() => AppIds.BuiltIn);
         _watchExtras = new WatchExtras(http);
         _ext = extensionReport ?? (_ => null);
@@ -234,7 +240,7 @@ public sealed class PresenceEngine
         }
 
         await UpdateGamesAsync(s, ids, running, ct).ConfigureAwait(false);
-        var (music, line) = await UpdateMusicAsync(s, ids, ct).ConfigureAwait(false);
+        var (music, line, musicSource) = await UpdateMusicAsync(s, ids, ct).ConfigureAwait(false);
         var watching = await UpdateWatchingAsync(s, ids, ct).ConfigureAwait(false);
         string? app = null;
         // While something is being watched the app card stays away (it would just say "Microsoft Edge").
@@ -253,7 +259,7 @@ public sealed class PresenceEngine
         if (customShown > 0) parts.Add(customShown > 1 ? $"{customShown} custom statuses" : "Custom status");
         Now = new PresenceNow(parts.Count > 0 ? string.Join("  |  ", parts) : ids.SetUp ? "Watching for games" : NotSetUp,
             running.FirstOrDefault().G?.Name, runIds, music, line, app, watching, customShown, skipped,
-            new Dictionary<string, string>(_customErrors));
+            new Dictionary<string, string>(_customErrors), musicSource);
     }
 
     // ---------------------------------------------------------------- connections
@@ -457,37 +463,65 @@ public sealed class PresenceEngine
 
     // ---------------------------------------------------------------- card 2: music
 
-    private async Task<(MusicNow? Music, string? Line)> UpdateMusicAsync(PresenceSettings s, AppIds ids, CancellationToken ct)
+    /// <summary>
+    /// Which song the music card shows: the PC's own player first, then the Spotify account (read from Spotify's Web
+    /// API, any device), then the phone's Music app. A source that isn't playing gives way to the next one.
+    /// </summary>
+    internal static (MusicNow? Music, string? Source, string? Art) PickMusic(MusicNow? pc, SpotifyNow? spotify, MusicNow? phone)
     {
-        MusicNow? m = null;
+        if (pc is { Playing: true } && pc.Title != "") return (pc, "pc", null);
+        if (spotify is { Music: { Playing: true, Title.Length: > 0 } }) return (spotify.Music, "spotify", spotify.ArtUrl);
+        if (phone is { Playing: true } && phone.Title != "") return (phone, "phone", null);
+        // Nothing playing: what is paused on the PC, for the Games page only.
+        if (pc is { Title.Length: > 0 }) return (pc, "pc", null);
+        return (null, null, null);
+    }
+
+    private async Task<(MusicNow? Music, string? Line, string? Source)> UpdateMusicAsync(PresenceSettings s, AppIds ids, CancellationToken ct)
+    {
+        MusicNow? pc = null;
         if (s.ShowMusic || s.ShowSpotify)
         {
-            try { m = await _inputs.MusicAsync(s.ShowMusic, s.ShowSpotify).ConfigureAwait(false); }
-            catch (Exception ex) when (ex is not OperationCanceledException) { m = null; }
+            try { pc = await _inputs.MusicAsync(s.ShowMusic, s.ShowSpotify).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { pc = null; }
         }
+        SpotifyNow? web = null;
+        MusicNow? phone = null;
+        try
+        {
+            web = s.ShowSpotify ? _spotify() : null;
+            phone = s.ShowMusic ? _phone() : null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { /* a source that fails counts as silent */ }
+        var (m, source, webArt) = PickMusic(pc, web, phone);
         var active = m is { Playing: true } && m.Title != "";
         string? line = null;
         if (!active)
         {
             Drop(ref _music);
-            return (m is { Title.Length: > 0 } ? m : null, null);
+            return (m, null, source);
         }
         if (ids.Music is not { } musicId)
         {
             Drop(ref _music); // this build has no music card
-            return (m, null);
+            return (m, null, source);
         }
         _music ??= NewCard(musicId, "music");
-        if (!Connect(_music)) return (m, null);
+        if (!Connect(_music)) return (m, null, source);
 
         var lyrics = s.ShowLyrics ? await _extras.LyricsAsync(m!.Artist, m.Title, m.Album, m.DurationSec, ct).ConfigureAwait(false) : null;
         line = s.ShowLyrics ? MusicExtras.LineAt(lyrics, m!.PositionSec) : null;
-        var id = $"music|{m!.Player}|{m.Artist}|{m.Title}|{m.Album}";
+        var id = $"music|{source}|{m!.Player}|{m.Artist}|{m.Title}|{m.Album}";
         var trackChanged = _music.Id != id;
         var lyricChanged = line is not null && line != _lastLyric;
         if (trackChanged || lyricChanged || (_now() - _music.SentUtc).TotalSeconds >= 15)
         {
-            var art = s.ShowAlbumArt ? await _extras.ArtAsync(m.Artist, m.Title, m.Album, ct).ConfigureAwait(false) : null;
+            var art = !s.ShowAlbumArt ? null
+                : webArt ?? await _extras.ArtAsync(m.Artist, m.Title, m.Album, ct).ConfigureAwait(false);
+            var hover = m.Album != "" ? $"{m.Title} - {m.Album}" : m.Title;
+            // The phone's song: a small hint where it plays, when the hover text has room for it.
+            if (source == "phone" && hover.Length + PhoneHint.Length <= 128) hover += PhoneHint;
+            if (hover.Length > 128) hover = hover[..125] + "...";
             var startMs = NowMs - (long)Math.Round(m.PositionSec * 1000);
             var ts = new JsonObject { ["start"] = startMs };
             if (m.DurationSec > 0) ts["end"] = startMs + (long)Math.Round(m.DurationSec * 1000);
@@ -495,7 +529,7 @@ public sealed class PresenceEngine
             {
                 ["type"] = 2,
                 ["details"] = m.Title,
-                ["assets"] = new JsonObject { ["large_image"] = art ?? FallbackImage, ["large_text"] = m.Album != "" ? $"{m.Title} - {m.Album}" : m.Title },
+                ["assets"] = new JsonObject { ["large_image"] = art ?? FallbackImage, ["large_text"] = hover },
                 ["timestamps"] = ts,
             };
             // The lyric line, else the artist; a podcast or an ad has neither.
@@ -503,11 +537,18 @@ public sealed class PresenceEngine
             else if (m.Artist != "") a["state"] = "by " + m.Artist;
             if (m.Artist != "") a["name"] = m.Artist;
             Push(_music, a, id, keepAlive: !trackChanged && !lyricChanged);
-            if (trackChanged) { _log.Info($"Discord status: music ({m.Player}) {m.Artist} - {m.Title}"); _lastLyric = null; }
+            if (trackChanged) { _log.Info($"Discord status: music ({m.Player}{SourceNote(source)}) {m.Artist} - {m.Title}"); _lastLyric = null; }
             if (lyricChanged) _lastLyric = line;
         }
-        return (m, line);
+        return (m, line, source);
     }
+
+    private static string SourceNote(string? source) => source switch
+    {
+        "spotify" => ", from Spotify's Web API",
+        "phone" => ", on the phone",
+        _ => "",
+    };
 
     // ---------------------------------------------------------------- card 3: current app
 

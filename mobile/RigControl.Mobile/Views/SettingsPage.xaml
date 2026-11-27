@@ -33,14 +33,35 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Discord status (Step 3) -->
-            <Label Text="Discord status" Style="{StaticResource Section}" />
+            <!-- Music on Discord: the phone feeds the PC, the PC posts the card. -->
+            <Label Text="Music on Discord" Style="{StaticResource Section}" />
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Show what you play and listen to on this phone on your Discord profile, with Spotify and the iPhone Music app." />
-                    <Label Text="Coming in the next version. Sign-in uses Discord's and Spotify's own pages; RigControl never sees your passwords."
-                           Style="{StaticResource Muted}" />
-                    <Button Text="Sign in with Discord" IsEnabled="False" />
+                    <Label Text="Your PC shows the song you're listening to on your Discord status. It needs the PC on, with RigControl and Discord running." />
+
+                    <!-- Spotify -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <Label Text="Spotify" VerticalOptions="Center" />
+                        <Label Grid.Column="1" Text="{Binding SpotifyStatus}" Style="{StaticResource Muted}"
+                               HorizontalTextAlignment="End" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                    </Grid>
+                    <Label Style="{StaticResource Muted}"
+                           Text="Works even when the phone is locked: the PC asks Spotify what you're playing on any device. You sign in on Spotify's own page; only a read-only sign-in goes to your PCs, and this phone keeps none of it." />
+                    <Button Text="Connect Spotify" Command="{Binding ConnectSpotifyCommand}" IsVisible="{Binding SpotifyNotConnected}" />
+                    <Button Text="Disconnect Spotify" Style="{StaticResource Secondary}" Command="{Binding DisconnectSpotifyCommand}"
+                            IsVisible="{Binding SpotifyConnected}" />
+                    <Label Text="{Binding SpotifyMessage}" Style="{StaticResource Muted}" IsVisible="{Binding SpotifyMessage, Converter={StaticResource NotEmpty}}" />
+
+                    <!-- iPhone Music app -->
+                    <VerticalStackLayout Spacing="10" IsVisible="{Binding ShowAppleMusic}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,6,0,0">
+                            <Label Text="Share my iPhone's Music app song" VerticalOptions="Center" />
+                            <Switch Grid.Column="1" IsToggled="{Binding ShareAppleMusic}" />
+                        </Grid>
+                        <Label Style="{StaticResource Muted}"
+                               Text="Only while RigControl is open on this iPhone: the song is sent to your linked PCs every few seconds, and cleared when you leave the app." />
+                        <Label Text="{Binding MusicMessage}" Style="{StaticResource Muted}" IsVisible="{Binding MusicMessage, Converter={StaticResource NotEmpty}}" />
+                    </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
 

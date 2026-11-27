@@ -2088,6 +2088,7 @@ export function createMockBackend() {
         case "presence.setSettings":
         case "presence.setGameEnabled":
         case "presence.rescan":
+        case "presence.disconnectSpotify":
           return ok({
             enabled: true,
             discordRunning: true,
@@ -2178,6 +2179,9 @@ export function createMockBackend() {
             setUp: true,
             setupNote: null,
             ownAppIds: [],
+            spotifyConnected: true,
+            musicSource: "pc",
+            spotifyProblem: null,
           });
         case "overlay.getAudio":
         case "overlay.setVolume":

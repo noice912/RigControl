@@ -38,6 +38,11 @@ public sealed class PresenceSettings
     /// custom1 to custom9. Each id is 17 to 20 digits and may be used for one card only; anything else is ignored.
     /// </summary>
     public Dictionary<string, string> AppIds { get; set; } = new();
+    /// <summary>
+    /// The Spotify sign-in a linked phone handed over (its refresh token), protected for this Windows user
+    /// (<c>ISecretProtector</c>, base64). Empty = not connected. Never in plain text, never logged.
+    /// </summary>
+    public string SpotifySignIn { get; set; } = "";
 
     public static string RichPresenceDataDir =>
         Environment.GetEnvironmentVariable("RICHPRESENCE_DATA") is { Length: > 0 } d ? d

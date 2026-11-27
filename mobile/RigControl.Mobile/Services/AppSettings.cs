@@ -8,6 +8,8 @@ public sealed class AppSettings
 {
     private const string PhoneNameKey = "phone.name";
     private const string RelayKey = "link.relay";
+    private const string ShareAppleMusicKey = "music.shareAppleMusic";
+    private const string SpotifyConnectedToKey = "music.spotifyConnectedTo";
 
     /// <summary>The name the PC shows for this phone in its list of linked phones.</summary>
     public string PhoneName
@@ -24,6 +26,22 @@ public sealed class AppSettings
     {
         get => Preferences.Default.Get(RelayKey, "");
         set => Preferences.Default.Set(RelayKey, value ?? "");
+    }
+
+    /// <summary>"Share my iPhone's Music app song" is on (iPhone only).</summary>
+    public bool ShareAppleMusic
+    {
+        get => Preferences.Default.Get(ShareAppleMusicKey, false);
+        set => Preferences.Default.Set(ShareAppleMusicKey, value);
+    }
+
+    /// <summary>
+    /// The names of the PCs that were given the Spotify sign-in. Only the names: the sign-in itself lives on the PCs.
+    /// </summary>
+    public IReadOnlyList<string> SpotifyConnectedTo
+    {
+        get => Preferences.Default.Get(SpotifyConnectedToKey, "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        set => Preferences.Default.Set(SpotifyConnectedToKey, string.Join('\n', value ?? []));
     }
 
     private static string DefaultPhoneName() =>

@@ -211,7 +211,8 @@ public class LinkActionTests
 
     [Fact]
     public void The_list_is_exactly_D1()
-        => Assert.Equal(new[] { "lighting.setEffect", "lighting.off", "lighting.on", "capture.start", "capture.stop", "capture.saveReplay", "presence.setCustom" },
+        => Assert.Equal(new[] { "lighting.setEffect", "lighting.off", "lighting.on", "capture.start", "capture.stop", "capture.saveReplay", "presence.setCustom",
+                                "presence.phoneMusic", "presence.spotifyConnect", "presence.spotifyDisconnect" },
             LinkActions.Allowed);
 
     [Theory]
