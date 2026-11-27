@@ -33,18 +33,27 @@ public static class MauiProgram
                 events.AddiOS(ios => ios
                     .SceneWillConnect((_, _, options) =>
                     {
-                        foreach (var context in options.UrlContexts)
-                            DeepLinkEntry.Open(context.Url.AbsoluteString);
+                        // A normal launch (not from a link) has no URL contexts: iOS passes null, not an empty set.
+                        if (options?.UrlContexts is not { } contexts)
+                            return;
+                        foreach (var context in contexts)
+                            if (context?.Url?.AbsoluteString is { } url)
+                                DeepLinkEntry.Open(url);
                     })
                     .SceneOpenUrl((_, contexts) =>
                     {
+                        if (contexts is null)
+                            return false;
                         foreach (var context in contexts)
-                            DeepLinkEntry.Open(context.Url.AbsoluteString);
+                            if (context?.Url?.AbsoluteString is { } url)
+                                DeepLinkEntry.Open(url);
                         return true;
                     })
                     .OpenUrl((_, url, _) =>
                     {
-                        DeepLinkEntry.Open(url.AbsoluteString);
+                        if (url?.AbsoluteString is not { } link)
+                            return false;
+                        DeepLinkEntry.Open(link);
                         return true;
                     }));
 #endif
