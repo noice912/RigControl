@@ -11,7 +11,8 @@ namespace RigControl.Radio.Lyrics;
 /// The catalogue songs' lyrics, fetched once from lrclib.net on this PC and kept in <c>radio\lyrics.json</c>. A song
 /// LRCLIB doesn't have is asked again after a day. Only https://lrclib.net is contacted; answers are size-capped.
 /// </summary>
-public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, Func<DateTimeOffset>? now = null, TimeSpan? pause = null)
+public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, Func<DateTimeOffset>? now = null, TimeSpan? pause = null,
+    Func<TimeSpan, CancellationToken, Task>? wait = null)
 {
     public const string Host = "https://lrclib.net";
     public const int MaxAnswerBytes = 256 * 1024;
@@ -21,7 +22,15 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
     private readonly Func<DateTimeOffset> _now = now ?? (() => DateTimeOffset.UtcNow);
-    private readonly TimeSpan _pause = pause ?? TimeSpan.FromMilliseconds(350); // about 3 requests a second at most
+    private readonly TimeSpan _pause = pause ?? TimeSpan.FromMilliseconds(600); // under 2 requests a second
+    private readonly Func<TimeSpan, CancellationToken, Task> _wait = wait ?? ((d, c) => Task.Delay(d, c));
+    private const int MaxSlowDownsPerSong = 6;
+
+    /// <summary>LRCLIB asked to slow down (429) or is briefly busy (503): wait this long, then ask again.</summary>
+    private sealed class SlowDown(TimeSpan wait, int status) : Exception($"LRCLIB asked to wait ({status}).")
+    {
+        public TimeSpan Wait { get; } = wait;
+    }
 
     public sealed record Entry(string Key, string Title, string Artist, string? Synced, string? Plain, double? Duration, bool Missing, DateTimeOffset FetchedAt);
 
@@ -40,14 +49,14 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
             Entry entry;
             try
             {
-                entry = await FetchOneAsync(song, ct).ConfigureAwait(false);
+                entry = await FetchWithSlowDownsAsync(song, ct).ConfigureAwait(false);
                 failedInARow = 0;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException)
             {
                 // Not reached (offline, LRCLIB down, too slow): nothing is marked missing; stop after a few in a row.
-                log.Info($"In-game radio: lyrics for \"{song.Title}\" couldn't be fetched ({ex.GetType().Name}).");
+                log.Info($"In-game radio: lyrics for \"{song.Title}\" couldn't be fetched ({ex.Message}).");
                 if (++failedInARow >= MaxFailuresInARow)
                 {
                     if (changed) Save(kept.Values);
@@ -118,6 +127,27 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
         }
     }
 
+    /// <summary>One song; when LRCLIB says to slow down it waits as asked (5-120 s) and asks again, a few times.</summary>
+    private async Task<Entry> FetchWithSlowDownsAsync(CatalogueSong song, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return (await FetchOneAsync(song, ct).ConfigureAwait(false))!;
+            }
+            catch (SlowDown s) when (attempt < MaxSlowDownsPerSong)
+            {
+                log.Info($"In-game radio: LRCLIB asked to slow down; waiting {(int)s.Wait.TotalSeconds} s.");
+                await _wait(s.Wait, ct).ConfigureAwait(false);
+            }
+            catch (SlowDown s)
+            {
+                throw new HttpRequestException("LRCLIB kept asking to wait.", s);
+            }
+        }
+    }
+
     private async Task<Entry?> FetchOneAsync(CatalogueSong song, CancellationToken ct)
     {
         var artist = FirstArtist(song.Artist);
@@ -165,6 +195,13 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
         if (res.StatusCode == HttpStatusCode.NotFound) return null;
+        if ((int)res.StatusCode is 429 or 503)
+        {
+            var after = res.Headers.RetryAfter?.Delta
+                        ?? (res.Headers.RetryAfter?.Date is { } at ? at - DateTimeOffset.UtcNow : (TimeSpan?)null)
+                        ?? TimeSpan.FromSeconds(30);
+            throw new SlowDown(TimeSpan.FromSeconds(Math.Clamp(after.TotalSeconds, 5, 120)), (int)res.StatusCode);
+        }
         if (!res.IsSuccessStatusCode) throw new HttpRequestException("LRCLIB answered " + (int)res.StatusCode + ".");
         if (res.Content.Headers.ContentLength is > MaxAnswerBytes) throw new InvalidDataException("Answer too big.");
         await using var s = await res.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);

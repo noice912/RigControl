@@ -123,4 +123,27 @@ public class LyricsLibrarySafetyTests : IDisposable
         var lib = new LyricsLibrary(new HttpClient(fake), path, new ListLog(), pause: TimeSpan.Zero);
         await lib.FetchAsync([new CatalogueSong("", "Other", "Band")], null, default); // must not throw
     }
+
+    [Fact]
+    public async Task When_lrclib_says_slow_down_it_waits_and_carries_on()
+    {
+        var fake = new FakeLrclib();
+        var limited = 0;
+        fake.Override = r =>
+        {
+            if (Interlocked.Increment(ref limited) > 5) return null; // after a while it answers normally
+            var res = new HttpResponseMessage((HttpStatusCode)429);
+            res.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(20));
+            return res;
+        };
+        fake.Songs["Song 3|Band"] = FakeLrclib.Json("Song 3", "Band", "[00:10.00] the copper kettle hums along the quiet harbour");
+        var waits = new List<TimeSpan>();
+        var lib = new LyricsLibrary(new HttpClient(fake), Path.Combine(_dir, "radio", "lyrics.json"), new ListLog(), pause: TimeSpan.Zero,
+            wait: (d, _) => { waits.Add(d); return Task.CompletedTask; });
+        var songs = Enumerable.Range(0, 6).Select(i => new CatalogueSong("", "Song " + i, "Band")).ToList();
+        var got = await lib.FetchAsync(songs, null, default); // no "couldn't be reached"
+        Assert.Equal(1, got);
+        Assert.Contains(waits, w => w >= TimeSpan.FromSeconds(20));
+        Assert.Equal(6, lib.Load().Count); // every song asked, none skipped because of the slow-downs
+    }
 }
