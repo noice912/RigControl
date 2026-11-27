@@ -129,6 +129,7 @@ public sealed class SessionStore
         public DateTimeOffset Expires { get; set; }
         public string? Pet { get; set; }
         public DateTimeOffset? PetExpires { get; set; }
+        public string? ClientInfo { get; set; }
 
         public static Saved From(StoredAppleAccount a) => new()
         {
@@ -139,13 +140,16 @@ public sealed class SessionStore
             Expires = a.Session.Expires,
             Pet = a.PasswordEquivalentToken,
             PetExpires = a.PasswordEquivalentTokenExpires,
+            ClientInfo = a.Session.ClientInfo,
         };
 
         public StoredAppleAccount? To()
         {
             if (Version != 1 || string.IsNullOrEmpty(AppleId) || string.IsNullOrEmpty(Adsid) || string.IsNullOrEmpty(XcodeToken))
                 return null;
-            return new StoredAppleAccount(new AppleSession(AppleId, Adsid, Dsid ?? "", XcodeToken, Expires), Pet, PetExpires);
+            // The accepted client description goes into an HTTP header: printable ASCII and short only.
+            var clientInfo = ClientInfo is { Length: > 0 and <= 300 } c && c.All(ch => ch is >= ' ' and <= '~') ? c : null;
+            return new StoredAppleAccount(new AppleSession(AppleId, Adsid, Dsid ?? "", XcodeToken, Expires, clientInfo), Pet, PetExpires);
         }
     }
 }

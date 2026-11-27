@@ -688,7 +688,11 @@ public sealed class AppleAccountClient
                 accepted = candidate;
                 break;
             }
-            catch (AppleException e) when (e is not AnisetteRepairNeeded && e.Code is not (-20101 or -20209 or -20210))
+            // Account-level answers and Apple's "busy / too many" stop at once: only a refusal of the description
+            // moves on to the next one.
+            catch (AppleException e) when (e is not AnisetteRepairNeeded
+                                           && e.Code is not (-20101 or -20209 or -20210 or -22979 or -22981 or BusyCode or 429)
+                                           && !e.Message.Contains("too many", StringComparison.OrdinalIgnoreCase))
             {
                 refused.Add($"{Short(candidate)}: {(e.Code != 0 ? e.Code.ToString(CultureInfo.InvariantCulture) : e.Message)}");
             }
