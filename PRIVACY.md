@@ -37,6 +37,8 @@ issue.
 | **The phone link relay** (the address is shown on Settings > Phone; a Cloudflare Worker run by RigControl's author) | Only while at least one phone is linked, and while a pairing code is shown on Settings > Phone. Nothing connects before you press "Link a phone". | See "The phone link" below. In short: this PC's public link key and id, the ids of your linked phones, and sealed (end-to-end encrypted) messages the relay cannot read. |
 | **Spotify** (`api.spotify.com`, and `accounts.spotify.com` to renew the sign-in) | Only after you pressed "Connect Spotify" in the phone app and the phone handed the sign-in to this PC, and only while Discord status and its music card are on: at most once every 10 seconds | Spotify's read-only sign-in for your account (scopes `user-read-currently-playing` and `user-read-playback-state`), to ask what that account is playing on any device. Spotify answers with the song, artist, album, times and the cover's address. See "The phone link" below. |
 | **Spotify's image server** (`i.scdn.co`) | While a song read from Spotify is shown on your Discord card | Only the cover's address that Spotify gave. RigControl hands that address to Discord, which loads the picture from there. |
+| **LRCLIB** (`lrclib.net`) for "In-game radio" | Only after you switch on "Also recognise the GTA 6 station songs by their lyrics" (Games page): once per station song, about three a second, then again only for songs it didn't have (after a day) | The title and first artist of each song on RigControl's built-in station list, to download its lyrics. Nothing about you or what you hear. |
+| **Hugging Face** (`huggingface.co` and its download servers) | Once, when you switch that on | Downloads the Whisper speech recognition model (`ggml-small-q5_1.bin`, 190 MB). RigControl checks it against the size and SHA-256 built into the app before using it. |
 | **GitHub issues** (`api.github.com`) | Only when you press "Send" on a review | Your star rating, the text you wrote and RigControl's version become a **public** issue on github.com/noice912/RigControl under your GitHub name. Nothing about your PC is added. |
 
 RigControl contacts no site that is not in this table (the iPhone installer's own list is in "Installing the phone
@@ -221,7 +223,10 @@ RigControl does not see or store your password.
   are kept in memory to recognise songs. From the sound, RigControl keeps only **audio fingerprints** (numbers made
   from the strongest notes, from which the sound can't be played back) of songs you named or it recognised, with the
   names you gave them. Nothing is recorded or sent anywhere; the recognised song goes on your Discord card like any
-  other music.
+  other music. With "Also recognise the GTA 6 station songs by their lyrics" switched on, about 8 seconds at a time
+  are also turned into words by a speech recognition model running on this PC (graphics card or processor), and the
+  words are looked up in the downloaded lyrics. The words are kept in memory only (the last ones are shown on the
+  Games page) and are never sent anywhere.
 - OBS's WebSocket settings, as described above.
 - If the separate RichPresence app was used on this PC: its settings, copied once, and its Discord web sign-in for
   the in-game panel, copied once. Its own folder is never changed.
@@ -273,6 +278,7 @@ Everything is on your PC. Nothing is synced.
 | `%LOCALAPPDATA%\RigControl\presence` | The game library that was found, Discord's public game list, and the secret for the browser extension link |
 | `%LOCALAPPDATA%\RigControl\browser-extension-xxxxxxxx` | The copy of the browser extension made by "Get the browser extension" |
 | `%LOCALAPPDATA%\RigControl\WebView2`, `WebView2-screen`, `discord-web` | Browser profiles: the app's own interface, the cooler screen's web page, and the Discord window |
+| `%LOCALAPPDATA%\RigControl\radio\lyrics.json`, `radio\models\ggml-small-q5_1.bin` | Only once you switch on lyrics recognition: the station songs' lyrics from LRCLIB, and the speech recognition model. Delete them to free the space; they are downloaded again when needed. |
 | `%LOCALAPPDATA%\RigControl\radio\learned.rcfp` | Only once you name a song for "In-game radio": the learned songs' names and their audio fingerprints (no sound). Rename or forget each one on the Games page, or delete the file. |
 | `%LOCALAPPDATA%\RigControl\drivers` | Driver packages you downloaded |
 | `%LOCALAPPDATA%\RigControl\replay-buffer` | The last seconds of screen recording while instant replay is on. Deleted when it is switched off and when RigControl closes. |

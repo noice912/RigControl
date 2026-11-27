@@ -90,6 +90,7 @@ Versions are the ones the project files and the package restore name.
 | NAudio, NAudio.Core, NAudio.Wasapi, NAudio.WinMM, NAudio.WinForms, NAudio.Asio, NAudio.Midi | 2.2.1 | MIT, Copyright 2020 Mark Heath ([text](LICENSES/NAudio-LICENSE.txt)) | https://github.com/naudio/NAudio |
 | NvAPIWrapper.Net | 0.8.1.101 | LGPL-3.0 per its repository ([text](LICENSES/LGPL-3.0.txt)). To be confirmed against the package. | https://github.com/falahati/NvAPIWrapper |
 | System.Security.Cryptography.Pkcs (used by the iPhone installer to sign the phone app) | 8.0.2 | MIT, Copyright (c) .NET Foundation and Contributors ([text](LICENSES/MIT.txt)) | https://github.com/dotnet/runtime |
+| Whisper.net, Whisper.net.Runtime, Whisper.net.Runtime.Vulkan (in-game radio's speech recognition; the runtimes carry whisper.cpp and ggml native libraries) | 1.9.1 | MIT, Copyright (c) 2023 Sandro Hanea (Whisper.net); MIT, Copyright (c) 2023-2024 The ggml authors (whisper.cpp, ggml) ([text](LICENSES/MIT.txt)) | https://github.com/sandrohanea/whisper.net, https://github.com/ggml-org/whisper.cpp |
 | QRCoder | 1.9.0 | MIT, Copyright (c) 2013-2025 Raffael Herrmann, Copyright (c) 2024-2025 Shane Krueger ([text](LICENSES/MIT.txt)) | https://github.com/Shane32/QRCoder |
 | Microsoft.Web.WebView2 (SDK) | 1.0.4314.35 | Microsoft's WebView2 SDK licence, BSD-3-Clause wording, Copyright (C) Microsoft Corporation ([text](LICENSES/WebView2-LICENSE.txt)) | https://aka.ms/webview |
 | Mono.Posix.NETStandard (used by LibreHardwareMonitorLib) | 1.0.0 | MIT. To be confirmed: the package only links to its licence. | https://github.com/mono/mono |
@@ -234,3 +235,10 @@ NVIDIA, GeForce, NZXT, Kraken, ASUS, ROG, GIGABYTE, Razer, Nanoleaf, Philips Hue
 LifeSmart Cololight, LeetDesk, SignalRGB (WhirlwindFX), Corsair, Thermaltake, Lian Li, Discord, Intel, AMD, Ryzen, Microsoft, Windows and
 the other product names in this repository belong to their owners. RigControl is not made, endorsed or supported
 by any of them, and it is not a competitor of their products.
+
+## Downloaded on request (not carried in RigControl)
+
+| What | Licence | Source |
+|---|---|---|
+| Whisper speech recognition model `ggml-small-q5_1.bin` (in-game radio, only when lyrics recognition is switched on; checked against its pinned SHA-256) | MIT (OpenAI's Whisper model weights, converted by the whisper.cpp project) | https://huggingface.co/ggerganov/whisper.cpp |
+| Song lyrics for the built-in station list (in-game radio, only when lyrics recognition is switched on) | Fetched by each user's own RigControl from LRCLIB for matching on their PC; not part of RigControl and not passed on | https://lrclib.net |

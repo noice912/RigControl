@@ -63,9 +63,7 @@ public sealed class LearnedSongs
         {
             if (!File.Exists(path)) return store;
             // Read only the real file in the real folder, never something a link points at.
-            var folder = Path.GetDirectoryName(Path.GetFullPath(path));
-            foreach (var p in new[] { path, folder, Path.GetDirectoryName(folder) })
-                if (p is not null && (File.Exists(p) || Directory.Exists(p)) && File.GetAttributes(p).HasFlag(FileAttributes.ReparsePoint))
+            if (SafeFolder.ReachedThroughLink(path))
                 {
                     log.Warn("In-game radio: the learned songs file is reached through a link, so it wasn't read. Starting with no learned songs.");
                     return store;
@@ -175,29 +173,7 @@ public sealed class LearnedSongs
     {
         byte[] bytes;
         lock (_gate) bytes = Write();
-        var dir = Path.GetDirectoryName(Path.GetFullPath(_path))!;
-        // The folder above is checked (and held) before anything is created in it.
-        using var parent = SafeFolder.Hold(Path.GetDirectoryName(dir)!);
-        Directory.CreateDirectory(dir);
-        // The app runs as administrator and this folder is the user's: hold it so it can't become a link while we
-        // write, and write a brand-new file (random name, CreateNew) so nothing planted there is ever written into.
-        using var held = SafeFolder.Hold(dir);
-        var temp = Path.Combine(dir, Path.GetFileName(_path) + "." + Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6)) + ".tmp");
-        try
-        {
-            using (var f = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                f.Write(bytes);
-                f.Flush(true);
-            }
-            // Replaces the folder entry; an existing file (or link) at _path is not written into.
-            File.Move(temp, _path, overwrite: true);
-        }
-        catch
-        {
-            try { File.Delete(temp); } catch (Exception) { /* best effort */ }
-            throw;
-        }
+        SafeFolder.WriteFile(_path, bytes);
     }
 
     private void Add(Entry entry, Landmark l)

@@ -50,6 +50,46 @@ internal sealed class SafeFolder : IDisposable
 
     public void Dispose() => _handle.Dispose();
 
+    /// <summary>
+    /// Writes <paramref name="path"/> from the elevated app: the folder above is held and checked before the file's
+    /// folder is created, that folder is held while a brand-new temp file (random name, CreateNew) is written and moved
+    /// over the old file, so nothing planted there (link or hard link) is ever written into.
+    /// </summary>
+    public static void WriteFile(string path, byte[] bytes)
+    {
+        var full = Path.GetFullPath(path);
+        var dir = Path.GetDirectoryName(full)!;
+        using var parent = Hold(Path.GetDirectoryName(dir)!);
+        Directory.CreateDirectory(dir);
+        using var held = Hold(dir);
+        var temp = Path.Combine(dir, Path.GetFileName(full) + "." + Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6)) + ".tmp");
+        try
+        {
+            using (var f = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                f.Write(bytes);
+                f.Flush(true);
+            }
+            File.Move(temp, full, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(temp); } catch (Exception) { /* best effort */ }
+            throw;
+        }
+    }
+
+    /// <summary>True when <paramref name="path"/>, its folder or the folder above is a link (read nothing then).</summary>
+    public static bool ReachedThroughLink(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var folder = Path.GetDirectoryName(full);
+        foreach (var p in new[] { full, folder, folder is null ? null : Path.GetDirectoryName(folder) })
+            if (p is not null && (File.Exists(p) || Directory.Exists(p)) && File.GetAttributes(p).HasFlag(FileAttributes.ReparsePoint))
+                return true;
+        return false;
+    }
+
     /// <summary>The long form of a path (8.3 short names such as PROGRA~1 expanded), so the two can be compared.</summary>
     private static string LongName(string path)
     {

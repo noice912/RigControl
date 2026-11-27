@@ -325,6 +325,15 @@ export type RadioStatus = {
   now: RadioSong | null;
   sound: boolean;
   learnedCount: number;
+  lyrics: RadioLyrics;
+};
+
+/** Recognising the station songs by their lyrics: switched on, state, what it says, the last words it heard. */
+export type RadioLyrics = {
+  enabled: boolean;
+  state: "off" | "preparing" | "ready" | "problem";
+  detail: string | null;
+  lastHeard: string | null;
 };
 
 export type LearnedSong = {

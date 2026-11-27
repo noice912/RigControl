@@ -13,4 +13,14 @@
     <InternalsVisibleTo Include="RigControl.Radio.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Catalogue\gta6-radio.tsv" LogicalName="RigControl.Radio.Catalogue.gta6-radio.tsv" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+  </ItemGroup>
+
 </Project>

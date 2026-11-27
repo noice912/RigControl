@@ -1,0 +1,835 @@
+# In-game radio catalogue: songs on GTA 6's radio stations (title, artist), as listed by the owner on 2026-11-27.
+# Format: station<TAB>title<TAB>artist. Lines starting with # are comments. An empty station = not named in the list.
+# Only names: no lyrics or audio. RigControl fetches each song's lyrics from lrclib.net on the user's PC.
+	1901	Phoenix
+	Adventure of a Lifetime	Coldplay
+	All Again	Rose Gray
+	Around The World	Daft Punk
+	Be Her	Ella Langley
+	Blood In Your Eyes	Tove Lo
+	Blow My Mind (CA7RIEL & Paco Amoroso Version)	Robyn, CA7RIEL & Paco Amoroso
+	Break Free	Ariana Grande, Zedd
+	Bulletproof	La Roux
+	Candy	Mandy Moore
+	Cheap Thrills	Sia
+	Cola	CamelPhat, Elderbrook
+	Cool Kids	Echosmith
+	Crazy For You	Lana Del Rey
+	Crush	Jennifer Paige
+	DARE	Gorillaz, Shaun Ryder, Roses Gabor
+	Disparate Youth	Santigold
+	DJ Got Us Fallin’ In Love	Usher, Pitbull
+	DVNO	Justice
+	earthquake	JISOO
+	Electric Feel	MGMT
+	Fame is a Gun	Addison Rae
+	Fast Emotion	Zara Larsson
+	Fastlove, Pt. 1	George Michael
+	Feels	Calvin Harris, Pharrell Williams, Katy Perry, Big Sean
+	Forever More	Moloko
+	Friends	Justin Bieber, BloodPop®
+	Gabriela	KATSEYE
+	Girls	TSHA, Rose Gray
+	Give Me All Your Luvin’	Madonna, Nicki Minaj, M.I.A.
+	Go Easy	Dua Lipa
+	good 4 u	Olivia Rodrigo
+	Good Ones	Charli xcx
+	Got Your Money	Ol’ Dirty Bastard, Kelis
+	Green Light	Lorde
+	HEAT	Tove Lo, SG Lewis
+	Hold On, We’re Going Home	Drake, Majid Jordan
+	HOT TO GO!	Chappell Roan
+	Houdini	Dua Lipa
+	Inner Smile	Texas
+	Jaded	Disclosure
+	Last Thing You Need	Morgan Wallen
+	Lazy	X-Press 2, David Byrne
+	Lean On	Major Lazer, DJ Snake, MØ
+	Lemon	U2
+	Lost	Frank Ocean
+	Love Sex Magic	Ciara, Justin Timberlake
+	LUNCH	Billie Eilish
+	Midnight Sun (Girls Trip)	Zara Larsson, PinkPantheress
+	Mine O’ Mine	Aluna, Jayda G
+	Motivation	Kelly Rowland, Lil Wayne
+	Move Your Body	Xpansions
+	Mr. Cool	Kenya Grace
+	No Rain, No Flowers	The Black Keys
+	Only Happy When It Rains	Garbage
+	oyster	chloe moriondo
+	People Watching	Sam Fender
+	Persuasive	Doechii, SZA
+	Power Trip	JENNIE
+	Prove It To You	Brittany Howard
+	Pumped Up Kicks	Foster the People
+	Rich Girl	Gwen Stefani, Eve
+	Run Away With Me	Carly Rae Jepsen
+	Sexy Magic	CA7RIEL & Paco Amoroso, PinkPantheress, Fred again.., Etienne de Crécy
+	Shine	Booty Luv
+	Show Me Love	Robyn
+	So Hot	Prospa ft. Halsey
+	Someday	Mariah Carey
+	Spinning Around	Kylie Minogue
+	Sports Car	Tate McRae
+	Strict Machine	Goldfrapp
+	Sweet Like Candy	Camila Cabello
+	Tenderoni	Kele
+	That’s Not My Name	The Ting Tings
+	TRDWFE	Rina Sawayama
+	Turn Me On	Kevin Lyttle
+	Unwritten	Natasha Bedingfield
+	Wanderlust	The Weeknd
+	What You Waiting For?	Gwen Stefani
+	Wild Ones	Jessie Murph, Jelly Roll
+	Accuse	Alaska
+	Assanssan	Alafia
+	Bi Magni	Souley Kanté
+	Bigger	Burna Boy
+	Black Pepper	Yoruba Singers
+	Burning Jungle	Ofege
+	Disco Hi-Life	Orlando Julius
+	Do I (Remix)	Phyno & Burna Boy
+	Fantastic Man	William Onyeabor
+	From London to Lagos (Bayaka Remix)	Eparapo, Dele Sosimi, Bayaka (IT)
+	Giza	Burna Boy ft. Seyi Vibez
+	Goro City	Manu Dibango
+	Government	Balcony Mix Africa, Lady Du, Focalistic, Major League DJz, LuuDadeejay, Aunty Gelato
+	Guap Up	Zaylevelten
+	Gye Wani	Pat Thomas, Ebo Taylor
+	Holy Ghost	Omah Lay
+	HOW FAR	NO11 & Ayjay bobo ft. Monochrome
+	Isaka (6am)	Ciza, Jazzwrld, Thukuthela
+	Joha	Asake
+	Kakalika	DopeNation
+	Keep On Dancing	Kiki Gyan
+	Milandu Bhe (Dr Moruti Remix)	Penny Penny
+	No Discrimination	Tony Allen & The Afro Messengers
+	Oe Batla Kae	De Mogul Sa ft. Ms Mo & Makhensa
+	Run No More (A Vuo Mo)	Hugh Masekela
+	Sarama	Oumou Sangaré
+	SEX BILLS BASS THRILLS	Ayra Starr
+	Shay’sana	DJ Lag, Robot Boii, Kamo Mphela
+	Tomorrow	Ntombi Ndaba
+	Wadibusa	Uncle Waffles ft. Royal MusiQ, OHP Sage, Pcee
+	YAWA	Fireboy DML
+	A Country Boy Can Survive	Hank Williams, Jr.
+	Don’t Come Home A-Drinkin’ (With Lovin’ On Your Mind)	Loretta Lynn
+	Gold Dust Woman	Waylon Jennings
+	I’ve Been Down	Hank Williams, Jr.
+	Is There Any Way (You’d Stay Forever)	Jessi Colter
+	Just to Satisfy You	Waylon Jennings, Willie Nelson
+	Let Your Love Flow	The Bellamy Brothers
+	Louisiana Saturday Night	Mel McDaniel
+	Love Is Alive	The Judds
+	Need a Little Time Off for Bad Behavior	David Allan Coe
+	Pickup Man	Joe Diffie
+	Polk Salad Annie	Tony Joe White
+	Rhinestone Cowboy	Glen Campbell
+	Someone to Give My Love To	Johnny Paycheck
+	Stop The World And Let Me Off	Merle Haggard
+	Talkin’ to Myself Again	Tammy Wynette
+	Tennessee Flat Top Box	Rosanne Cash
+	Thanks To The Cathouse (I’m In The Doghouse With You)	Waylon Jennings
+	The Conversation	Hank Williams, Jr., Waylon Jennings
+	The Fireman	George Strait
+	Walk Softly On This Heart Of Mine	The Kentucky Headhunters
+	Waymore’s Blues	Waylon Jennings
+	When You’re Hot, You’re Hot	Jerry Reed
+	You Can Have Her	George Jones, Johnny Paycheck
+CircoLoco Records Radio	Addicted	Larry Latenight
+CircoLoco Records Radio	Baby	Prospa & Murda Beatz
+CircoLoco Records Radio	Bickering (Max Dean Remix)	Black Lounge
+CircoLoco Records Radio	Body Rock FM	PAWSA & Fast Eddie
+CircoLoco Records Radio	Bootlicker	Seth Troxler
+CircoLoco Records Radio	CeeSeeMee	Pional
+CircoLoco Records Radio	CLOWN	The Ghostbusters
+CircoLoco Records Radio	COLLECT THE COMMAS	PAWSA
+CircoLoco Records Radio	Coming Back To Life	Aline Umber, Maxime dB ft. André Baum
+CircoLoco Records Radio	Deep n Sexy	Rossi. & Demi
+CircoLoco Records Radio	Don’t Break My Heart	Jimi Jules
+CircoLoco Records Radio	Floral	Skream
+CircoLoco Records Radio	Home Now	Aline Umber & Krol ft. Tillmann Ostendarp
+CircoLoco Records Radio	I FEEL LOVE	Chloé Caillet & MYD
+CircoLoco Records Radio	Last Night	Carlita & Bakar
+CircoLoco Records Radio	Let It Go	Mind Against
+CircoLoco Records Radio	MYSTERY OF RAW	Michael Bibi & KETTAMA
+CircoLoco Records Radio	Never Look Back	DJ Tennis ft. Tomike
+CircoLoco Records Radio	Positive	Jamback
+CircoLoco Records Radio	Rhythm of the Night	Michael Bibi
+CircoLoco Records Radio	ROCKMI	Map.ache
+CircoLoco Records Radio	Silver Lines	ANOTR ft. Emily Warren
+CircoLoco Records Radio	The Attention Deficit Track	Skream & Jackmaster
+CircoLoco Records Radio	The Church (DJ Lag & Palms Trax Remix)	Rampa
+CircoLoco Records Radio	This Rhythm	Prospa ft. RAHH
+CircoLoco Records Radio	Turbo Rosso	Jimi Jules
+CircoLoco Records Radio	We On This Ride	CHRIS STASSY
+	Amanece	Anuel AA, Haze
+	Besito	Judeline
+	Canalla	Romeo Santos, El Chaval de la Bachata
+	CANDY	ROSALÍA
+	CELOS	Tokischa, Bulin 47
+	CHORRITO PA LAS ANIMAS	FEID
+	Dumbai	CA7RIEL & Paco Amoroso
+	EL MAKINON	KAROL G, Mariah Angeliq
+	EoO	Bad Bunny
+	Girl	Myke Towers
+	Hecho para ti	Latin Mafia & Omar Apollo
+	Intocable	Don Omar
+	La Mamá de la Mamá	El Alfa, CJ, Chael Produciendo, El Cherry Scom
+	La Pari	MJ Nebreda
+	Largate	Kali Uchis & Helado Negro
+	Macacoa 2000	Rauw Alejandro
+	Malvada	Bb Trickz
+	mariposas en el estómago	RaiNao & El Laberinto del Coco
+	MOJABI GHOST	Tainy, Bad Bunny
+	Ni le cabe	Young Miko
+	Nuestra Canción	Elvis Crespo
+	Otra Noche en Miami	Bad Bunny
+	Pepas	Farruko
+	Sandunguea	Arca
+	Se Me Nota (Agarrame) (Prod by B-One)	Chimbala, Omega
+	Si Es Trucho Es Trucho (Remix)	Axel Rulay ft. Farruko & El Alfa
+	Sin Dormir	Slow Jamz
+	Suave Mix (Blass Remix)	Calle 13
+	Suzuki	Fuerza Regida
+	X	Jhayco
+	#1 Stunna	Big Tymers, Juvenile, Lil Wayne
+	A Milli	Lil Wayne
+	Back Then	Mike Jones
+	Big Pimpin’	JAŸ-Z, UGK
+	Bitch I’m Me	Brisco
+	Bling Bling	B.G. ft. Hot Boys & Big Tymers
+	Born N Raised	DJ Khaled, Trick Daddy, Rick Ross, Pitbull
+	Choppa Style	Choppa Style ft. Master P
+	Da Baddest Bitch	Trina
+	Damn It Feels Good to Be a Gangsta	Geto Boys
+	Dey Know	Shawty Lo
+	Freaky Girl	Gucci Mane
+	Freek-A-Leek	Petey Pablo
+	Hard Out Here for a Pimp	Three 6 Mafia, Paula Campbell
+	HelluvaLife	Gorilla Zoe, Gucci Mane, OJ da Juiceman
+	Holidae In	Chingy, Ludacris, Snoop Dogg
+	Hustlin’	Rick Ross
+	I’m a Thug	Trick Daddy
+	It’s Goin’ Down	Yung Joc, Nitti
+	Knuck If You Buck	Crime Mob ft. Lil Scrappy
+	Lemonade	Gucci Mane
+	Like A Pimp	David Banner, Lil’ Flip
+	No Lie	2 Chainz, Drake
+	Player’s Ball	Outkast
+	Pop Bottles	Birdman, Lil Wayne
+	Push It	Rick Ross
+	Rubber Band Man	T.I.
+	Seen It All	Jeezy, JAŸ-Z
+	Shorty Wanna Ride	Young Buck
+	Side 2 Side	Three 6 Mafia
+	Skrilla	Kodak Black
+	Slow Motion	Juvenile, Soulja Slim
+	Step In The Arena	Gang Starr
+	Still Ballin’ (Nitty Remix)	2Pac, Trick Daddy
+	What U Gon’ Do	Lil Jon & the Eastside Boyz ft. Lil Scrappy
+	What’s Happenin!	Ying Yang Twins, Trick Daddy
+	Where Dem Dollas At	Gangsta Boo ft. DJ Paul & Juicy J
+	White Tee	Dem Franchize Boyz
+	Who Dat	JT Money ft. Solé
+Emotion 98.3	Against All Odds (Take a Look at Me Now)	Phil Collins
+Emotion 98.3	All By Myself	Eric Carmen
+Emotion 98.3	All Out of Love	Air Supply
+Emotion 98.3	Alone	Heart
+Emotion 98.3	Angel Of The Morning	Juice Newton
+Emotion 98.3	Baby, I Love Your Way / Freebird	Will to Power
+Emotion 98.3	But I Think It’s A Dream	Captain & Tennille
+Emotion 98.3	Coming Around Again	Carly Simon
+Emotion 98.3	Devil Woman	Cliff Richard
+Emotion 98.3	Dream Weaver	Gary Wright
+Emotion 98.3	Drive	The Cars
+Emotion 98.3	Father Figure	George Michael
+Emotion 98.3	Fool (If You Think It’s Over)	Chris Rea
+Emotion 98.3	Hard to Say I’m Sorry / Get Away	Chicago
+Emotion 98.3	How Long	Ace
+Emotion 98.3	I Guess That’s Why They Call It The Blues	Elton John
+Emotion 98.3	In the Air Tonight	Phil Collins
+Emotion 98.3	In The Mood	Robert Plant
+Emotion 98.3	It Keeps You Runnin’	The Doobie Brothers
+Emotion 98.3	Kiss You All Over	Exile
+Emotion 98.3	Lie To Me	Chris Isaak
+Emotion 98.3	Listen to Your Heart	Roxette
+Emotion 98.3	Love Bites	Def Leppard
+Emotion 98.3	No Regrets	The Walker Brothers
+Emotion 98.3	On My Own	Patti Labelle, Michael McDonald
+Emotion 98.3	Overnite	Scritti Politti
+Emotion 98.3	Stop Draggin’ My Heart Around	Stevie Nicks, Tom Petty and the Heartbreakers
+Emotion 98.3	Stranger In My House	Ronnie Milsap
+Emotion 98.3	The Captain of Her Heart	Double
+Emotion 98.3	The Flame	Cheap Trick
+Emotion 98.3	The Way It Is	Bruce Hornsby And The Range
+Emotion 98.3	Tonight, Tonight, Tonight	Genesis
+Emotion 98.3	Trouble	Lindsey Buckingham
+Emotion 98.3	Voices	Russ Ballard
+Emotion 98.3	When You’re in Love With a Beautiful Woman	Dr. Hook
+Gloriana Blues Radio	Baby Scratch My Back	Slim Harpo
+Gloriana Blues Radio	Back to New Orleans	Lightnin’ Hopkins
+Gloriana Blues Radio	Blue Guitar	Earl Hooker
+Gloriana Blues Radio	Boogie Chillen’	John Lee Hooker
+Gloriana Blues Radio	Bright Lights, Big City	Keith Richards
+Gloriana Blues Radio	Bring It On Home	Sonny Boy Williamson II
+Gloriana Blues Radio	Bumble Bee	Big Mama Thornton
+Gloriana Blues Radio	Chains and Things	B.B. King
+Gloriana Blues Radio	Didn’t It Rain	Sister Rosetta Tharpe, Marie Knight, Sam Price Trio
+Gloriana Blues Radio	Dimples	John Lee Hooker
+Gloriana Blues Radio	Feels So Good #1	Junior Kimbrough
+Gloriana Blues Radio	Got My Mojo Working	Muddy Waters
+Gloriana Blues Radio	Hoodoo Blues	Lightnin’ Slim
+Gloriana Blues Radio	I Got What It Takes	Koko Taylor
+Gloriana Blues Radio	I’m a Man	Bo Diddley
+Gloriana Blues Radio	Ice Pick	Albert Collins
+Gloriana Blues Radio	Me and My Chauffeur Blues	Little Walter, Memphis Minnie
+Gloriana Blues Radio	One Scotch, One Bourbon, One Beer	Champion Jack Dupree
+Gloriana Blues Radio	Smokestack Lightnin’	Howlin’ Wolf
+Gloriana Blues Radio	Stone Crazy	Buddy Guy
+Gloriana Blues Radio	That’s All Right	Jimmy Rogers
+Gloriana Blues Radio	Trouble In Mind	Ella Fitzgerald
+Gloriana Blues Radio	Yonder Wall	Freddie King
+Honey FM	After the Love Has Gone	Earth, Wind and Fire
+Honey FM	Baby	Brandy
+Honey FM	Bad Girl	Usher
+Honey FM	Birthday Sex	Jeremih
+Honey FM	Buy U a Drank (Shawty Snappin’)	T-Pain, Yung Joc
+Honey FM	Can’t You See	Total, The Notorious B.I.G.
+Honey FM	Casanova	LeVert
+Honey FM	Creep	TLC
+Honey FM	Dance With Me	112
+Honey FM	Feels Good	Tony! Toni! Toné!
+Honey FM	Feenin’	Jodeci
+Honey FM	Freak Me	Silk
+Honey FM	Get It On Tonite	Montell Jordan
+Honey FM	Get Your Number	Mariah Carey, Jermaine Dupri
+Honey FM	Handcuffs	Parliament
+Honey FM	Here We Go Again!	Portrait
+Honey FM	Hey Mr. D.J.	Zhané
+Honey FM	Hit ‘Em up Style (Oops!)	Blu Cantrell
+Honey FM	Hit The Freeway	Toni Braxton, Loon
+Honey FM	Humpin’ Around	Bobby Brown
+Honey FM	I Adore Mi Amor	Color Me Badd
+Honey FM	I Need A Freak	Egyptian Lover
+Honey FM	I’m N Luv (Wit a Stripper)	T-Pain, Mike Jones
+Honey FM	Intimate Connection	Kleeer
+Honey FM	Lady	D’Angelo
+Honey FM	Locked Up	Akon, Styles P
+Honey FM	Looking For A New Love	Jody Watley
+Honey FM	Love Don’t Live Here Anymore	Rose Royce
+Honey FM	Love Like This	Faith Evans
+Honey FM	My Life	Mary J. Blige
+Honey FM	No Letting Go	Wayne Wonder
+Honey FM	On the Hotline	Pretty Ricky
+Honey FM	Optimistic	Sounds of Blackness
+Honey FM	Pullin’ Me Back	Chingy, Tyrese
+Honey FM	Ride Wit U	Joe, G-Unit
+Honey FM	Shake You Down	Gregory Abbott
+Honey FM	She Blew My Mind (69 Times)	Rick James
+Honey FM	Slow Down	Loose Ends
+Honey FM	Slow Jam	Midnight Star
+Honey FM	Solid	Ashford & Simpson
+Honey FM	Sweet Love	Anita Baker
+Honey FM	Tell Me	Groove Theory
+Honey FM	The Boy Is Mine	Brandy, Monica
+Honey FM	The Vampire That Ate Miami	Blowfly
+Honey FM	Too Close	Next
+Honey FM	Twisted	Keith Sweat
+Honey FM	Vision of Love	Mariah Carey
+Honey FM	What About Your Friends	TLC
+Honey FM	Where The Party At ft. Nelly	Jagged Edge
+Honey FM	Whip Appeal	Babyface
+Honey FM	You’re Makin’ Me High	Toni Braxton
+Honey FM	Your Sweetness Is My Weakness	Barry White
+Kaleidoscope FM	Al Zman Saib	Fadoul
+Kaleidoscope FM	Chia Tay Trong Mua	Phuong Thanh
+Kaleidoscope FM	Danse ta vie	Sylvie Vartan
+Kaleidoscope FM	Gan Ai Gan Zuo	George Lam
+Kaleidoscope FM	Geburt einer Nation	Laibach
+Kaleidoscope FM	Gloria	Mona Carita
+Kaleidoscope FM	Hai capito o no?	Ron
+Kaleidoscope FM	Ies Manziel	Wim Damri
+Kaleidoscope FM	Kumbia Dark	Kumbia Queers
+Kaleidoscope FM	Lola	Heinz Rudolf Kunze
+Kaleidoscope FM	Nobel	Touré Kunda
+Kaleidoscope FM	Ola Afta Pou Fovamai	Alkistis Protopsalti
+Kaleidoscope FM	Rokkibaby	Rolf Bergström, Pyhimykset
+Kaleidoscope FM	Say It Right	Alim Qasimov, Fargana Qasimova
+Kaleidoscope FM	Sinfonía Agridulce	Mexican Institute of Sound
+Kaleidoscope FM	Stupid Girl	Trevor M. Simpson, Hi Lo Singers
+Kaleidoscope FM	T’ Materiaal	Don Melody Club
+Kaleidoscope FM	Tvoj Svijet	Brazil
+Leonida Jazz Radio	Always There	Ronnie Laws
+Leonida Jazz Radio	Betcha Don’t Know	Najee
+Leonida Jazz Radio	Birdland	Weather Report
+Leonida Jazz Radio	Blowin’ Smoke	BADBADNOTGOOD, Randy Brecker
+Leonida Jazz Radio	Breaking Point	David Sanborn
+Leonida Jazz Radio	Crosswind	Billy Cobham
+Leonida Jazz Radio	Fleer Ultra	Thundercat
+Leonida Jazz Radio	Forever More	Tom Browne
+Leonida Jazz Radio	Friends and Strangers	Dave Grusin
+Leonida Jazz Radio	Funky Sea, Funky Dew	The Brecker Brothers
+Leonida Jazz Radio	Hotel Alphonso	Joe Armon-Jones
+Leonida Jazz Radio	Humpty Dumpty	Placebo
+Leonida Jazz Radio	Maputo	Bob James, David Sanborn
+Leonida Jazz Radio	Mister Magic	Grover Washington Jr.
+Leonida Jazz Radio	Modaji	Dave Grusin
+Leonida Jazz Radio	Mr. Groove	Euge Groove
+Leonida Jazz Radio	Mystery	Miles Davis
+Leonida Jazz Radio	Night Crawler	Bob James
+Leonida Jazz Radio	On My Way	The Kount, CARRTOONS
+Leonida Jazz Radio	Overtown Lights	Stanley Clarke, Yussef Dayes, Robert Glasper
+Leonida Jazz Radio	Power	Marcus Miller
+Leonida Jazz Radio	Rotation	Herb Alpert
+Leonida Jazz Radio	Rye Lane Shuffle	Moses Boyd
+Leonida Jazz Radio	School Days	Stanley Clarke
+Leonida Jazz Radio	Scrunch	The Brecker Brothers
+Leonida Jazz Radio	Sicily’ Box	Venna, Yussef Dayes, Marco Bernardis, Rocco Palladino
+Leonida Jazz Radio	Silk	Fuse One
+Leonida Jazz Radio	Sorceress	Return to Forever
+Leonida Jazz Radio	Stro Kyat	Kaidi Tatham ft. Stro Elliot
+Leonida Jazz Radio	Time Limit	Casiopea
+Leonida Jazz Radio	Tojo	Kokoroko
+Leonida Jazz Radio	Valdez in the Country	Donny Hathaway
+Leonida Jazz Radio	WHATUP	DOMi & JD BECK
+Leonida Jazz Radio	WHIP.wav	Moses Yoofee Trio
+Leonida Jazz Radio	Wild Dog	Stanley Clarke, George Duke
+Leonida Jazz Radio	Águia não come mosca	Azymuth
+Radio La Ola	Abusadora	Wilfrido Vargas
+Radio La Ola	Anacaona	Cheo Feliciano
+Radio La Ola	Bemba Colorá	Celia Cruz
+Radio La Ola	Besito de coco	Celia Cruz, Justo Betancourt, Johnny Pacheco & Papo Lucca
+Radio La Ola	Brujeria	El Gran Combo de Puerto Rico
+Radio La Ola	Caballo Viejo	Roberto Torres
+Radio La Ola	Catalina la O	Pete “El Conde” Rodríguez
+Radio La Ola	Descarga Cubana	Cachao
+Radio La Ola	El Tigueron	Jossie Esteban & La Patrulla 15
+Radio La Ola	Kuku-Cha Ku-Cha	Hansel y Raúl
+Radio La Ola	La Cartera	Orquesta Harlow, Larry Harlow, Junior Gonzalez
+Radio La Ola	La Hija De Lola	Charlie Palmieri
+Radio La Ola	Ligia Elena	Rubén Blades, Willie Colón
+Radio La Ola	Llorarás	Oscar D’León
+Radio La Ola	Mi Tierra	Gloria Estefan
+Radio La Ola	No Hay Cama Pa’ Tanta Gente	El Gran Combo de Puerto Rico
+Radio La Ola	Pavo Real	José Luis Rodríguez
+Radio La Ola	Pedro Navaja	Willie Colón, Rubén Blades
+Radio La Ola	Periódico de Ayer	Héctor Lavoe
+Radio La Ola	Que Bueno Baila Usted	Benny Moré
+Radio La Ola	Que Viva Chango	Albita Rodríguez & Willy Chirino
+Radio La Ola	Rebelión (No Le Pegue a la Negra)	Joe Arroyo y La Verdad
+Radio La Ola	Sopa de Caracol (Original Caribe Mix)	Banda Blanca
+Radio La Ola	Soy Guajiro	Willy Chirino
+Radio La Ola	Tú Con Él	Frankie Ruiz
+Radio On-U	Big Ship	Freddie McGregor
+Radio On-U	Black Panta	Lee Perry & The Upsetters
+Radio On-U	Caught You in a Lie	Louisa Mark
+Radio On-U	Dub Inspector	Adrian Sherwood
+Radio On-U	Everything I Own	Ken Boothe
+Radio On-U	Frontline Dub	Creation Rebel
+Radio On-U	Hurt So Good	Susan Cadogan
+Radio On-U	I Am in Love	Jennifer Lara
+Radio On-U	I’m So Sorry	Carroll Thompson
+Radio On-U	Jah Jah Dub The Conqueror	The Aggrovators, Linval Thompson, Bunny Lee & Prince Fatty
+Radio On-U	Mr. Cop	Gregory Isaacs
+Radio On-U	Ragnampaiza Version	The Revolutionaries
+Radio On-U	Ras Menilik Congo – Harp	Augustus Pablo
+Radio On-U	Silly Games	Janet Kay
+Radio On-U	Skylarking	Horace Andy
+Radio On-U	Under Me Sleng Teng Version	King Jammy
+Stockyard FM	4eva	Shygirl, Empress Of & Kingdom
+Stockyard FM	Abu Simbel	WhoMadeWho, Rampa
+Stockyard FM	Across That Fine Line	Nation of Language
+Stockyard FM	Afterimage	Justice ft. RIMON
+Stockyard FM	All U Writers	!!!
+Stockyard FM	Bring Me Down	Fred Jesse
+Stockyard FM	Do It	underscores
+Stockyard FM	Emerge	Fischerspooner
+Stockyard FM	Even Angels Ghost	Overmono, Kindora
+Stockyard FM	French Dip	Psychic Mirrors
+Stockyard FM	Good Lies	Overmono
+Stockyard FM	Hungry Child	Hot Chip
+Stockyard FM	I WANNA BE YOUR SLAVE	Måneskin
+Stockyard FM	Illegal	PinkPantheress
+Stockyard FM	Inner Light	Elderbrook, Bob Moses
+Stockyard FM	Interesting	The Dare
+Stockyard FM	internet $tar	Slayyyter
+Stockyard FM	mangetout (The Dare Remix)	Wet Leg, The Dare
+Stockyard FM	MILLION DOLLAR BABY	Tommy Richman
+Stockyard FM	Monroe	Mount Kimbie
+Stockyard FM	Never Come Back	Caribou
+Stockyard FM	NIGHTMARE	HEALTH
+Stockyard FM	No Stress	CMD/CTRL
+Stockyard FM	North American Scum	LCD Soundsystem
+Stockyard FM	Off The Grid	!!! ft. Meah Pace
+Stockyard FM	One Night/All Night	Justice, Tame Impala
+Stockyard FM	Only One	Fcukers
+Stockyard FM	Overpowered	Róisín Murphy
+Stockyard FM	Paradise	ANOTR
+Stockyard FM	Playa Rosa Theme	Alex Frankel
+Stockyard FM	Soon	Holy Ghost!
+Stockyard FM	Space Invaders	Digitalism
+Stockyard FM	STORM I	GENER8ION, Yung Lean
+Stockyard FM	There Is Only Us	Favored Nations
+Stockyard FM	Time Machine	Kitty Ca$h, Thundercat & James Fauntleroy
+Stockyard FM	What Love Is	Zimmer90
+Stockyard FM	You Move Me	Neil Frances
+Symphony FM	Concerto for Orchestra I. Intrada Allegro maestoso	Witold Lutosławski
+Symphony FM	Erlkönig, Op. 1, D. 328	Franz Schubert
+Symphony FM	La valse, M. 72	Maurice Ravel
+Symphony FM	Les préludes, S. 97	Franz Liszt
+Symphony FM	Mass in B Minor, BWV 232: Sanctus	Johann Sebastian Bach
+Symphony FM	Messiah, HWV 56: Pt. III: Aria. I know That my Redeemer liveth (Soprano)	George Frideric Handel
+Symphony FM	Nocturnes, L. 91: II. Fêtes	Claude Debussy
+Symphony FM	Piano Concerto No. 2 in G Minor, Op. 16: IV. Finale (Allegro tempestoso)	Sergei Prokofiev
+Symphony FM	Sinfonia concertante for Violin and Viola in E-Flat Major, K. 364: II. Andante	Wolfgang Amadeus Mozart
+Symphony FM	Sinfonietta, JW VI/18: V. Allegro	Leoš Janáček
+Symphony FM	Symphony No. 3 in F Major, Op. 90: III. Poco allegretto (Goodbye Again)	Johannes Brahms
+Symphony FM	Symphony No. 5 in D Minor, Op. 47: IV. Allegro non troppo	Dmitri Shostakovich
+Symphony FM	Symphony No. 5 in E Minor, Op. 64, TH 29: IV. Andante maestoso – Allegro vivace	Pyotr Il’yich Tchaikovsky
+Symphony FM	Symphony No. 5 in E-Flat Major Op. 82: III. Allegro molto	Jean Sibelius
+Symphony FM	Symphony No. 6 in A Minor “Tragic”: I. Allegro energico, ma non troppo. Heftig, aber markig	Gustav Mahler
+Symphony FM	Symphony No. 7 in A Major, Op. 92: II. Allegretto	Ludwig van Beethoven
+	Blood and Thunder	Mastodon
+	Bonded by Blood	Exodus
+	Countess Bathory	Venom
+	Freewheel Burning	Judas Priest
+	Hammerhead	Flotsam & Jetsam
+	I	Black Sabbath
+	I Am the Law	Anthrax
+	I’m Broken	Pantera
+	Master of Puppets	Metallica
+	Mutual Death Warrant	Power Trip
+	Over the Wall	Testament
+	Panorama	Voivod
+	Payback	Slayer
+	Raining Blood	Slayer
+	Rotten to the Core	Overkill
+	Seek & Destroy	Metallica
+	Sober	TOOL
+	Sugar	System Of A Down
+	Symphony of Destruction	Megadeth
+	Territory	Sepultura
+	The Trooper	Iron Maiden
+	We Rock	Dio
+The Vault Radio	Armed	Pryda
+The Vault Radio	Baby (Tony Romera Remix)	Four Tet
+The Vault Radio	Bismuth	Renato Cohen
+The Vault Radio	Brighter Days (Marco Lys Remix)	Cajmere ft. Dajae
+The Vault Radio	Chimicalissimo	Argoman
+The Vault Radio	Damn	Dom Dolla & Solomun
+The Vault Radio	Different Side	Michael Bibi & KinAhau ft. Audio Bullys
+The Vault Radio	Don’t Play Around	KETTAMA & CHRIS STASSY
+The Vault Radio	E Samba 2018	Junior Jack, Tube & Berger
+The Vault Radio	FTH (Pawsa Remix)	Real Dimez
+The Vault Radio	Lost Without You	SKREAM & FLETCH
+The Vault Radio	My Computer	Adana Twins ft. Glowal
+The Vault Radio	Nothing But You (DJ Tennis Remix)	Bob Moses
+The Vault Radio	Personal	Jaden Thompson & Rampa ft. Nafe Smallz
+The Vault Radio	PICK UP THE PHONE	PAWSA ft. Nate Dogg
+The Vault Radio	Rej	Âme
+The Vault Radio	Return To Bhibo	Barry Can’t Swim
+The Vault Radio	Simple Times	SG Lewis & DJ Seinfeld
+The Vault Radio	Simulation (Mano Le Tough Remix)	Róisín Murphy
+The Vault Radio	Trippy Yeah	Jimi Jules & Black Coffee
+The Vault Radio	West Coast (Solomun Remix)	Lana Del Rey
+The Vault Radio	XTC	DJ Koze
+The Vault Radio	Ye Ye	Daphni
+The Vault Radio	Yumi	Notre Dame
+Vice City FM	A Good Heart	Feargal Sharkey
+Vice City FM	Alive and Kicking	Simple Minds
+Vice City FM	All Night Long (All Night)	Lionel Richie
+Vice City FM	Another Life	Kano
+Vice City FM	Bakerman	Laid Back
+Vice City FM	Blow the House Down	Living In A Box
+Vice City FM	Break My Stride	Matthew Wilder
+Vice City FM	Bridge To Your Heart	Wax
+Vice City FM	Cars and Girls	Prefab Sprout
+Vice City FM	Crime Pays	Daryl Hall & John Oates
+Vice City FM	Dancing On The Ceiling	Lionel Richie
+Vice City FM	Don’t Tell Me	Blancmange
+Vice City FM	Dr. Beat	Miami Sound Machine
+Vice City FM	Duel (Bittersweet) The Third Side Face To Face	Propaganda
+Vice City FM	E = MC2	Big Audio Dynamite
+Vice City FM	Everybody Have Fun Tonight	Wang Chung
+Vice City FM	Fake	Alexander O’Neal
+Vice City FM	Flesh For Fantasy	Billy Idol
+Vice City FM	Good Thing	Fine Young Cannibals
+Vice City FM	Head Over Heels	Tears For Fears
+Vice City FM	Heartbeat	Red 7
+Vice City FM	Hot Together	The Pointer Sisters
+Vice City FM	I Didn’t Mean To Turn You On	Robert Palmer
+Vice City FM	I’m Alright	Kenny Loggins
+Vice City FM	If You Leave	Orchestral Manoeuvres in the Dark
+Vice City FM	If You Love Somebody Set Them Free	Sting
+Vice City FM	Imagination	Belouis Some
+Vice City FM	Infatuation	Rod Stewart
+Vice City FM	Just Like Heaven	The Cure
+Vice City FM	Kiss and Tell	Bryan Ferry
+Vice City FM	Kiss The Bride	Elton John
+Vice City FM	Land Of Confusion	Genesis
+Vice City FM	Lips Like Sugar	Echo & the Bunnymen
+Vice City FM	Love On Your Side	The Thompson Twins
+Vice City FM	Love Song	Simple Minds
+Vice City FM	Loverboy	Billy Ocean
+Vice City FM	Lucretia My Reflection	The Sisters Of Mercy
+Vice City FM	Miss Me Blind	Culture Club
+Vice City FM	Money’s Too Tight (To Mention)	Simply Red
+Vice City FM	Name and Number	Curiosity Killed The Cat
+Vice City FM	Neutron Dance	The Pointer Sisters
+Vice City FM	Passion	The Flirts
+Vice City FM	People Are People	Depeche Mode
+Vice City FM	Precious Little Diamond	Fox The Fox
+Vice City FM	Searching	Change
+Vice City FM	Shattered Dreams	Johnny Hates Jazz
+Vice City FM	She Works Hard For The Money	Donna Summer
+Vice City FM	Sometimes	Erasure
+Vice City FM	State of Independence	Donna Summer
+Vice City FM	Steamy Windows	Tina Turner
+Vice City FM	Steppin’ Out	Joe Jackson
+Vice City FM	Suddenly Last Summer	The Motels
+Vice City FM	Talk Talk	Talk Talk
+Vice City FM	Thieves Like Us	New Order
+Vice City FM	Things Can Only Get Better	Howard Jones
+Vice City FM	This Is the Day	The The
+Vice City FM	Valerie	Steve Winwood
+Vice City FM	Vanity Kills	ABC
+Vice City FM	Walking On The Moon	The Police
+Vice City FM	We Don’t Have To Take Our Clothes Off	Jermaine Stewart
+Vice City FM	We Don’t Need Another Hero (Thunderdome)	Tina Turner
+Vice City FM	What’s On Your Mind (Pure Energy)	Information Society
+Vice City FM	When The Lights Go Out	Naked Eyes
+Vice City FM	White Horse	Laid Back
+Vice City FM	Who Found Who	Jellybean ft. Elisa Fiorillo
+Vice City FM	Wild Heart	Stevie Nicks
+Vice City FM	Winners	Stanley Clarke & George Duke
+Vice City FM	Wishing (If I Had a Photograph of You)	A Flock Of Seagulls
+Vice City FM	Words	Missing Persons
+Vice City FM	Working With Fire And Steel	China Crisis
+Vice City FM	You Might Think	The Cars
+Vice City Rap Radio	50 Bands	Latto ft. Flo Milli
+Vice City Rap Radio	AHH YEA	Playboi Carti
+Vice City Rap Radio	All There	Jeezy ft. Bankroll Fresh
+Vice City Rap Radio	BILLS PAID	DJ Khaled ft. Latto & City Girls
+Vice City Rap Radio	CASHOUT	SoFaygo
+Vice City Rap Radio	Cookin	21 Savage
+Vice City Rap Radio	Don Da Da	Young Nudy
+Vice City Rap Radio	Don’t Chart	Cardi B
+Vice City Rap Radio	FLA Flow	Denzel Curry ft. 454
+Vice City Rap Radio	GMA	JT
+Vice City Rap Radio	Got Dat	Pooh Shiesty
+Vice City Rap Radio	I Just Came To Pop It	Offset
+Vice City Rap Radio	IKYFL	Tee Grizzley
+Vice City Rap Radio	Left Wrist	BossMan Dlow
+Vice City Rap Radio	Let’s Rock	Kodak Black & Don Toliver
+Vice City Rap Radio	Players	Coi Leray
+Vice City Rap Radio	Pound Town	Sexyy Red, Tay Keith
+Vice City Rap Radio	RCKSTRL!VING	HXG ft. Tana & Quavo
+Vice City Rap Radio	RHYNO	Travis Scott
+Vice City Rap Radio	Rock N Roll	Central Cee
+Vice City Rap Radio	That’s It	Yung Lean ft. Future & Metro Boomin
+Vice City Rap Radio	Unforgettable	French Montana, Swae Lee
+Vice City Rap Radio	WAKIN UP FLEX	Young Thug
+Vice City Rap Radio	Wassup Gway	Famous Sally & YB
+Vice City Rap Radio	Xanny Family	Future
+V-Rock	Bad Love	Eric Clapton
+V-Rock	Bargain	The Who
+V-Rock	Better Be Good to Me	Tina Turner
+V-Rock	Between Two Worlds	Tom Petty
+V-Rock	Big Love	Fleetwood Mac
+V-Rock	Black Cars	Gino Vannelli
+V-Rock	Cherry Pie	Warrant
+V-Rock	Cocaine	Eric Clapton
+V-Rock	Comin’ Under Fire	Def Leppard
+V-Rock	Dogs on the Run	Tom Petty
+V-Rock	Dr. Feelgood	Mötley Crüe
+V-Rock	Driven To Tears	The Police
+V-Rock	Emotional Rescue	The Rolling Stones
+V-Rock	Everybody Wants You	Billy Squier
+V-Rock	Find Your Way Back	Jefferson Starship
+V-Rock	Freedom Overspill	Steve Winwood
+V-Rock	Georgy Porgy	Toto
+V-Rock	Get It Right Next Time	Gerry Rafferty
+V-Rock	Give Me All Your Love	Whitesnake
+V-Rock	Go Insane	Lindsey Buckingham
+V-Rock	Got Me Under Pressure	ZZ Top
+V-Rock	Had a Dad	Jane’s Addiction
+V-Rock	Hammer To Fall	Queen
+V-Rock	Heart To Heart	Kenny Loggins
+V-Rock	I Gotta Try	Michael McDonald
+V-Rock	I Saw the Light	Todd Rundgren
+V-Rock	I Want a New Drug	Huey Lewis & The News
+V-Rock	Jack & Diane	John Mellencamp
+V-Rock	Jump into the Fire	Harry Nilsson
+V-Rock	Just Like Paradise	David Lee Roth
+V-Rock	Lawyers, Guns and Money	Warren Zevon
+V-Rock	Let My Love Open The Door	Pete Townshend
+V-Rock	Livin’ On The Edge	Aerosmith
+V-Rock	Living On A Thin Line	The Kinks
+V-Rock	Love Is A Long Road	Tom Petty
+V-Rock	Love the One You’re With	Stephen Stills
+V-Rock	Lovin’ Every Minute of It	Loverboy
+V-Rock	Lunatic Fringe	Red Rider
+V-Rock	Money For Nothing	Dire Straits
+V-Rock	Naughty Naughty	John Parr
+V-Rock	Nothin’ But A Good Time	Poison
+V-Rock	Panama	Van Halen
+V-Rock	Pour Some Sugar On Me	Def Leppard
+V-Rock	Rhythm of Love	Yes
+V-Rock	Ride Like the Wind	Christopher Cross
+V-Rock	Right Down the Line	Gerry Rafferty
+V-Rock	Rock The Casbah	The Clash
+V-Rock	Rock ‘N’ Roll Fantasy	Bad Company
+V-Rock	Rockin’ Into The Night	38 Special
+V-Rock	Roller	April Wine
+V-Rock	Rooms on Fire	Stevie Nicks
+V-Rock	Runaway	Bon Jovi
+V-Rock	Shakedown	Bob Seger
+V-Rock	Shooting Shark	Blue Öyster Cult
+V-Rock	Sin City	AC/DC
+V-Rock	Stranger	Stephen Stills
+V-Rock	Sure Know Something	Kiss
+V-Rock	Take It On the Run	REO Speedwagon
+V-Rock	Take Me Home Tonight	Eddie Money
+V-Rock	Take The Money And Run	The Steve Miller Band
+V-Rock	Takin’ It to the Streets	The Doobie Brothers
+V-Rock	Talking In Your Sleep	The Romantics
+V-Rock	The Damage You’ve Done	Tom Petty
+V-Rock	The Unforgettable Fire	U2
+V-Rock	The Wild One, Forever	Tom Petty
+V-Rock	Thunder Island	Jay Ferguson
+V-Rock	Too Much Time On My Hands	Styx
+V-Rock	Urgent	Foreigner
+V-Rock	Wildflowers	Tom Petty
+V-Rock	You Wreck Me	Tom Petty
+Worldwide FM	Aaj Shanibar	Rupa
+Worldwide FM	Ain’t It Time	Queen Yahna
+Worldwide FM	Atmosphere Strut	Cloud One
+Worldwide FM	Brasil da Capoeira	fejao & Samtheman
+Worldwide FM	Del Oro	Floating Points
+Worldwide FM	Do It For You	Moses Ideka & phil
+Worldwide FM	Don’t Send Me Away	Garfield Fleming
+Worldwide FM	Don’t You Know	Jan Hammer Group
+Worldwide FM	Fanga	Narasimha
+Worldwide FM	Free As The Wind	The Crusaders
+Worldwide FM	Glad To Know You (Todd Terje Re-Edit)	Chaz Jankel
+Worldwide FM	Hold Tight	Change
+Worldwide FM	I’m a Sucker For Your Love	Teena Marie
+Worldwide FM	If There Are Health Food Stores, Then What Is Everything Else	Food Courts
+Worldwide FM	International Man	Champion, BAKEY, Jamakabi
+Worldwide FM	Japan Greatly	IZCO ft. Reek0 & S.I
+Worldwide FM	Kamikazi	D’Angelo
+Worldwide FM	Lion	Lil Simz & Obongjayar
+Worldwide FM	Love From The Sun (Louie Vega’s We Out Here Edit)	Elements Of Life ft. Rahsaan Patterson & Cindy Mizelle
+Worldwide FM	Maktoub	Alewya
+Worldwide FM	McDonalds Drug Money	Roy Ayers, Thundercat, Om’Mas Keith
+Worldwide FM	MILITANT DON	Mala & Magugu
+Worldwide FM	Moral Tem Hora (Ray Mang Edit)	Cristina Camargo
+Worldwide FM	MY LOVE YOUR LOVE	ZENA
+Worldwide FM	NO ME BUSQUES	Omar Apollo
+Worldwide FM	Qué es lo que Hare para Amarte	Luis Antonio Diaz y Su Sol Banda
+Worldwide FM	Rebirth of Slick (Cool Like Dat)	Digable Planets
+Worldwide FM	REBIRTH OF SLICK (COOL LIKE DAT)	Kassa Overall
+Worldwide FM	SAMURAI (Samba House Remix)	Jazztronik
+Worldwide FM	Si Phan Don Lovers Rock	Srirajah Sound System ft. Molam Inteng Keawbuala
+Worldwide FM	Skhaftin’ Saka Fonque	Atmos Blaq
+Worldwide FM	SLoPE VIP	Facta ft. Warrior Queen & Killa P
+Worldwide FM	Smile	Jamiroquai
+Worldwide FM	Star Chasers	4hero
+Worldwide FM	Stone Kold Krazy Luuv	Jesse Johnson & DāM-FunK
+Worldwide FM	Thank You Deeply	Mystery Tiime
+Worldwide FM	The First Time Ever I Saw Your Face	Roberta Flack
+Worldwide FM	Think Twice (4hero Remix)	Gilles Peterson’s Havana Cultura Band ft. Danay & Carina
+Worldwide FM	What You Won’t Do for Love	Bobby Caldwell
+Worldwide FM	Yoppa Ratta	DONGURIZU
+Worldwide FM	Yu Done Know (Jingle)	Klash & Brown
+Bodega the DJ	2 Phones	Kevin Gates
+Bodega the DJ	7.62 God	Pooh Shiesty
+Bodega the DJ	712PM	Future
+Bodega the DJ	All da Smoke	Future & Young Thug
+Bodega the DJ	B.M.F. (Blowin’ Money Fast)	Rick Ross ft. Styles P
+Bodega the DJ	Back On The Road	Icewear Vezzo
+Bodega the DJ	Bad and Boujee	Migos & Lil Uzi Vert
+Bodega the DJ	Bitcoin	Liro 100
+Bodega the DJ	Blow a Check	Zoey Dollaz
+Bodega the DJ	Boss Shit	RushDee, ATL Jacob, Big Boss Vette
+Bodega the DJ	Brokey	Latto
+Bodega the DJ	Can’t Fuck wit Me	Trick Daddy
+Bodega the DJ	CONTEST	Travis Scott & SoFaygo
+Bodega the DJ	COUNT UP	Gunna
+Bodega the DJ	Cyclone	Baby Bash ft. T-Pain
+Bodega the DJ	Dale	Bodega Flee ft. Chucky73 & DGLO73
+Bodega the DJ	Dance With Me	A Boogie Wit da Hoodie ft. elkan
+Bodega the DJ	FLACKITO JODYE	A$AP Rocky ft. Tokischa
+Bodega the DJ	Friend Do Remix	Belly Gang Kushington ft. YKNiece
+Bodega the DJ	GASS	Nemzzz ft. Travis Scott
+Bodega the DJ	Go Go Go	BunnaB
+Bodega the DJ	Help Me	Real Boston Richey
+Bodega the DJ	Hoochie Coochie	Sexyy Red
+Bodega the DJ	Maybach Coupe	Key Glock & Tay Keith
+Bodega the DJ	My Neck, My Back (Lick It)	Khia
+Bodega the DJ	No Flockin’	Kodak Black
+Bodega the DJ	No Sucker	Lil Baby & Moneybagg Yo
+Bodega the DJ	Nonstop	Drake
+Bodega the DJ	O Let’s Do It	Waka Flocka Flame ft. Cap
+Bodega the DJ	One of Them Ones	Mustard ft. Quavo & Rob49
+Bodega the DJ	Outside	Cardi B
+Bodega the DJ	PA QUE LO BAILES (BAILALO ROCKY)	Lomiiel
+Bodega the DJ	Rake It Up	Yo Gotti, Nicki Minaj
+Bodega the DJ	ROBOCOP	Moreno ITF
+Bodega the DJ	Shake Dat Ass (Twerk Song)	BossMan Dlow
+Bodega the DJ	She Make It Clap (Remix)	Soulja Boy & French Montana
+Bodega the DJ	Skrilla	Kodak Black
+Bodega the DJ	Soak City	310babii ft. Mustard, Tyga, Blueface, OhGeesy & BlueBucksClan
+Bodega the DJ	Super Gremlin	Kodak Black
+Bodega the DJ	TF?	Don Toliver
+Bodega the DJ	Type Shit	Future, Metro Boomin, Travis Scott & Playboi Carti
+Bodega the DJ	WHATCHU KNOW ABOUT ME	GloRilla, Sexyy Red
+Bodega the DJ	WHIM WHAMIEE	PLUTO & YKNIECE
+Bodega the DJ	Wipe Me Down (Remix)	Boosie Badazz ft. Foxx, Webbie & Lil Boosie
+DJ Stevie J	BAND4BAND	Central Cee & Lil Baby
+DJ Stevie J	Big Mama (2nd Half Only)	Latto
+DJ Stevie J	Digits	Young Thug
+DJ Stevie J	Dior	Pop Smoke
+DJ Stevie J	Dreams and Nightmares	Meek Mill
+DJ Stevie J	Dum, Dumb, and Dumber	Lil Baby, Young Thug, Future
+DJ Stevie J	DUMMY (Prod. Tay Keith)	Key Glock
+DJ Stevie J	Faneto	Chief Keef
+DJ Stevie J	FE!N	Travis Scott, Playboi Carti
+DJ Stevie J	Fried (She a Vibe)	Future, Metro Boomin
+DJ Stevie J	Hustlin’	Rick Ross
+DJ Stevie J	I’m A Monster	ATL Jacob
+DJ Stevie J	Just Wanna Rock	Lil Uzi Vert
+DJ Stevie J	Love Me	Lil Wayne, Drake, Future
+DJ Stevie J	Mo Bamba	Sheck Wes
+DJ Stevie J	Mr. Pot Scraper	BossMan Dlow
+DJ Stevie J	NOKIA	Drake
+DJ Stevie J	OFF MY CHEST	Stevie J
+DJ Stevie J	Roll in Peace	Kodak Black, XXXTENTACION
+DJ Stevie J	SICKO MODE	Travis Scott
+DJ Stevie J	SkeeYee	Sexyy Red
+DJ Stevie J	T-Shirt	Migos
+DJ Stevie J	TGIF	GloRilla
+DJ Stevie J	Up	Cardi B
+The Sniper of La Perle	300 Blackout	Kodak Black
+The Sniper of La Perle	6:45	Naïka
+The Sniper of La Perle	Are You Ready	Carimi
+The Sniper of La Perle	Child Support	Zenglen
+The Sniper of La Perle	Chokola	Alan Cavé
+The Sniper of La Perle	Flanm	Emeline Michel
+The Sniper of La Perle	Fresh From Head To Toe	Billy Blue
+The Sniper of La Perle	Guantanamera	Wyclef Jean ft. Ms. Lauryn Hill, Celia Cruz & Jeni Fujita
+The Sniper of La Perle	Haiti	John Wicks ft. Kodak Black
+The Sniper of La Perle	Haitian Scarface	Kodak Black
+The Sniper of La Perle	Imma Zoe	Black Dada
+The Sniper of La Perle	Jessica	Michaël Brun w/ J Balvin, SAINt JHN, Charly Black & J Perry
+The Sniper of La Perle	Kanpe devan’m	5Lan featuring TonyMix
+The Sniper of La Perle	Koul Non	King Posse
+The Sniper of La Perle	La Familia	Djakout
+The Sniper of La Perle	Magic Gouyad #6	R Dydy
+The Sniper of La Perle	Ou Pa Ka Fè Sa	DJ Platinum D
+The Sniper of La Perle	Ou Paka Gangster	Barikad Crew
+The Sniper of La Perle	Tranble	Roody Roodboy
+The Sniper of La Perle	Tu Me Touches	T-Vice
+The Sniper of La Perle	Tèt Kale Bobis	Kodak Black & Michaël Brun
+The Sniper of La Perle	Ville	Top Adlerman

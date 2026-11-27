@@ -20,6 +20,11 @@ export function RadioPanel() {
     if (r) setData(r);
   };
 
+  const setLyrics = async (lyrics: boolean) => {
+    const r = await run("lyrics", () => call<RadioStatus>("radio.setSettings", { lyrics }));
+    if (r) setData(r);
+  };
+
   const name = async () => {
     const r = await run(
       "name",
@@ -83,6 +88,30 @@ export function RadioPanel() {
             <Notice tone="warn" title="Waiting">
               {status.problem}
             </Notice>
+          )}
+          {status.enabled && (
+            <>
+              <Switch
+                checked={status.lyrics.enabled}
+                disabled={busy !== null}
+                onChange={(v) => void setLyrics(v)}
+                label="Also recognise the GTA 6 station songs by their lyrics"
+              />
+              <div className="sub">
+                Works with no naming: RigControl listens for sung words and looks them up in the stations' lyrics. The
+                first time, it downloads the songs' lyrics from lrclib.net and a speech recognition model (190 MB) from
+                Hugging Face. The listening itself stays on this PC. Songs without words still need naming once.
+              </div>
+              {status.lyrics.enabled && status.lyrics.detail && (
+                <Notice tone={status.lyrics.state === "problem" ? "error" : status.lyrics.state === "ready" ? "info" : "warn"}
+                        title={status.lyrics.state === "ready" ? "Lyrics recognition is on" : status.lyrics.state === "problem" ? "Lyrics recognition stopped" : "Getting ready"}>
+                  {status.lyrics.detail}
+                </Notice>
+              )}
+              {status.lyrics.enabled && status.lyrics.state === "ready" && status.lyrics.lastHeard && (
+                <p className="sub faint">Last heard: "{status.lyrics.lastHeard}"</p>
+              )}
+            </>
           )}
           {status.state === "listening" && (
             <p className="sub">

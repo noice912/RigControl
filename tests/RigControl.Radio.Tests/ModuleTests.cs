@@ -55,6 +55,36 @@ internal sealed class FakeInput : IRadioInput
     private sealed class Closer(Action a) : IDisposable { public void Dispose() => a(); }
 }
 
+/// <summary>A lyrics engine that "hears" whatever the test says.</summary>
+internal sealed class FakeLyrics : RigControl.Radio.Lyrics.ILyricsEngine
+{
+    public bool Prepared { get; private set; }
+    public int Calls;
+    public int InFlight, MaxInFlight;
+    public Func<float[], RigControl.Radio.Lyrics.LyricsHit?> Answer { get; set; } = _ => null;
+    public ManualResetEventSlim? Hold { get; set; }
+    public string State => Prepared ? "ready" : "off";
+    public string? Detail => null;
+    public string? LastHeard { get; private set; }
+    public bool Ready => Prepared;
+    public Task PrepareAsync(CancellationToken ct) { Prepared = true; return Task.CompletedTask; }
+    public async Task<RigControl.Radio.Lyrics.LyricsHit?> HearAsync(float[] audio16k, CancellationToken ct)
+    {
+        Interlocked.Increment(ref Calls);
+        var now = Interlocked.Increment(ref InFlight);
+        lock (this) MaxInFlight = Math.Max(MaxInFlight, now);
+        try
+        {
+            if (Hold is { } h) await Task.Run(() => h.Wait(5000), ct);
+            var hit = Answer(audio16k);
+            LastHeard = hit?.Heard ?? "nothing";
+            return hit;
+        }
+        finally { Interlocked.Decrement(ref InFlight); }
+    }
+    public void Dispose() => Prepared = false;
+}
+
 public class ModuleTests : IDisposable
 {
     private static readonly AudioEndpoint Card = new("card-1", "Digital Audio Interface (USB Digital Audio)", "USB\\VID_534D&PID_2109");
@@ -62,12 +92,13 @@ public class ModuleTests : IDisposable
     private readonly FakeInput _input = new();
     private readonly List<(string Method, JsonObject Args)> _presence = new();
     private readonly RadioModule _m;
+    private readonly FakeLyrics _lyrics = new();
 
     public ModuleTests()
     {
         Directory.CreateDirectory(_dir);
         _m = new RadioModule(_input, (method, args) => { lock (_presence) _presence.Add((method, args)); return Task.CompletedTask; },
-            storePath: Path.Combine(_dir, "learned.rcfp"), runLoop: false);
+            storePath: Path.Combine(_dir, "learned.rcfp"), runLoop: false, lyrics: _ => _lyrics);
         var ctx = new ModuleContext(new EventBus(), NullLog.Instance, new SettingsStore(Path.Combine(_dir, "settings.json"), NullLog.Instance),
             new AppEnvironment(_dir, _dir, false, "1.0.0", "x.exe"));
         _m.StartAsync(ctx, default).GetAwaiter().GetResult();
@@ -96,6 +127,7 @@ public class ModuleTests : IDisposable
         {
             _input.Feed(TestAudio.Slice(song, t, Math.Min(t + 3, song.Length / 16000.0)));
             await _m.TickAsync();
+            await _m.HearingDone();
         }
     }
 
@@ -294,5 +326,119 @@ public class ModuleTests : IDisposable
         Assert.True(positions.Count >= 3);
         Assert.True(positions.Zip(positions.Skip(1)).All(p => p.Second > p.First), string.Join(", ", positions));
         Assert.DoesNotContain(_presence, p => p.Args.ContainsKey("duration")); // the length isn't known
+    }
+
+    private static readonly RigControl.Radio.Catalogue.CatalogueSong Feel = new("", "Electric Feel", "MGMT");
+
+    [Fact]
+    public async Task Lyrics_are_off_until_switched_on()
+    {
+        await On();
+        Assert.False(_lyrics.Prepared);
+        Assert.Equal("off", Status.Lyrics.State);
+        await Call("setSettings", """{"lyrics":true}""");
+        Assert.True(_lyrics.Prepared);
+        Assert.True(Status.Lyrics.Enabled);
+    }
+
+    [Fact]
+    public async Task A_song_heard_by_its_lyrics_shows_and_is_learned_for_next_time()
+    {
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+        // Every call is one listen, 6 s after the last (ticks every 3 s, listening at most every 4 s): the place moves on.
+        _lyrics.Answer = audio => audio.Length >= 16000 * 6 ? new(Feel, 100 + 6 * _lyrics.Calls, 230, "made-up words for the test") : null;
+        var song = TestAudio.Song(21, 120);
+        await Play(song, 0, 24);
+        Assert.Equal("Electric Feel", Status.Now?.Title);
+        Assert.Equal("MGMT", Status.Now!.Artist);
+        Assert.NotNull(Status.Now.DurationSeconds);
+        Assert.Contains(_presence, p => p.Args.ContainsKey("title") && p.Args["title"]!.GetValue<string>() == "Electric Feel");
+
+        // Quiet, then the same part again: the fingerprints learned from it are enough.
+        await Play(new float[16000 * 12], 0, 12);
+        Assert.Null(Status.Now);
+        _lyrics.Answer = _ => null;
+        await Play(song, 0, 30);
+        Assert.Equal("Electric Feel", Status.Now?.Title);
+    }
+
+    [Fact]
+    public async Task Talking_that_isnt_a_song_shows_nothing()
+    {
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+        await Play(TestAudio.Song(22, 30), 0, 24);
+        Assert.Null(Status.Now);
+        Assert.True(_lyrics.Calls > 0);
+        Assert.Equal("nothing", Status.Lyrics.LastHeard);
+    }
+
+    [Fact]
+    public async Task Only_one_transcription_runs_at_a_time()
+    {
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+        using var hold = new ManualResetEventSlim();
+        _lyrics.Hold = hold;
+        var song = TestAudio.Song(23, 60);
+        for (var t = 0; t < 24; t += 3)
+        {
+            _input.Feed(TestAudio.Slice(song, t, t + 3));
+            await _m.TickAsync();
+        }
+        Assert.Equal(1, _lyrics.Calls);
+        hold.Set();
+        await _m.HearingDone();
+        Assert.Equal(1, _lyrics.MaxInFlight);
+    }
+
+    [Fact]
+    public async Task One_lyrics_hit_alone_shows_nothing_and_learns_nothing()
+    {
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+        var given = false;
+        _lyrics.Answer = audio =>
+        {
+            if (given || audio.Length < 16000 * 6) return null;
+            given = true; // one hit, ever
+            return new(Feel, 120, 230, "made-up words for the test");
+        };
+        await Play(TestAudio.Song(24, 60), 0, 30);
+        Assert.Null(Status.Now);
+        Assert.Empty((IReadOnlyList<LearnedSongDto>)(await Call("listSongs"))!);
+    }
+
+    [Fact]
+    public async Task Two_hits_that_disagree_on_the_place_show_nothing()
+    {
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+        _lyrics.Answer = audio => audio.Length >= 16000 * 6 ? new(Feel, 120, 230, "made-up words for the test") : null; // never moves on
+        await Play(TestAudio.Song(25, 60), 0, 30);
+        Assert.Null(Status.Now);
+    }
+
+    [Fact]
+    public async Task A_hit_that_arrives_late_is_dropped()
+    {
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+        using var hold = new ManualResetEventSlim();
+        _lyrics.Hold = hold;
+        _lyrics.Answer = _ => new(Feel, 100 + 6 * _lyrics.Calls, 230, "made-up words for the test");
+        var song = TestAudio.Song(26, 60);
+        for (var t = 0; t < 12; t += 3)
+        {
+            _input.Feed(TestAudio.Slice(song, t, t + 3));
+            await _m.TickAsync(); // the first listen is still running
+        }
+        hold.Set();
+        await _m.HearingDone(); // its answer is for sound 9 s old by now
+        _lyrics.Hold = null;
+        await Play(new float[16000 * 12], 0, 12);
+        Assert.Null(Status.Now);
+        Assert.Empty((IReadOnlyList<LearnedSongDto>)(await Call("listSongs"))!);
     }
 }

@@ -7,6 +7,7 @@ using RigControl.Core.Modules;
 using RigControl.Core.Rpc;
 using RigControl.Radio.Audio;
 using RigControl.Radio.Fingerprint;
+using RigControl.Radio.Lyrics;
 using RigControl.Radio.Store;
 
 namespace RigControl.Radio;
@@ -59,12 +60,34 @@ public sealed class RadioModule : IAppModule
     private RadioStatusDto? _published;
 
     /// <param name="presence">Calls a Discord status method (the app passes the RPC dispatcher).</param>
-    public RadioModule(IRadioInput input, Func<string, JsonObject, Task> presence, string? storePath = null, bool runLoop = true)
+    /// <param name="lyrics">Makes the lyrics engine (the app passes the real one; tests a fake). Null: the real one.</param>
+    public RadioModule(IRadioInput input, Func<string, JsonObject, Task> presence, string? storePath = null, bool runLoop = true,
+        Func<ModuleContext, ILyricsEngine>? lyrics = null)
     {
         _input = input;
         _presence = presence;
         _storePathOverride = storePath;
         _runLoop = runLoop;
+        _lyricsFactory = lyrics;
+    }
+
+    private readonly Func<ModuleContext, ILyricsEngine>? _lyricsFactory;
+    private ILyricsEngine? _lyrics;
+    private CancellationTokenSource? _lyricsCts;
+    private Task _hearing = Task.CompletedTask;
+    private long _lastHearAt = long.MinValue / 2;
+    private const double HearEverySeconds = 4, HearSeconds = 8;
+    /// <summary>An answer for sound older than this is dropped (the station may have changed meanwhile).</summary>
+    private const double MaxHitAgeSeconds = 2;
+    /// <summary>The confirming hit: at least one listen later (no shared sound), and within this long.</summary>
+    private const double ConfirmWithinSeconds = 40, PlaceSlackSeconds = 6;
+    /// <summary>A song heard once by its lyrics, waiting for a second, independent hit. Never saved until then.</summary>
+    private (Catalogue.CatalogueSong Song, double? Position, double? Duration, long EndAt)? _lyricCandidate;
+
+    /// <summary>For tests: waits until the lyrics listening started by the last tick has finished.</summary>
+    internal Task HearingDone()
+    {
+        lock (_gate) return _hearing;
     }
 
     public string Name => "radio";
@@ -79,6 +102,7 @@ public sealed class RadioModule : IAppModule
         _store = LearnedSongs.Load(path, _log);
         lock (_gate) _settings = context.Settings.Get<RadioSettings>(RadioSettings.Section);
         _status = new ModuleStatus(ModuleState.Ready);
+        if (_settings.Lyrics) StartLyrics();
         if (_runLoop) _timer = new Timer(_ => _ = TickAsync(), null, 1000, TickMs);
         return Task.CompletedTask;
     }
@@ -279,12 +303,144 @@ public sealed class RadioModule : IAppModule
             else
             {
                 _pending = null;
+                MaybeHear(heard, gen, now);
                 if (_current is not null && (now - _lastMatchAt) / (double)RadioAudio.SampleRate > LostAfterSeconds)
                     return Clear("it hasn't been heard for a minute");
             }
         }
         if (learn is { } l) LearnMore(l.SongId, l.Start);
         lock (_gate) return _current is null ? null : SongPayload();
+    }
+
+    // ---------------------------------------------------------------- lyrics
+
+    private void StartLyrics()
+    {
+        if (_ctx is null) return;
+        StopLyrics();
+        _lyrics = (_lyricsFactory ?? DefaultLyrics)(_ctx);
+        var cts = _lyricsCts = new CancellationTokenSource();
+        var engine = _lyrics;
+        var prepare = engine.PrepareAsync(cts.Token);
+        _ = prepare.ContinueWith(_ => Publish(), TaskScheduler.Default);
+    }
+
+    /// <summary>Under _gate: forgets the engine; it is closed on another thread (closing waits for a running listen).</summary>
+    private void StopLyrics()
+    {
+        _lyricsCts?.Cancel();
+        _lyricsCts = null;
+        var old = _lyrics;
+        var hearing = _hearing;
+        _lyrics = null;
+        _lyricCandidate = null;
+        if (old is not null)
+            _ = Task.Run(async () =>
+            {
+                try { await hearing.ConfigureAwait(false); } catch (Exception) { /* done either way */ }
+                old.Dispose();
+            });
+    }
+
+    private static ILyricsEngine DefaultLyrics(ModuleContext ctx)
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        var folder = Path.Combine(ctx.Environment.DataDirectory, "radio");
+        return new LyricsEngine(http, folder, NativeFolders, ctx.Log);
+    }
+
+    /// <summary>Where RigControl's own native files are: its folder and the folders .NET unpacked them to.</summary>
+    public static Func<IEnumerable<string>> NativeFolders { get; set; } = () =>
+    {
+        var dirs = new List<string> { AppContext.BaseDirectory };
+        if (AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") is string list)
+            dirs.AddRange(list.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
+        return dirs.Distinct(StringComparer.OrdinalIgnoreCase);
+    };
+
+    /// <summary>
+    /// No learned song matched: let the lyrics engine listen to the newest 8 s (at most every 4 s, one at a time). Under _gate.
+    /// </summary>
+    private void MaybeHear(float[] heard, int gen, long now)
+    {
+        if (!_settings.Lyrics || _lyrics is not { Ready: true } engine || !_hearing.IsCompleted) return;
+        if ((now - _lastHearAt) / (double)RadioAudio.SampleRate < HearEverySeconds) return;
+        _lastHearAt = now;
+        var take = Math.Min(heard.Length, (int)(HearSeconds * RadioAudio.SampleRate));
+        var audio = heard[^take..];
+        var ct = _lyricsCts?.Token ?? CancellationToken.None;
+        _hearing = Task.Run(async () =>
+        {
+            try
+            {
+                var hit = await engine.HearAsync(audio, ct).ConfigureAwait(false);
+                if (hit is not null && OnHeard(gen, hit, audio, now) is { } send) await Notify(send).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { /* switched off */ }
+            catch (Exception ex)
+            {
+                _log.Info("In-game radio: listening for lyrics failed: " + ex.Message);
+            }
+            Publish();
+        });
+    }
+
+    /// <summary>
+    /// A song recognised from its words. One hit is only a candidate, kept in memory: it is shown (and learned) only when
+    /// a second hit for the same song comes from later sound that shares nothing with the first, at a place in the song
+    /// that moved on by about as much as the time between them. An answer for sound more than 2 s old is dropped.
+    /// Returns what to tell Discord status (null: nothing).
+    /// </summary>
+    private JsonObject? OnHeard(int gen, LyricsHit hit, float[] audio, long endAt)
+    {
+        var seconds = audio.Length / (double)RadioAudio.SampleRate;
+        lock (_gate)
+        {
+            if (gen != _generation) return null;
+            var age = (Interlocked.Read(ref _samples) - endAt) / (double)RadioAudio.SampleRate;
+            if (age > MaxHitAgeSeconds)
+            {
+                _log.Info($"In-game radio: a lyrics answer came {age:F0} s late and was dropped.");
+                return null;
+            }
+            if (_lyricCandidate is { } c && c.Song.Key == hit.Song.Key)
+            {
+                var gap = (endAt - c.EndAt) / (double)RadioAudio.SampleRate;
+                if (gap < HearSeconds) return null; // overlaps the first hit's sound: proves nothing new, keep waiting
+                var placeAgrees = (c.Position, hit.PositionSeconds) switch
+                {
+                    (null, null) => true,
+                    ({ } p1, { } p2) => Math.Abs(p2 - p1 - gap) <= PlaceSlackSeconds,
+                    _ => false,
+                };
+                if (gap <= ConfirmWithinSeconds && placeAgrees) return Confirm(hit, audio, endAt, seconds);
+            }
+            _lyricCandidate = (hit.Song, hit.PositionSeconds, hit.DurationSeconds, endAt);
+            _log.Info("In-game radio: maybe \"" + hit.Song.Title + "\" (lyrics); waiting for a second hit.");
+            return null;
+        }
+    }
+
+    /// <summary>Second, agreeing lyrics hit: learn this sound under the song and show it. Under _gate.</summary>
+    private JsonObject? Confirm(LyricsHit hit, float[] audio, long endAt, double seconds)
+    {
+        _lyricCandidate = null;
+        var landmarks = Fingerprinter.Compute(audio);
+        var position = hit.PositionSeconds ?? seconds;
+        LearnedSong song;
+        try
+        {
+            song = _store!.Learn(hit.Song.Title, hit.Song.Artist, "", hit.PositionSeconds is null ? null : hit.DurationSeconds,
+                landmarks, Math.Max(0, position - seconds));
+        }
+        catch (InvalidOperationException) { return null; } // store full
+        _dirty = true;
+        _current = (song.Id, position, endAt);
+        _pending = (song.Id, position, endAt);
+        _since = endAt;
+        _lastMatchAt = endAt;
+        _log.Info("In-game radio: recognised " + Describe(song.Id) + " by its lyrics.");
+        return SongPayload();
     }
 
     /// <summary>
@@ -395,7 +551,8 @@ public sealed class RadioModule : IAppModule
     private RadioStatusDto BuildStatus()
     {
         var state = !_settings.Enabled ? "off" : _session is not null ? "listening" : "waiting";
-        return new RadioStatusDto(_settings.Enabled, state, _problem, CurrentDto(), _sound, _store?.Songs.Count ?? 0);
+        var lyrics = new RadioLyricsDto(_settings.Lyrics, _lyrics?.State ?? "off", _lyrics?.Detail, _lyrics?.LastHeard);
+        return new RadioStatusDto(_settings.Enabled, state, _problem, CurrentDto(), _sound, _store?.Songs.Count ?? 0, lyrics);
     }
 
     private async Task<RadioStatusDto> SetSettings(SettingsArgs a)
@@ -405,6 +562,12 @@ public sealed class RadioModule : IAppModule
         {
             if (a.Enabled is { } on) _settings.Enabled = on;
             if (a.InputId is not null) _settings.InputId = a.InputId.Length == 0 ? null : a.InputId;
+            if (a.Lyrics is { } lyricsOn && lyricsOn != _settings.Lyrics)
+            {
+                _settings.Lyrics = lyricsOn;
+                if (lyricsOn) StartLyrics();
+                else StopLyrics();
+            }
             _ctx?.Settings.Set(RadioSettings.Section, _settings);
             if (!_settings.Enabled && _current is not null) clear = Clear("switched off");
         }
@@ -492,12 +655,18 @@ public sealed class RadioModule : IAppModule
         return s;
     }
 
+    private readonly object _publishGate = new();
+
+    /// <summary>Sends the status when it changed. Serialised, so an older status never arrives after a newer one.</summary>
     private void Publish()
     {
-        var dto = GetStatus();
-        if (dto == _published) return;
-        _published = dto;
-        _ctx?.Events.Publish("radio.status", dto);
+        lock (_publishGate)
+        {
+            var dto = GetStatus();
+            if (dto == _published) return;
+            _published = dto;
+            _ctx?.Events.Publish("radio.status", dto);
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -513,6 +682,7 @@ public sealed class RadioModule : IAppModule
                 stale = Detach(ref ignored, "RigControl is closing");
             }
             DisposeQuietly(stale);
+            lock (_gate) StopLyrics();
             SaveIfDue(force: true);
         }
         finally
@@ -523,6 +693,7 @@ public sealed class RadioModule : IAppModule
 
     public sealed class SettingsArgs
     {
+        public bool? Lyrics { get; set; }
         public bool? Enabled { get; set; }
         public string? InputId { get; set; }
     }

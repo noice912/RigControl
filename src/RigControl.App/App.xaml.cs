@@ -221,6 +221,10 @@ public partial class App : System.Windows.Application
         lighting.SyncColorChanged += c => cooling.SetLightsColor(c);
         var programFolderOpen = new Lazy<bool>(() =>
             !string.IsNullOrEmpty(env.ExecutablePath) && RigControl.Bundled.FolderGuard.OthersCanChange(env.ExecutablePath));
+        // The in-game radio's speech engine loads only from the admin-only folders .NET unpacked RigControl's native
+        // files into (NativeFolderGuard), and from RigControl's own folder only when other programs can't change it.
+        RigControl.Radio.RadioModule.NativeFolders = () => NativeFolderGuard.CurrentExtractDirs()
+            .Concat(programFolderOpen.Value ? [] : new[] { AppContext.BaseDirectory });
         var modules = new List<IAppModule>
         {
             new SensorsModule(),
@@ -230,7 +234,9 @@ public partial class App : System.Windows.Application
             capture,
             // The capture card's sound on the headphones (Recording page). Off until switched on; nothing is recorded.
             new RigControl.Capture.Listen.ListenModule(new RigControl.Capture.Listen.WasapiListenEngine()),
-            // In-game radio: recognises learned songs in the capture card's sound for Discord status. Off until switched on.
+            // In-game radio: recognises learned songs (and, if switched on, the station songs by their lyrics) in the
+            // capture card's sound for Discord status. Off until switched on. Its speech engine loads only from
+            // RigControl's own (admin-only) unpacked native files.
             new RigControl.Radio.RadioModule(new RigControl.Radio.WasapiRadioInput(), (method, args) => dispatcher.HandleAsync(
                 new System.Text.Json.Nodes.JsonObject { ["id"] = 0, ["method"] = method, ["params"] = args }.ToJsonString())),
             new DriversModule(),

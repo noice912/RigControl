@@ -55,7 +55,10 @@ let captureStatus: any = {
   },
 };
 
-let radioStatus: any = { enabled: false, state: "off", problem: null, now: null, sound: false, learnedCount: 2 };
+let radioStatus: any = {
+  enabled: false, state: "off", problem: null, now: null, sound: false, learnedCount: 2,
+  lyrics: { enabled: false, state: "off", detail: null, lastHeard: null },
+};
 let radioSongs: any[] = [
   { id: 1, title: "Night Drive", artist: "Sample Band", album: "", durationSeconds: null, learnedAt: "2026-11-27T20:00:00Z" },
   { id: 2, title: "City Lights", artist: "Another Band", album: "Radio Hits", durationSeconds: null, learnedAt: "2026-11-27T20:10:00Z" },
@@ -2491,6 +2494,13 @@ export function createMockBackend() {
         case "radio.getStatus":
           return ok(radioStatus);
         case "radio.setSettings":
+          if (params?.lyrics !== undefined)
+            radioStatus = {
+              ...radioStatus,
+              lyrics: params.lyrics
+                ? { enabled: true, state: "ready", detail: "Recognises 790 songs from the stations by their lyrics, on the graphics card.", lastHeard: "and the sample words the radio played" }
+                : { enabled: false, state: "off", detail: null, lastHeard: null },
+            };
           radioStatus = { ...radioStatus, enabled: !!(params?.enabled ?? radioStatus.enabled) };
           radioStatus = { ...radioStatus, state: radioStatus.enabled ? "listening" : "off", sound: radioStatus.enabled, now: null };
           emitLater?.("radio.status", radioStatus);
