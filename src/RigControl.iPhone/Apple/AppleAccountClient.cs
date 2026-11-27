@@ -323,7 +323,9 @@ public sealed class AppleAccountClient
         message.Content.Headers.TryAddWithoutValidation("Content-Type", "text/x-xml-plist");
         message.Headers.TryAddWithoutValidation("Accept", "*/*");
         message.Headers.TryAddWithoutValidation("User-Agent", GsaUserAgent);
-        var clientInfo = AppleHttp.Find(anisette, "X-Mme-Client-Info");
+        // Every GrandSlam request (sign-in and the app token) names Apple's AuthKit/akd as the asking app, as Apple's
+        // own sign-in daemon does; the iCloud identity is refused for developer tokens (-80046 at "apptokens").
+        var clientInfo = AppleHttp.AuthKitClientInfo(AppleHttp.Find(anisette, "X-Mme-Client-Info"));
         if (clientInfo is not null)
             message.Headers.TryAddWithoutValidation("X-MMe-Client-Info", clientInfo);
 
