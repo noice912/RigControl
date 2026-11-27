@@ -10,7 +10,7 @@ internal static class AppleHttp
     public const int MaxResponseBytes = 4 * 1024 * 1024;
 
     // Pretends to be Xcode 11.2 like the reference clients; Apple's servers accept it for free accounts.
-    public const string XcodeVersion = "11.2 (11B41)";
+    public const string XcodeVersion = "27.0 (27A5218g)";
     public const string XcodeApp = "com.apple.gs.xcode.auth";
 
     public sealed record Reply(HttpStatusCode Status, byte[] Body, string? ContentType);

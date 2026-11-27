@@ -301,11 +301,12 @@ public sealed class AppleAccountClient
             ["pbe"] = "false",
             ["prkgen"] = "true",
             ["svct"] = "iCloud",
-            ["loc"] = (AppleHttp.Find(anisette, "X-Apple-Locale") ?? "en_US"),
+            ["loc"] = "en_US",
         };
-        foreach (var (k, v) in anisette)
-            if (!string.Equals(k, "X-Mme-Client-Info", StringComparison.OrdinalIgnoreCase))
-                cpd[k] = v;
+        // Only the one-time code, machine id and device id, as the clients Apple accepts send them (AltSign #61).
+        foreach (var name in new[] { "X-Apple-I-MD", "X-Apple-I-MD-M", "X-Mme-Device-Id" })
+            if (AppleHttp.Find(anisette, name) is { } value)
+                cpd[name] = value;
         return cpd;
     }
 
@@ -322,8 +323,13 @@ public sealed class AppleAccountClient
             Content = new ByteArrayContent(PlistFile.ToXml(body)),
         };
         message.Content.Headers.TryAddWithoutValidation("Content-Type", "text/x-xml-plist");
-        message.Headers.TryAddWithoutValidation("Accept", "*/*");
-        message.Headers.TryAddWithoutValidation("User-Agent", GsaUserAgent);
+        // The request shape Apple accepts since October 2026: User-Agent and client info from the identification's
+        // own client, plus these.
+        message.Headers.TryAddWithoutValidation("Accept", "text/x-xml-plist");
+        message.Headers.TryAddWithoutValidation("X-Xcode-Version", AppleHttp.XcodeVersion);
+        message.Headers.TryAddWithoutValidation("X-Apple-App-Info", AppleHttp.XcodeApp);
+        message.Headers.ConnectionClose = true;
+        message.Headers.TryAddWithoutValidation("User-Agent", AppleHttp.Find(anisette, "User-Agent") ?? GsaUserAgent);
         // Sign-in: the provider's own description (Apple's Windows one). The app-token step passes its candidates.
         var clientInfo = clientInfoOverride ?? AppleHttp.Find(anisette, "X-Mme-Client-Info");
         if (clientInfo is not null)
@@ -422,6 +428,10 @@ public sealed class AppleAccountClient
         }
         if (status.Long("hsc") == 433)
             throw new AnisetteRepairNeeded(null, reprovision: true, stage, 433, status.Long("ec") ?? 0);
+        // -22410: the device identification was set up under another client description (iloader #1304); setting it
+        // up again under the current one fixes it.
+        if (status.Long("ec") == -22410)
+            throw new AnisetteRepairNeeded(null, reprovision: true, stage, (int)(status.Long("hsc") ?? 0), -22410);
         var ec = status.Long("ec") ?? 0;
         if (ec != 0)
         {
@@ -635,14 +645,16 @@ public sealed class AppleAccountClient
             message.Content.Headers.TryAddWithoutValidation("Content-Type", type);
         }
         foreach (var (k, v) in anisette)
-            if (!string.Equals(k, "X-Mme-Client-Info", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(k, "X-Mme-Client-Info", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(k, "User-Agent", StringComparison.OrdinalIgnoreCase))
                 message.Headers.TryAddWithoutValidation(k, v);
-        var clientInfo = AppleHttp.AuthKitClientInfo(AppleHttp.Find(anisette, "X-Mme-Client-Info"));
+        var clientInfo = AppleHttp.Find(anisette, "X-Mme-Client-Info");
         if (clientInfo is not null)
             message.Headers.TryAddWithoutValidation("X-Mme-Client-Info", clientInfo);
         message.Headers.TryAddWithoutValidation("X-Apple-App-Info", AppleHttp.XcodeApp);
         message.Headers.TryAddWithoutValidation("X-Xcode-Version", AppleHttp.XcodeVersion);
-        message.Headers.TryAddWithoutValidation("User-Agent", "Xcode");
+        message.Headers.ConnectionClose = true;
+        message.Headers.TryAddWithoutValidation("User-Agent", AppleHttp.Find(anisette, "User-Agent") ?? GsaUserAgent);
         message.Headers.TryAddWithoutValidation("Accept-Language", "en-us");
         message.Headers.TryAddWithoutValidation("Accept", type);
         message.Headers.TryAddWithoutValidation("X-Apple-Identity-Token",
@@ -733,15 +745,16 @@ public sealed class AppleAccountClient
     /// <summary>Descriptions tried for the developer token, most likely first.</summary>
     internal static IEnumerable<string> TokenClientInfos(string? provider)
     {
-        var list = new List<string> { RigControl.iPhone.Anisette.CoreAdiAnisette.MacAkdClientInfo };
-        if (AppleHttp.AuthKitClientInfo(provider) is { } authKit) list.Add(authKit);
+        // The identification's own client first: Apple wants them to match.
+        var list = new List<string>();
         if (provider is not null) list.Add(provider);
+        list.Add(RigControl.iPhone.Anisette.CoreAdiAnisette.MacAkdClientInfo);
         return list.Distinct(StringComparer.Ordinal);
     }
 
     private static string Short(string clientInfo) =>
         clientInfo.StartsWith("<MacBookPro", StringComparison.Ordinal) ? "Mac" :
-        clientInfo.Contains("AuthKit/1 (com.apple.akd", StringComparison.Ordinal) ? "Windows+AuthKit" : "Windows";
+        clientInfo.Contains("com.apple.iTunes", StringComparison.Ordinal) ? "Windows iTunes" : "Windows";
 
     /// <summary>The PET (password-equivalent token) Apple may include in spd, with its expiry.</summary>
     internal static (string? Pet, DateTimeOffset? Expires) ReadPet(PlistDict spd)

@@ -75,7 +75,7 @@ internal sealed class FakeDeveloperServices : IDisposable
         Assert.Equal("?clientId=XABBG36SBA", r.Uri.Query);
         Assert.Equal("XCODE-TOKEN", r.Header("X-Apple-GS-Token"));
         Assert.Equal("000-adsid", r.Header("X-Apple-I-Identity-Id"));
-        Assert.Equal("11.2 (11B41)", r.Header("X-Xcode-Version"));
+        Assert.Equal("27.0 (27A5218g)", r.Header("X-Xcode-Version"));
         Assert.Equal("Xcode", r.Header("User-Agent"));
         Assert.NotEqual("", r.Header("X-Apple-I-MD"));
         var body = PlistFile.ParseDict(r.Body);

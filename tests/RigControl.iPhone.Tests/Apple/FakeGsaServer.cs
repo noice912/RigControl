@@ -180,7 +180,8 @@ internal sealed class FakeGsaServer
     {
         Assert.Equal(Convert.ToBase64String(Encoding.UTF8.GetBytes(Adsid + ":" + IdmsToken)), r.Header("X-Apple-Identity-Token"));
         Assert.Equal("com.apple.gs.xcode.auth", r.Header("X-Apple-App-Info"));
-        Assert.Contains("com.apple.AuthKit/1 (com.apple.akd/1.0)", r.Header("X-Mme-Client-Info"));
+        // Codes use the identification's own client description, unchanged.
+        Assert.StartsWith("<MacBookPro13,2>", r.Header("X-Mme-Client-Info"));
         Assert.NotEqual("", r.Header("X-Apple-I-MD"));
     }
 

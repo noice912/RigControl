@@ -39,11 +39,21 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
         _http = http;
         _deviceId = deviceId;
         _localUser = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(deviceId + "|" + userKey)));
-        _clientInfo = $"<PC> <Windows;{osDescription}> <com.apple.AuthKitWin/1 (com.apple.iCloud/7.21)>";
+        // Since October 2026 Apple only accepts a sign-in whose X-MMe-Client-Info and User-Agent are exactly those of
+        // the client that made the device identification. For Windows CoreADI (iTunes ADI) that is this pair, as used by
+        // AltStore/AltSign and iloader's fixes (tested end to end with free Apple IDs). Not the real Windows version.
+        _ = osDescription;
+        _clientInfo = WindowsITunesClientInfo;
         _now = now ?? (() => DateTimeOffset.UtcNow);
     }
 
     public string ClientInfo => _clientInfo;
+
+    /// <summary>The client description Apple pairs with Windows CoreADI (iTunes) identification.</summary>
+    public const string WindowsITunesClientInfo = "<PC> <Windows;6.2(0,0);9200> <com.apple.AuthKit/1 (com.apple.iTunes/12.12.4.1)>";
+
+    /// <summary>The User-Agent that goes with <see cref="WindowsITunesClientInfo"/>.</summary>
+    public const string WindowsITunesUserAgent = "akd/1.0 CFNetwork/808.1.4";
 
     /// <summary>
     /// How sign-in requests describe the asking device and app. Checked against Apple's servers (2026-11-26) with this
@@ -77,8 +87,8 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
             ["X-Apple-I-MD-LU"] = _localUser,
             ["X-Apple-I-SRL-NO"] = "0",
             ["X-Mme-Device-Id"] = _deviceId,
-            // Sign-in and codes: Apple's Windows (iCloud) description, accepted with this PC's own identification.
             ["X-Mme-Client-Info"] = _clientInfo,
+            ["User-Agent"] = WindowsITunesUserAgent,
             ["X-Apple-I-Client-Time"] = _now().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
             ["X-Apple-I-TimeZone"] = iana,
             ["X-Apple-Locale"] = locale,
@@ -193,7 +203,7 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
     private HttpRequestMessage Request(HttpMethod method, Uri url)
     {
         var request = new HttpRequestMessage(method, url);
-        request.Headers.TryAddWithoutValidation("User-Agent", "akd/1.0 CFNetwork/808.1.4");
+        request.Headers.TryAddWithoutValidation("User-Agent", WindowsITunesUserAgent);
         request.Headers.TryAddWithoutValidation("X-Mme-Client-Info", _clientInfo);
         request.Headers.TryAddWithoutValidation("X-Mme-Device-Id", _deviceId);
         request.Headers.TryAddWithoutValidation("X-Apple-I-MD-LU", _localUser);
