@@ -82,7 +82,8 @@ public sealed class AppleAccountClient
                 else
                     await DeviceFlowAsync(login, phones, login.Next == NextStep.DeviceCode, prompt, cancellationToken).ConfigureAwait(false);
                 // Apple's way: after the code is accepted, sign in again and the account is trusted on this machine.
-                login = await LoginAsync(username, passwordHash, cancellationToken).ConfigureAwait(false);
+                // Apple often answers that sign-in "busy" (503) right after a code: wait and try again, twice at most.
+                login = await LoginAfterCodeAsync(username, passwordHash, cancellationToken).ConfigureAwait(false);
             }
 
             var (token, expires) = await GetAppTokenAsync(login, cancellationToken).ConfigureAwait(false);
@@ -95,6 +96,32 @@ public sealed class AppleAccountClient
             CryptographicOperations.ZeroMemory(passwordHash);
         }
     }
+
+    /// <summary>Waits between the busy retries of the sign-in that follows an accepted code.</summary>
+    internal static TimeSpan[] AfterCodeRetryDelays { get; set; } = [TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(60)];
+
+    private async Task<GsaLogin> LoginAfterCodeAsync(string username, byte[] passwordHash, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await LoginAsync(username, passwordHash, ct).ConfigureAwait(false);
+            }
+            catch (AppleException e) when (e.Code == BusyCode && attempt < AfterCodeRetryDelays.Length)
+            {
+                await Task.Delay(AfterCodeRetryDelays[attempt], ct).ConfigureAwait(false);
+            }
+            catch (AppleException e) when (e.Code == BusyCode)
+            {
+                throw new AppleException("Your code was accepted, but Apple's sign-in server stayed busy for the last step. " +
+                    "Wait about 10 minutes and sign in again: this PC is now trusted, so it shouldn't ask for a code.", BusyCode);
+            }
+        }
+    }
+
+    /// <summary>AppleException.Code for Apple's "busy" answers (HTTP 503/429).</summary>
+    internal const int BusyCode = 503;
 
     internal static string NormalizeAppleId(string? appleId)
     {
@@ -311,7 +338,7 @@ public sealed class AppleAccountClient
     private static PlistDict ParsePlist(AppleHttp.Reply reply)
     {
         if ((int)reply.Status is 503 or 429)
-            throw new AppleException($"Apple's sign-in server is busy right now (HTTP {(int)reply.Status}). Wait a few minutes, then try again.");
+            throw new AppleException($"Apple's sign-in server is busy right now (HTTP {(int)reply.Status}). Wait a few minutes, then try again.", BusyCode);
         try
         {
             return PlistFile.ParseDict(reply.Body);
