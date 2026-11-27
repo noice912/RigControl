@@ -23,7 +23,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.2-rc.7</Version>
+    <Version>1.2.2-rc.8</Version>
     <Product>RigControl</Product>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

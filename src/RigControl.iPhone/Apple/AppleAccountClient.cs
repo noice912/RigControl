@@ -155,11 +155,14 @@ public sealed class AppleAccountClient
     /// Apple asked for this PC's device identification to be re-synced (434, with data) or set up again (433). Not a
     /// password failure: the provider repairs itself and the same sign-in step is done once more.
     /// </summary>
-    internal sealed class AnisetteRepairNeeded(byte[]? sim, bool reprovision)
-        : AppleException(AppleErrors.Describe(-80045, null), -80045)
+    internal sealed class AnisetteRepairNeeded(byte[]? sim, bool reprovision, string stage, int hsc, long ec)
+        : AppleException(AppleErrors.Describe(-80045, null) + $" (Apple status {hsc} at the {stage} step)", -80045)
     {
         public byte[]? Sim { get; } = sim;
         public bool Reprovision { get; } = reprovision;
+        public string Stage { get; } = stage;
+        public int Hsc { get; } = hsc;
+        public long Ec { get; } = ec;
     }
 
     private Task<GsaLogin> LoginAsync(string username, byte[] passwordHash, CancellationToken ct) =>
@@ -174,8 +177,15 @@ public sealed class AppleAccountClient
             {
                 return await step().ConfigureAwait(false);
             }
-            catch (AnisetteRepairNeeded need) when (repairs < 2 && _anisette is IAnisetteRepair repair
-                                                    && (need.Reprovision || need.Sim is not null))
+            catch (AnisetteRepairNeeded need) when (repairs >= 2 || _anisette is not IAnisetteRepair
+                                                    || (!need.Reprovision && need.Sim is null))
+            {
+                throw new AppleException(AppleErrors.Describe(-80045, null) +
+                    $" (Apple status {need.Hsc} at the {need.Stage} step, code {need.Ec}; " +
+                    (need.Reprovision || need.Sim is not null ? $"refreshed {repairs} time(s) already" : "Apple sent no re-sync data") + ")",
+                    -80045);
+            }
+            catch (AnisetteRepairNeeded need) when (_anisette is IAnisetteRepair repair)
             {
                 try
                 {
@@ -322,7 +332,7 @@ public sealed class AppleAccountClient
             throw new AppleException("Apple says there were too many sign-in attempts. Wait a few minutes, then try again.");
         var dict = ParsePlist(reply);
         var response = dict.Dict("Response") ?? throw Malformed("Response");
-        CheckStatus(response);
+        CheckStatus(response, request.String("o") ?? "sign-in");
         return response;
     }
 
@@ -392,7 +402,13 @@ public sealed class AppleAccountClient
     }
 
     /// <summary>Throws for a non-zero Status.ec (or ec on the dict itself).</summary>
-    internal static void CheckStatus(PlistDict response)
+    internal static void CheckStatus(PlistDict response) => CheckStatus(response, "reply");
+
+    /// <summary>
+    /// Throws for a non-zero Status.ec, or for Apple's device-identification statuses (434 re-sync, 433 set up again).
+    /// <paramref name="stage"/> names the step for the message (Apple's codes and text are not secret).
+    /// </summary>
+    internal static void CheckStatus(PlistDict response, string stage)
     {
         var status = response.Dict("Status") ?? response;
         if (status.Long("hsc") == 434)
@@ -400,13 +416,18 @@ public sealed class AppleAccountClient
             byte[]? sim = null;
             try { sim = status.String("X-Apple-I-MD-DATA") is { Length: > 0 and <= 8192 } s ? Convert.FromBase64String(s) : null; }
             catch (FormatException) { }
-            throw new AnisetteRepairNeeded(sim, reprovision: false);
+            throw new AnisetteRepairNeeded(sim, reprovision: false, stage, 434, status.Long("ec") ?? 0);
         }
         if (status.Long("hsc") == 433)
-            throw new AnisetteRepairNeeded(null, reprovision: true);
+            throw new AnisetteRepairNeeded(null, reprovision: true, stage, 433, status.Long("ec") ?? 0);
         var ec = status.Long("ec") ?? 0;
         if (ec != 0)
-            throw new AppleException(AppleErrors.Describe(ec, status.String("em")), (int)Math.Clamp(ec, int.MinValue, int.MaxValue));
+        {
+            var text = AppleErrors.Describe(ec, status.String("em"));
+            if (ec is -80045 or -80046)
+                text += $" (Apple code {ec} at the {stage} step{(status.String("em") is { Length: > 0 and < 300 } em ? ": " + em : "")})";
+            throw new AppleException(text, (int)Math.Clamp(ec, int.MinValue, int.MaxValue));
+        }
     }
 
     // ---- Two-factor ----
