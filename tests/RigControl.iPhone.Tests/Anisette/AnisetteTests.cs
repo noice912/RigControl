@@ -139,6 +139,23 @@ public class AnisetteTests
     }
 
     [Fact]
+    public async Task The_anisette_identity_is_kept_and_a_reprovision_replaces_it()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "rc-identity-" + Guid.NewGuid().ToString("N"), "identity.bin");
+        var adi = new FakeAdi { Provisioned = true };
+        var apple = new FakeApple(Answer);
+        var first = new CoreAdiAnisette(adi, new HttpClient(apple), "HW", "S-1", "x", identityFile: file);
+        Assert.Matches("^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$", first.DeviceId);
+        var again = new CoreAdiAnisette(adi, new HttpClient(apple), "HW", "S-1", "x", identityFile: file);
+        Assert.Equal(first.DeviceId, again.DeviceId);
+        var h = await again.GetHeadersAsync();
+        Assert.Equal(again.DeviceId, h["X-Mme-Device-Id"]);
+        await again.ReprovisionAsync(CancellationToken.None);
+        Assert.NotEqual(first.DeviceId, again.DeviceId);
+        Assert.Equal(again.DeviceId, new CoreAdiAnisette(adi, new HttpClient(apple), "HW", "S-1", "x", identityFile: file).DeviceId);
+    }
+
+    [Fact]
     public async Task A_server_list_pointing_outside_Apple_is_refused()
     {
         var adi = new FakeAdi { Provisioned = false };

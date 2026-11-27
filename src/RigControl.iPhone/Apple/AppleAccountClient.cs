@@ -70,6 +70,36 @@ public sealed class AppleAccountClient
         try
         {
             var username = NormalizeAppleId(appleId);
+            // A -22410 at the token step means the sign-in was made under a device identification Apple no longer
+            // pairs with this client: set the identification up again and sign in from the start, once.
+            for (var pass = 0; ; pass++)
+            {
+                try
+                {
+                    return await SignInPassAsync(username, passwordHash, prompt, cancellationToken).ConfigureAwait(false);
+                }
+                catch (AnisetteRepairNeeded need) when (need.Ec == -22410 && need.Stage == "apptokens" && pass == 0
+                                                        && _anisette is IAnisetteRepair repair)
+                {
+                    await repair.ReprovisionAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (AnisetteRepairNeeded need) when (need.Ec == -22410 && need.Stage == "apptokens")
+                {
+                    throw new AppleException("Apple still refused the developer token after this PC's device identification " +
+                        "was set up again and you signed in again (code -22410 at the apptokens step).", -22410);
+                }
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(passwordHash);
+        }
+    }
+
+    private async Task<AppleSignIn> SignInPassAsync(string username, byte[] passwordHash, ISecondFactorPrompt prompt,
+        CancellationToken cancellationToken)
+    {
+        {
             var login = await LoginAsync(username, passwordHash, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<TrustedPhone>? phones = null;
             for (var step = 0; login.Next != NextStep.Done; step++)
@@ -90,10 +120,6 @@ public sealed class AppleAccountClient
             var session = new AppleSession(username, login.Adsid, login.Dsid, token, expires, LastTokenClientInfo);
             var (pet, petExpires) = ReadPet(login.Spd);
             return new AppleSignIn(session, pet, petExpires, login.Spd.String("fn"), login.Spd.String("ln"));
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(passwordHash);
         }
     }
 
@@ -176,6 +202,10 @@ public sealed class AppleAccountClient
             try
             {
                 return await step().ConfigureAwait(false);
+            }
+            catch (AnisetteRepairNeeded need) when (need.Ec == -22410 && need.Stage == "apptokens")
+            {
+                throw;
             }
             catch (AnisetteRepairNeeded need) when (repairs >= 2 || _anisette is not IAnisetteRepair
                                                     || (!need.Reprovision && need.Sim is null))

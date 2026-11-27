@@ -116,7 +116,8 @@ internal sealed class InstallerSession(HttpClient http, Action<string> log)
         var path = CoreAdiLibrary.Prepare(IphoneHelper.Paths.Adi);
         _adi = CoreAdi.Load(path);
         var sid = WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName;
-        var anisette = new CoreAdiAnisette(_adi, http, WindowsMachine.DeviceIdentifier(), sid, WindowsMachine.WindowsVersion());
+        var anisette = new CoreAdiAnisette(_adi, http, WindowsMachine.DeviceIdentifier(), sid, WindowsMachine.WindowsVersion(),
+            identityFile: Path.Combine(IphoneHelper.Paths.Adi, "identity.bin"));
         _installer = new IphoneInstaller(http, anisette, new IphoneSecretProtector(), Devices, IphoneHelper.Paths);
         return _installer;
     }

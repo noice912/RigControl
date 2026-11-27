@@ -23,8 +23,9 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
 
     private readonly ICoreAdi _adi;
     private readonly HttpClient _http;
-    private readonly string _deviceId;
-    private readonly string _localUser;
+    private string _deviceId;
+    private string _localUser;
+    private readonly string? _identityFile;
     private readonly string _clientInfo;
     private readonly Func<DateTimeOffset> _now;
     private readonly SemaphoreSlim _provisioning = new(1, 1);
@@ -32,13 +33,21 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
     /// <param name="deviceId">The machine identifier (<see cref="WindowsMachine.DeviceIdentifier"/> on Windows).</param>
     /// <param name="userKey">Something stable for this Windows user (their SID): the local-user header is a hash of it.</param>
     /// <param name="osDescription">The OS text for X-Mme-Client-Info (<see cref="WindowsMachine.WindowsVersion"/>).</param>
+    /// <param name="identityFile">
+    /// Optional file holding this user's random 16-byte anisette identity. When given, X-Mme-Device-Id is that identity
+    /// as an upper-case UUID and X-Apple-I-MD-LU its SHA-256 (as the sideloading tools Apple accepts do), and
+    /// <see cref="ReprovisionAsync"/> replaces it with a new one. Not secret.
+    /// </param>
     public CoreAdiAnisette(ICoreAdi adi, HttpClient http, string deviceId, string userKey, string osDescription,
-        Func<DateTimeOffset>? now = null)
+        Func<DateTimeOffset>? now = null, string? identityFile = null)
     {
         _adi = adi;
         _http = http;
         _deviceId = deviceId;
         _localUser = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(deviceId + "|" + userKey)));
+        _identityFile = identityFile;
+        if (identityFile is not null)
+            UseIdentity(LoadOrMakeIdentity(identityFile, renew: false));
         // Since October 2026 Apple only accepts a sign-in whose X-MMe-Client-Info and User-Agent are exactly those of
         // the client that made the device identification. For Windows CoreADI (iTunes ADI) that is this pair, as used by
         // AltStore/AltSign and iloader's fixes (tested end to end with free Apple IDs). Not the real Windows version.
@@ -176,12 +185,42 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
         }
     }
 
-    /// <summary>Apple's status 433: forget this machine's setup and set it up with Apple again.</summary>
+    private void UseIdentity(byte[] identity)
+    {
+        _deviceId = new Guid(identity, bigEndian: true).ToString("D").ToUpperInvariant();
+        _localUser = Convert.ToHexString(SHA256.HashData(identity));
+    }
+
+    private static byte[] LoadOrMakeIdentity(string file, bool renew)
+    {
+        try
+        {
+            if (!renew && File.Exists(file) && new FileInfo(file).Length == 16)
+                return File.ReadAllBytes(file);
+        }
+        catch (IOException) { }
+        var identity = RandomNumberGenerator.GetBytes(16);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        var temp = file + ".new";
+        File.WriteAllBytes(temp, identity);
+        File.Move(temp, file, overwrite: true);
+        return identity;
+    }
+
+    /// <summary>The device id sent to Apple (for tests and the log).</summary>
+    public string DeviceId => _deviceId;
+
+    /// <summary>
+    /// Apple's status 433 or -22410: forget this machine's setup, take a new anisette identity (device id and local user),
+    /// and set it up with Apple again.
+    /// </summary>
     public async Task ReprovisionAsync(CancellationToken cancellationToken)
     {
         await _provisioning.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_identityFile is not null)
+                UseIdentity(LoadOrMakeIdentity(_identityFile, renew: true));
             _adi.EraseProvisioning(MachineDsId);
         }
         finally
