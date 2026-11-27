@@ -7,6 +7,7 @@ import { ModuleProblem } from "../components/ModuleProblem";
 import { HealthNotice } from "../components/HealthFindings";
 import { CustomStatusesPanel } from "../components/CustomStatuses";
 import { PanelSettings } from "../components/PanelSettings";
+import { RadioPanel } from "../components/RadioPanel";
 import type { PresenceGame, PresenceStatus } from "../types";
 
 const artCache = new Map<string, string | null>();
@@ -158,7 +159,13 @@ export function Games() {
             {s.music && (
               <div className="sub">
                 {s.music.playing ? "Playing" : "Paused"} in {s.music.player}
-                {s.musicSource === "phone" ? " on your phone" : s.musicSource === "spotify" ? " (your Spotify account)" : ""}: {s.music.title}
+                {s.musicSource === "phone"
+                  ? " on your phone"
+                  : s.musicSource === "spotify"
+                    ? " (your Spotify account)"
+                    : s.musicSource === "radio"
+                      ? " (heard on the capture card)"
+                      : ""}: {s.music.title}
                 {s.music.artist ? ` · ${s.music.artist}` : ""}
                 {s.lyricLine ? ` · “${s.lyricLine}”` : ""}
               </div>
@@ -251,6 +258,7 @@ export function Games() {
           </section>
 
           <CustomStatusesPanel status={s} onStatus={setData} />
+          <RadioPanel />
 
           {/* The in-game panel belongs to the Windows app; elsewhere it is not asked for. */}
           {hasPanel && <PanelSettings />}

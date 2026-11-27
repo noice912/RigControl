@@ -55,6 +55,12 @@ let captureStatus: any = {
   },
 };
 
+let radioStatus: any = { enabled: false, state: "off", problem: null, now: null, sound: false, learnedCount: 2 };
+let radioSongs: any[] = [
+  { id: 1, title: "Night Drive", artist: "Sample Band", album: "", durationSeconds: null, learnedAt: "2026-11-27T20:00:00Z" },
+  { id: 2, title: "City Lights", artist: "Another Band", album: "Radio Hits", durationSeconds: null, learnedAt: "2026-11-27T20:10:00Z" },
+];
+
 let listenStatus: any = {
   enabled: false,
   state: "off",
@@ -2482,6 +2488,31 @@ export function createMockBackend() {
             restartNeeded: false,
             status: null,
           });
+        case "radio.getStatus":
+          return ok(radioStatus);
+        case "radio.setSettings":
+          radioStatus = { ...radioStatus, enabled: !!(params?.enabled ?? radioStatus.enabled) };
+          radioStatus = { ...radioStatus, state: radioStatus.enabled ? "listening" : "off", sound: radioStatus.enabled, now: null };
+          emitLater?.("radio.status", radioStatus);
+          return ok(radioStatus);
+        case "radio.nameSong": {
+          if (!radioStatus.sound) throw new RpcError("invalidArgs", "Play the song first: RigControl hasn't heard any sound from the capture card in the last 10 seconds.");
+          const song = { id: radioSongs.length + 1, title: String(params.title), artist: String(params.artist), album: String(params.album ?? ""), durationSeconds: null, learnedAt: new Date().toISOString() };
+          radioSongs = [...radioSongs, song];
+          radioStatus = { ...radioStatus, now: { ...song, positionSeconds: null }, learnedCount: radioSongs.length };
+          emitLater?.("radio.status", radioStatus);
+          return ok(radioStatus);
+        }
+        case "radio.listSongs":
+          return ok(radioSongs);
+        case "radio.renameSong":
+          radioSongs = radioSongs.map((x) => (x.id === params.id ? { ...x, title: params.title, artist: params.artist, album: params.album ?? "" } : x));
+          return ok(radioSongs);
+        case "radio.forgetSong":
+          radioSongs = radioSongs.filter((x) => x.id !== params.id);
+          radioStatus = { ...radioStatus, learnedCount: radioSongs.length, now: radioStatus.now?.id === params.id ? null : radioStatus.now };
+          emitLater?.("radio.status", radioStatus);
+          return ok(radioSongs);
         case "listen.getStatus":
           return ok(listenStatus);
         case "listen.listDevices":

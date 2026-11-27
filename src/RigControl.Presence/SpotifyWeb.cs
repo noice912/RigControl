@@ -475,11 +475,17 @@ public sealed class PhoneMusic
 {
     public static readonly TimeSpan Fresh = TimeSpan.FromSeconds(45);
     private readonly Func<DateTime> _now;
+    private readonly TimeSpan _fresh;
     private readonly object _gate = new();
     private MusicNow? _music;
     private DateTime _at;
 
-    public PhoneMusic(Func<DateTime>? now = null) => _now = now ?? (() => DateTime.UtcNow);
+    /// <param name="fresh">How long a report counts (45 s for the phone; the in-game radio reports every 3 s and uses 20 s).</param>
+    public PhoneMusic(Func<DateTime>? now = null, TimeSpan? fresh = null)
+    {
+        _now = now ?? (() => DateTime.UtcNow);
+        _fresh = fresh ?? Fresh;
+    }
 
     /// <summary>The newest report; null = nothing is playing.</summary>
     public void Set(MusicNow? music)
@@ -498,7 +504,7 @@ public sealed class PhoneMusic
         {
             if (_music is null) return null;
             var age = _now() - _at;
-            if (age > Fresh || age < TimeSpan.Zero)
+            if (age > _fresh || age < TimeSpan.Zero)
             {
                 _music = null; // stale: the phone app was closed or lost its link
                 return null;

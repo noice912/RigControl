@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>RigControl.Radio</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RigControl.Core\RigControl.Core.csproj" />
+    <ProjectReference Include="..\RigControl.Capture\RigControl.Capture.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RigControl.Radio.Tests" />
+  </ItemGroup>
+
+</Project>

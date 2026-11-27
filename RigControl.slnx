@@ -5,6 +5,7 @@
     <Project Path="src/RigControl.Presence/RigControl.Presence.csproj" />
     <Project Path="src/RigControl.Bundled/RigControl.Bundled.csproj" />
     <Project Path="src/RigControl.Capture/RigControl.Capture.csproj" />
+    <Project Path="src/RigControl.Radio/RigControl.Radio.csproj" />
     <Project Path="src/RigControl.Cooling/RigControl.Cooling.csproj" />
     <Project Path="src/RigControl.Desktop/RigControl.Desktop.csproj" />
     <Project Path="src/RigControl.Drivers/RigControl.Drivers.csproj" />
@@ -37,6 +38,7 @@
     <Project Path="tests/RigControl.Bios.Tests/RigControl.Bios.Tests.csproj" />
     <Project Path="tests/RigControl.Presence.Tests/RigControl.Presence.Tests.csproj" />
     <Project Path="tests/RigControl.Capture.Tests/RigControl.Capture.Tests.csproj" />
+    <Project Path="tests/RigControl.Radio.Tests/RigControl.Radio.Tests.csproj" />
     <Project Path="tests/RigControl.Cooling.Tests/RigControl.Cooling.Tests.csproj" />
     <Project Path="tests/RigControl.Desktop.Tests/RigControl.Desktop.Tests.csproj" />
     <Project Path="tests/RigControl.Drivers.Tests/RigControl.Drivers.Tests.csproj" />

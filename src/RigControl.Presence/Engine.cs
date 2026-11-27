@@ -51,6 +51,7 @@ public sealed class PresenceEngine
     public const string NotSetUp = "Discord status isn't set up in this build";
     private const string FallbackImage = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Apple_Music_icon.svg/240px-Apple_Music_icon.svg.png";
     private const string PhoneHint = " (on iPhone)";
+    private const string RadioHint = " (in-game radio)";
     private const string GenericAppIcon = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Windows_logo_-_2021.svg/240px-Windows_logo_-_2021.svg.png";
 
     private readonly IDiscordClient _discord;
@@ -64,6 +65,7 @@ public sealed class PresenceEngine
     private readonly Func<AppIds> _ids;
     private readonly Func<SpotifyNow?> _spotify;
     private readonly Func<MusicNow?> _phone;
+    private readonly Func<MusicNow?> _radio;
     private int _reopen;
 
     private sealed class Card
@@ -106,8 +108,9 @@ public sealed class PresenceEngine
 
     public PresenceEngine(IDiscordClient discord, IPresenceInputs inputs, ILog log, HttpClient http, Func<DateTime>? now = null,
         Func<string, ExtReport?>? extensionReport = null, Func<AppIds>? ids = null,
-        Func<SpotifyNow?>? spotify = null, Func<MusicNow?>? phoneMusic = null)
+        Func<SpotifyNow?>? spotify = null, Func<MusicNow?>? phoneMusic = null, Func<MusicNow?>? radioMusic = null)
     {
+        _radio = radioMusic ?? (() => null);
         _spotify = spotify ?? (() => null);
         _phone = phoneMusic ?? (() => null);
         _ids = ids ?? (() => AppIds.BuiltIn);
@@ -465,12 +468,14 @@ public sealed class PresenceEngine
 
     /// <summary>
     /// Which song the music card shows: the PC's own player first, then the Spotify account (read from Spotify's Web
-    /// API, any device), then the phone's Music app. A source that isn't playing gives way to the next one.
+    /// API, any device), then a song recognised in the capture card's sound (in-game radio), then the phone's Music
+    /// app. A source that isn't playing gives way to the next one.
     /// </summary>
-    internal static (MusicNow? Music, string? Source, string? Art) PickMusic(MusicNow? pc, SpotifyNow? spotify, MusicNow? phone)
+    internal static (MusicNow? Music, string? Source, string? Art) PickMusic(MusicNow? pc, SpotifyNow? spotify, MusicNow? phone, MusicNow? radio = null)
     {
         if (pc is { Playing: true } && pc.Title != "") return (pc, "pc", null);
         if (spotify is { Music: { Playing: true, Title.Length: > 0 } }) return (spotify.Music, "spotify", spotify.ArtUrl);
+        if (radio is { Playing: true } && radio.Title != "") return (radio, "radio", null);
         if (phone is { Playing: true } && phone.Title != "") return (phone, "phone", null);
         // Nothing playing: what is paused on the PC, for the Games page only.
         if (pc is { Title.Length: > 0 }) return (pc, "pc", null);
@@ -486,14 +491,15 @@ public sealed class PresenceEngine
             catch (Exception ex) when (ex is not OperationCanceledException) { pc = null; }
         }
         SpotifyNow? web = null;
-        MusicNow? phone = null;
+        MusicNow? phone = null, radio = null;
         try
         {
             web = s.ShowSpotify ? _spotify() : null;
             phone = s.ShowMusic ? _phone() : null;
+            radio = s.ShowMusic ? _radio() : null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { /* a source that fails counts as silent */ }
-        var (m, source, webArt) = PickMusic(pc, web, phone);
+        var (m, source, webArt) = PickMusic(pc, web, phone, radio);
         var active = m is { Playing: true } && m.Title != "";
         string? line = null;
         if (!active)
@@ -521,6 +527,7 @@ public sealed class PresenceEngine
             var hover = m.Album != "" ? $"{m.Title} - {m.Album}" : m.Title;
             // The phone's song: a small hint where it plays, when the hover text has room for it.
             if (source == "phone" && hover.Length + PhoneHint.Length <= 128) hover += PhoneHint;
+            if (source == "radio" && hover.Length + RadioHint.Length <= 128) hover += RadioHint;
             hover = Ellipsis(hover);
             var startMs = NowMs - (long)Math.Round(m.PositionSec * 1000);
             var ts = new JsonObject { ["start"] = startMs };
@@ -547,6 +554,7 @@ public sealed class PresenceEngine
     {
         "spotify" => ", from Spotify's Web API",
         "phone" => ", on the phone",
+        "radio" => ", in-game radio",
         _ => "",
     };
 

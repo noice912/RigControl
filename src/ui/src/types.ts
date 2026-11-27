@@ -308,6 +308,34 @@ export type ListenSettings = {
   latencyMs: number;
 };
 
+/** In-game radio (module "radio"): songs recognised in the capture card's sound. */
+export type RadioSong = {
+  id: number;
+  title: string;
+  artist: string;
+  album: string;
+  positionSeconds: number | null;
+  durationSeconds: number | null;
+};
+
+export type RadioStatus = {
+  enabled: boolean;
+  state: "off" | "listening" | "waiting";
+  problem: string | null;
+  now: RadioSong | null;
+  sound: boolean;
+  learnedCount: number;
+};
+
+export type LearnedSong = {
+  id: number;
+  title: string;
+  artist: string;
+  album: string;
+  durationSeconds: number | null;
+  learnedAt: string;
+};
+
 export type ListenStatus = {
   enabled: boolean;
   state: "off" | "running" | "waiting";
@@ -509,7 +537,7 @@ export type PresenceStatus = {
   /** A linked phone handed over a Spotify sign-in: the account's song shows from any device. */
   spotifyConnected: boolean;
   /** Where the music line comes from: this PC's player, Spotify's Web API, or the phone's Music app. */
-  musicSource: "pc" | "spotify" | "phone" | null;
+  musicSource: "pc" | "spotify" | "radio" | "phone" | null;
   /** Why the Spotify account can't be read (for example the sign-in expired); null when fine. */
   spotifyProblem: string | null;
 };
@@ -880,6 +908,7 @@ export interface EventMap {
   "lighting.changed": LightingStatus;
   "capture.status": CaptureStatus;
   "listen.status": ListenStatus;
+  "radio.status": RadioStatus;
   "drivers.status": DriversStatus;
   "presence.status": PresenceStatus;
   "health.report": HealthReport;

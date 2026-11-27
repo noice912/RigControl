@@ -84,6 +84,8 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
     private SpotifyWebSource? _spotify;
     private Task? _spotifyPoll;
     private readonly PhoneMusic _phone = new();
+    /// <summary>The song the in-game radio detector hears (it reports every 3 s, so a report counts for 20 s).</summary>
+    private readonly PhoneMusic _radio = new(fresh: TimeSpan.FromSeconds(20));
     private ISecretProtector? _secrets;
     /// <summary>Purpose bound into the protected Spotify sign-in, so it can't be read back as anything else.</summary>
     private static readonly byte[] SpotifyPurpose = "RigControl.Presence.SpotifySignIn.v1"u8.ToArray();
@@ -196,7 +198,7 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
             var spotify = _spotify = new SpotifyWebSource(SpotifyHttp ?? SpotifyWebSource.CreateHttp(), _log, SpotifyTokenChanged);
             LoadSpotify();
             _engine = new PresenceEngine(_discord, _inputs, _log, _http, extensionReport: bridge is null ? null : bridge.Get, ids: () => _ids,
-                spotify: spotify.Get, phoneMusic: _phone.Get);
+                spotify: spotify.Get, phoneMusic: _phone.Get, radioMusic: _radio.Get);
             _cts = new CancellationTokenSource();
         }
         _status = new ModuleStatus(ModuleState.Ready);
@@ -398,6 +400,7 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
             "getArt" => GetArt(RpcArgs.Require<GameArgs>(args)),
             "getExtension" => GetExtension(),
             "setPhoneMusic" => SetPhoneMusic(args),
+            "setRadioMusic" => SetRadioMusic(args),
             "connectSpotify" => ConnectSpotify(args),
             "disconnectSpotify" => DisconnectSpotify(),
             _ => throw RpcException.UnknownMethod(Name, method),
@@ -453,6 +456,23 @@ public sealed class PresenceModule : IAppModule, IModuleCapabilities
     /// presence.setPhoneMusic: what the linked phone's Music app is playing ({} = nothing). Checked here as well as
     /// by the link, since the UI can call it too. Counts for the card for 45 s.
     /// </summary>
+    /// <summary>presence.setRadioMusic: the song recognised in the capture card's sound ({} = none). Plain text only.</summary>
+    private object? SetRadioMusic(JsonElement? args)
+    {
+        if (args is not { ValueKind: JsonValueKind.Object } a) throw RpcException.InvalidArgs("Send the song, or {} for nothing.");
+        var fields = a.EnumerateObject().Select(p => p.Name).ToList();
+        if (fields.Count == 0)
+        {
+            _radio.Set(null);
+            return null;
+        }
+        var allowed = new HashSet<string> { "title", "artist", "album", "position", "duration" };
+        if (fields.Any(f => !allowed.Contains(f)) || fields.Distinct().Count() != fields.Count) throw RpcException.InvalidArgs("Unknown field in the song.");
+        _radio.Set(new MusicNow("In-game radio", SongText(a, "title", required: true), SongText(a, "artist", required: false),
+            SongText(a, "album", required: false), true, SongSeconds(a, "position"), SongSeconds(a, "duration")));
+        return null;
+    }
+
     private object? SetPhoneMusic(JsonElement? args)
     {
         if (args is not { ValueKind: JsonValueKind.Object } a) throw RpcException.InvalidArgs("Send the song, or {} for nothing.");

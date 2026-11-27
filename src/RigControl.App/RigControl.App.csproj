@@ -51,6 +51,7 @@
     <ProjectReference Include="..\RigControl.Cooling\RigControl.Cooling.csproj" />
     <ProjectReference Include="..\RigControl.Lighting\RigControl.Lighting.csproj" />
     <ProjectReference Include="..\RigControl.Capture\RigControl.Capture.csproj" />
+    <ProjectReference Include="..\RigControl.Radio\RigControl.Radio.csproj" />
     <ProjectReference Include="..\RigControl.Drivers\RigControl.Drivers.csproj" />
     <ProjectReference Include="..\RigControl.Bios\RigControl.Bios.csproj" />
     <ProjectReference Include="..\RigControl.Cpu\RigControl.Cpu.csproj" />

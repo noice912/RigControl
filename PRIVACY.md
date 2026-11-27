@@ -217,6 +217,11 @@ RigControl does not see or store your password.
 - The capture card's sound (Recording page, "Capture card sound"), only while that is switched on, and only to play
   it straight away on the output you chose. It is held in memory for a few milliseconds on the way; nothing is
   recorded, saved or sent anywhere.
+- The capture card's sound for "In-game radio" (Games page), only while that is switched on: the last 15 seconds
+  are kept in memory to recognise songs. From the sound, RigControl keeps only **audio fingerprints** (numbers made
+  from the strongest notes, from which the sound can't be played back) of songs you named or it recognised, with the
+  names you gave them. Nothing is recorded or sent anywhere; the recognised song goes on your Discord card like any
+  other music.
 - OBS's WebSocket settings, as described above.
 - If the separate RichPresence app was used on this PC: its settings, copied once, and its Discord web sign-in for
   the in-game panel, copied once. Its own folder is never changed.
@@ -268,6 +273,7 @@ Everything is on your PC. Nothing is synced.
 | `%LOCALAPPDATA%\RigControl\presence` | The game library that was found, Discord's public game list, and the secret for the browser extension link |
 | `%LOCALAPPDATA%\RigControl\browser-extension-xxxxxxxx` | The copy of the browser extension made by "Get the browser extension" |
 | `%LOCALAPPDATA%\RigControl\WebView2`, `WebView2-screen`, `discord-web` | Browser profiles: the app's own interface, the cooler screen's web page, and the Discord window |
+| `%LOCALAPPDATA%\RigControl\radio\learned.rcfp` | Only once you name a song for "In-game radio": the learned songs' names and their audio fingerprints (no sound). Rename or forget each one on the Games page, or delete the file. |
 | `%LOCALAPPDATA%\RigControl\drivers` | Driver packages you downloaded |
 | `%LOCALAPPDATA%\RigControl\replay-buffer` | The last seconds of screen recording while instant replay is on. Deleted when it is switched off and when RigControl closes. |
 | `%LOCALAPPDATA%\RigControl\ffmpeg` | The FFmpeg tools, unpacked from the exe (an installed RigControl unpacks them into `<install folder>\ffmpeg` instead) |

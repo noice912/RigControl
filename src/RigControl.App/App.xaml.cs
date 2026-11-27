@@ -230,6 +230,9 @@ public partial class App : System.Windows.Application
             capture,
             // The capture card's sound on the headphones (Recording page). Off until switched on; nothing is recorded.
             new RigControl.Capture.Listen.ListenModule(new RigControl.Capture.Listen.WasapiListenEngine()),
+            // In-game radio: recognises learned songs in the capture card's sound for Discord status. Off until switched on.
+            new RigControl.Radio.RadioModule(new RigControl.Radio.WasapiRadioInput(), (method, args) => dispatcher.HandleAsync(
+                new System.Text.Json.Nodes.JsonObject { ["id"] = 0, ["method"] = method, ["params"] = args }.ToJsonString())),
             new DriversModule(),
             new RigControl.Bios.BiosModule(),
             // The processor page for any PC: what the processor is, and Windows' own power-plan settings.

@@ -14,7 +14,10 @@ namespace RigControl.Presence.Tests;
 /// <summary>Pretend Spotify: answers by a script per request and records what was asked.</summary>
 internal sealed class FakeSpotify : HttpMessageHandler
 {
-    public List<(HttpMethod Method, Uri Uri, string? Auth, string? Body)> Calls { get; } = new();
+    private readonly List<(HttpMethod Method, Uri Uri, string? Auth, string? Body)> _calls = new();
+
+    /// <summary>A copy of what was asked so far (the module polls on its own thread while a test reads this).</summary>
+    public IReadOnlyList<(HttpMethod Method, Uri Uri, string? Auth, string? Body)> Calls { get { lock (_calls) return _calls.ToList(); } }
     public Func<HttpRequestMessage, string?, HttpResponseMessage>? Token { get; set; }
     public Func<HttpRequestMessage, HttpResponseMessage>? Playing { get; set; }
     public int Refreshes => Calls.Count(c => c.Uri == SpotifyWebSource.TokenUri);
@@ -37,7 +40,7 @@ internal sealed class FakeSpotify : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
-        Calls.Add((request.Method, request.RequestUri!, request.Headers.Authorization?.ToString(), body));
+        lock (_calls) _calls.Add((request.Method, request.RequestUri!, request.Headers.Authorization?.ToString(), body));
         if (request.RequestUri == SpotifyWebSource.TokenUri) return (Token ?? ((_, _) => AccessToken()))(request, body);
         if (request.RequestUri == SpotifyWebSource.PlayingUri) return (Playing ?? (_ => Json(HttpStatusCode.OK, Song)))(request);
         return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -349,6 +352,30 @@ public class PhoneMusicTests
         Assert.Equal(("pc", false), (paused.Source, paused.Music!.Playing));
         Assert.Null(PresenceEngine.PickMusic(null, null, null).Music);
     }
+
+    private static readonly MusicNow Radio = new("In-game radio", "Radio song", "D", "", true, 1, 0);
+
+    [Fact]
+    public void Radio_comes_after_Spotify_and_before_the_phone()
+    {
+        Assert.Equal("pc", PresenceEngine.PickMusic(Pc, Web, Phone, Radio).Source);
+        Assert.Equal("spotify", PresenceEngine.PickMusic(null, Web, Phone, Radio).Source);
+        Assert.Equal("radio", PresenceEngine.PickMusic(null, null, Phone, Radio).Source);
+        Assert.Equal("phone", PresenceEngine.PickMusic(null, null, Phone, Radio with { Playing = false }).Source);
+        Assert.Equal("radio", PresenceEngine.PickMusic(Pc with { Playing = false }, null, null, Radio).Source);
+    }
+
+    [Fact]
+    public void Radio_song_goes_stale_after_20_s()
+    {
+        var now = new DateTime(2026, 11, 27, 12, 0, 0, DateTimeKind.Utc);
+        var radio = new PhoneMusic(() => now, TimeSpan.FromSeconds(20));
+        radio.Set(Radio);
+        now = now.AddSeconds(19);
+        Assert.NotNull(radio.Get());
+        now = now.AddSeconds(2);
+        Assert.Null(radio.Get());
+    }
 }
 
 public class MusicCardSourceTests
@@ -357,6 +384,19 @@ public class MusicCardSourceTests
     private readonly FakeInputs _inputs = new();
     private DateTime _now = new(2026, 11, 27, 12, 0, 0, DateTimeKind.Utc);
     private readonly PresenceSettings _s = new() { Enabled = true, ShowCurrentApp = false, ShowLyrics = false, ShowWatching = false };
+
+    [Fact]
+    public async Task Radio_card_says_in_game_radio()
+    {
+        var radio = new PhoneMusic(() => _now, TimeSpan.FromSeconds(20));
+        var e = new PresenceEngine(_discord, _inputs, NullLog.Instance, new HttpClient(new NoNetwork()), () => _now, radioMusic: radio.Get);
+        radio.Set(new MusicNow("In-game radio", "Radio song", "Band", "", true, 0, 0));
+        await e.TickAsync(_s, Array.Empty<Game>(), default);
+        var card = JsonNode.Parse(_discord.Cards[TestIds.Music]!)!;
+        Assert.Equal("Radio song", card["details"]!.GetValue<string>());
+        Assert.EndsWith("(in-game radio)", card["assets"]!["large_text"]!.GetValue<string>());
+        Assert.Equal("radio", e.Now.MusicSource);
+    }
 
     [Fact]
     public async Task The_phones_song_shows_with_a_hint_until_it_goes_stale_and_the_PC_wins()
@@ -507,6 +547,27 @@ public class SpotifyModuleTests : IDisposable
         Assert.False(Status(await m.InvokeAsync("getStatus", null, default)).GetProperty("spotifyConnected").GetBoolean());
         Assert.Equal("", store.Get<PresenceSettings>(PresenceSettings.Section).SpotifySignIn);
         Assert.Contains(log.Lines, l => l.Contains("connect Spotify again"));
+        await m.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Radio_text_is_checked_like_phone_text_and_shows_as_radio()
+    {
+        var (m, _, _, _) = await Start(new FakeSpotify());
+        await Assert.ThrowsAsync<RigControl.Core.Rpc.RpcException>(() => m.InvokeAsync("setRadioMusic", J("""{"title":""}"""), default));
+        await Assert.ThrowsAsync<RigControl.Core.Rpc.RpcException>(() => m.InvokeAsync("setRadioMusic", J("""{"title":"a‮"}"""), default));
+        await Assert.ThrowsAsync<RigControl.Core.Rpc.RpcException>(() => m.InvokeAsync("setRadioMusic", J("""{"title":"a","link":"x"}"""), default));
+        await m.InvokeAsync("setRadioMusic", J("""{"title":"Radio song","artist":"Band","album":"","position":5,"duration":200}"""), default);
+        JsonElement st = default;
+        for (var i = 0; i < 100; i++)
+        {
+            st = Status(await m.InvokeAsync("getStatus", null, default));
+            if (st.GetProperty("musicSource").ValueKind == JsonValueKind.String) break;
+            await Task.Delay(20);
+        }
+        Assert.Equal("radio", st.GetProperty("musicSource").GetString());
+        Assert.Equal("In-game radio", st.GetProperty("music").GetProperty("player").GetString());
+        await m.InvokeAsync("setRadioMusic", J("{}"), default);
         await m.DisposeAsync();
     }
 
