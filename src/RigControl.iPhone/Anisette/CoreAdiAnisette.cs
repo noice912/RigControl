@@ -45,6 +45,15 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
 
     public string ClientInfo => _clientInfo;
 
+    /// <summary>
+    /// How sign-in requests describe the asking device and app. Checked against Apple's servers (2026-11-26) with this
+    /// PC's own CoreADI identification and a made-up Apple ID: this description (the one long used by Windows signing
+    /// tools) and the iCloud-for-Windows one are accepted for sign-in; Windows + AuthKit gets 403 and newer macOS
+    /// descriptions get 503. Apple only gives the Xcode developer token to the AuthKit (akd) client, so this one is
+    /// used for sign-in, codes, the token and developer services. Machine setup (provisioning) keeps <see cref="ClientInfo"/>.
+    /// </summary>
+    public const string SignInClientInfo = "<MacBookPro15,1> <Mac OS X;10.15.2;19C57> <com.apple.AuthKit/1 (com.apple.akd/1.0)>";
+
     public async Task<IReadOnlyDictionary<string, string>> GetHeadersAsync(CancellationToken cancellationToken = default)
     {
         if (!_adi.IsMachineProvisioned(MachineDsId))
@@ -68,7 +77,7 @@ public sealed class CoreAdiAnisette : IAnisetteProvider, IAnisetteRepair
             ["X-Apple-I-MD-LU"] = _localUser,
             ["X-Apple-I-SRL-NO"] = "0",
             ["X-Mme-Device-Id"] = _deviceId,
-            ["X-Mme-Client-Info"] = _clientInfo,
+            ["X-Mme-Client-Info"] = SignInClientInfo,
             ["X-Apple-I-Client-Time"] = _now().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
             ["X-Apple-I-TimeZone"] = iana,
             ["X-Apple-Locale"] = locale,
