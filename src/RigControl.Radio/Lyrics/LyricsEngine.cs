@@ -36,6 +36,7 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
     private string? _detail;
     private string? _lastHeard;
     private bool _disposed;
+    private DateTime _lastClosestLog = DateTime.MinValue;
 
     public string State { get { lock (_gate) return _state; } }
     public string? Detail { get { lock (_gate) return _detail; } }
@@ -124,7 +125,17 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
         var text = await speech.TranscribeAsync(audio16k, ct).ConfigureAwait(false);
         lock (_gate) _lastHeard = text.Length > 200 ? text[..200] : text;
         var match = _index.Match(text);
-        if (match is null) return null;
+        if (match is null)
+        {
+            // How close it came, for the log (song name and counts only, never words), at most every 10 s.
+            if (_index.Closest(text) is { Hits: >= 2 } c && DateTime.UtcNow - _lastClosestLog > TimeSpan.FromSeconds(10))
+            {
+                _lastClosestLog = DateTime.UtcNow;
+                var title = _byKey.TryGetValue(c.SongKey, out var cs) ? cs.Song.Title : "?";
+                log.Info($"In-game radio: closest song \"{title}\": {c.Hits} of {c.HeardRuns} word runs, score {c.Score:F1}, lead {c.Lead:F1} (not enough).");
+            }
+            return null;
+        }
         lock (_gate)
             return _byKey.TryGetValue(match.SongKey, out var s) ? new LyricsHit(s.Song, match.PositionSeconds, s.Duration, text) : null;
     }

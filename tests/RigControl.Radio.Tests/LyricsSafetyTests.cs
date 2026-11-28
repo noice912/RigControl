@@ -57,6 +57,32 @@ public class LyricsSafetyTests
     }
 
     [Fact]
+    public void Singing_with_every_third_word_misheard_still_finds_the_song()
+    {
+        var index = FakeCorpus.Build(800, 3);
+        index.Add("target", [new(20, "lanterns drift above the harbour while the copper kettle hums"),
+                             new(24, "seven paper boats are sailing past the old stone mill tonight"),
+                             new(28, "and every painted fence along the river turns to gold")], 210);
+        // About 8 s of singing as speech recognition gets it over game sound: one word in three wrong.
+        var heard = "lanterns drift a bove the harbour wild the copper kettle comes seven paper bolts are sailing past the gold stone mill tonight and";
+        var m = index.Match(heard);
+        Assert.NotNull(m);
+        Assert.Equal("target", m!.SongKey);
+    }
+
+    [Fact]
+    public void The_closest_song_is_reported_even_when_it_isnt_enough()
+    {
+        var index = FakeCorpus.Build(100, 4);
+        index.Add("target", [new(20, "lanterns drift above the harbour while the copper kettle hums")], 210);
+        var c = index.Closest("lanterns drift above the something else entirely now ok");
+        Assert.NotNull(c);
+        Assert.Equal("target", c!.SongKey);
+        Assert.True(c.Hits >= 2);
+        Assert.Null(index.Match("lanterns drift above the something else entirely now ok"));
+    }
+
+    [Fact]
     public void Very_common_runs_stay_quick()
     {
         var index = new LyricsIndex();

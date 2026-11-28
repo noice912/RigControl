@@ -72,7 +72,10 @@ public partial class App : System.Windows.Application
         Task.Run(() => RigControl.Radio.Speech.SpeechHelperHost.RunAsync(pipe, cpu, useCpu =>
             {
                 var model = new RigControl.Radio.Speech.SpeechModel(new System.Net.Http.HttpClient(), radio, RigControl.Radio.Speech.SpeechModelSpec.SmallQ5);
-                var folders = NativeFolderGuard.CurrentExtractDirs().Concat(new[] { AppContext.BaseDirectory });
+                // Same rule as the main app: RigControl's own folder only when other programs can't change it.
+                var exePath = Environment.ProcessPath ?? "";
+                var open = exePath.Length == 0 || RigControl.Bundled.FolderGuard.OthersCanChange(exePath);
+                var folders = NativeFolderGuard.CurrentExtractDirs().Concat(open ? [] : new[] { AppContext.BaseDirectory });
                 return RigControl.Radio.Speech.WhisperSpeech.Load(model.LoadVerified(), folders, log, forceCpu: useCpu);
             }, log, CancellationToken.None))
             .ContinueWith(t => Dispatcher.BeginInvoke(() => Shutdown(t.IsCompletedSuccessfully ? t.Result : 4)), TaskScheduler.Default);

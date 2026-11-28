@@ -3,6 +3,9 @@ namespace RigControl.Radio.Lyrics;
 /// <summary>A song found from heard words: where in it the last matched words are, and how clearly it won.</summary>
 public sealed record LyricsMatch(string SongKey, double? PositionSeconds, double Score, int Hits, double Lead);
 
+/// <summary>The best candidate for heard words, enough or not (for the log): matched word runs of all heard runs.</summary>
+public sealed record LyricsCandidate(string SongKey, int Hits, int HeardRuns, double Score, double Lead);
+
 /// <summary>
 /// The lyrics of the catalogue's songs as runs of three words. Heard words vote for every song that has the same three
 /// words in a row; votes only count when they line up in the same order, a run shared by many songs counts for little
@@ -11,11 +14,11 @@ public sealed record LyricsMatch(string SongKey, double? PositionSeconds, double
 /// </summary>
 public sealed class LyricsIndex
 {
-    public const int MinHits = 5;
-    public const double MinScore = 8.0;
+    public const int MinHits = 4;
+    public const double MinScore = 6.0;
     public const double MinLead = 1.6;
     /// <summary>Share of the heard word runs that must line up with the song (talk mostly doesn't).</summary>
-    public const double MinShare = 0.4;
+    public const double MinShare = 0.2;
     private const int AlignSlack = 3;
     private const int MaxPostings = 5000;
 
@@ -56,8 +59,20 @@ public sealed class LyricsIndex
 
     public LyricsMatch? Match(string? transcript)
     {
+        var e = Evaluate(transcript);
+        if (e is not { } r) return null;
+        if (r.Hits < MinHits || r.Score < MinScore || r.Lead < MinLead || r.Hits < MinShare * r.HeardRuns) return null;
+        return new LyricsMatch(r.Key, r.Position, r.Score, r.Hits, r.Lead);
+    }
+
+    /// <summary>The closest song even when it isn't enough to count (null: no run of heard words is in any song).</summary>
+    public LyricsCandidate? Closest(string? transcript) =>
+        Evaluate(transcript) is { } r ? new LyricsCandidate(r.Key, r.Hits, r.HeardRuns, r.Score, r.Lead) : null;
+
+    private (string Key, double? Position, double Score, int Hits, double Lead, int HeardRuns)? Evaluate(string? transcript)
+    {
         var heard = LyricsText.Words(transcript);
-        if (heard.Count < MinHits + 2) return null;
+        if (heard.Count < 3) return null;
         var heardRuns = heard.Count - 2;
         lock (_gate)
         {
@@ -103,11 +118,10 @@ public sealed class LyricsIndex
             var second = ranked.Count > 1 ? ranked[1].Value.Score : 0;
             // No runner-up is not a huge lead: it is measured against the least score that counts at all.
             var lead = topScore / Math.Max(second, MinScore);
-            if (hits < MinHits || topScore < MinScore || lead < MinLead || hits < MinShare * heardRuns) return null;
             var (key, duration) = _songs[top];
             double? position = lastTime >= 0 ? lastTime + 2 : null;
             if (position is { } p && duration is { } d2 && p > d2) position = d2;
-            return new LyricsMatch(key, position, topScore, hits, lead);
+            return (key, position, topScore, hits, lead, heardRuns);
         }
     }
 
