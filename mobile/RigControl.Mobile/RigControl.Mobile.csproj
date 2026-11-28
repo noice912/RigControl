@@ -74,6 +74,10 @@
     <NativeReference Include="$(DiscordSdkDir)/discord_partner_sdk.xcframework">
       <Kind>Framework</Kind>
       <SmartLink>False</SmartLink>
+      <!-- Discord's SDK is partly Swift and loads Apple's Swift libraries (libswiftCoreMedia...) through @rpath; iOS keeps
+           them in /usr/lib/swift, which Xcode adds to an app's search path but .NET doesn't. Without it the app stops
+           at launch ("Library not loaded: @rpath/libswiftCoreMedia.dylib"). -->
+      <LinkerFlags>-rpath /usr/lib/swift</LinkerFlags>
     </NativeReference>
   </ItemGroup>
   <ItemGroup Condition="'$(DiscordAppId)' != ''">

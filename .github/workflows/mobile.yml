@@ -172,6 +172,11 @@ jobs:
             app=$(find RigControl.Mobile/bin/Release/net10.0-ios/ios-arm64 -maxdepth 1 -name '*.app' -type d | head -n 1)
             [ -d "$app/Frameworks/discord_partner_sdk.framework" ] || { echo "::error::The Discord SDK isn't inside the app"; exit 1; }
             echo "Discord SDK embedded."
+            # The SDK needs Apple's Swift libraries from /usr/lib/swift: the app must search there, or iOS stops it at launch.
+            exe="$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+            otool -l "$exe" | grep -A2 LC_RPATH | grep -q '/usr/lib/swift' || { echo "::error::The app doesn't search /usr/lib/swift (Discord SDK would crash at launch)"; exit 1; }
+            otool -L "$app/Frameworks/discord_partner_sdk.framework/discord_partner_sdk" | grep '@rpath' || true
+            echo "Swift library path present."
           fi
       - name: Package Payload/RigControl.app into an unsigned .ipa
         run: |
