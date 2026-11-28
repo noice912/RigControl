@@ -72,8 +72,14 @@ public sealed class PreviewLibrary
         _wait = wait ?? ((d, c) => Task.Delay(d, c));
         _now = now ?? (() => DateTimeOffset.UtcNow);
         _store = LearnedSongs.Load(Path.Combine(radioFolder, "previews.rcfp"), log);
-        foreach (var s in catalogue) _byName.TryAdd(s.Title + "\n" + s.Artist, s);
+        foreach (var s in catalogue.Where(Wanted)) _byName.TryAdd(s.Title + "\n" + s.Artist, s);
     }
+
+    /// <summary>
+    /// Classical pieces (Symphony FM) are left out: the stores only have some orchestra's recording, which rarely
+    /// matches the one the game plays.
+    /// </summary>
+    internal static bool Wanted(CatalogueSong song) => !string.Equals(song.Station, "Symphony FM", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>How many songs' sound is known.</summary>
     public int Count => _store.Songs.Count;
@@ -90,13 +96,18 @@ public sealed class PreviewLibrary
     {
         var states = new Dictionary<string, State>(StringComparer.Ordinal);
         foreach (var st in LoadStates()) states[st.Key] = st;
+        songs = songs.Where(Wanted).ToList();
+        // Kept from before but not wanted any more (classical): forgotten.
+        var dropped = false;
+        foreach (var old in _store.Songs.Where(x => !_byName.ContainsKey(x.Title + "\n" + x.Artist)).ToList())
+            dropped |= _store.Forget(old.Id);
         var known = _store.Songs.Select(s => s.Title + "\n" + s.Artist).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var todo = songs.Where(s => !known.Contains(s.Title + "\n" + s.Artist)
                                     && !(states.TryGetValue(s.Key, out var st) && !st.Found && (st.Rules ?? 1) >= RulesVersion && _now() - st.CheckedAt < RetryMissingAfter))
             .DistinctBy(s => (s.Title.ToLowerInvariant(), s.Artist.ToLowerInvariant())).ToList();
         var done = 0;
         var failedInARow = 0;
-        var dirty = false;
+        var dirty = dropped;
         try
         {
         foreach (var song in todo)

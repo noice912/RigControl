@@ -270,6 +270,22 @@ public class PreviewLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task Classical_pieces_are_never_fetched_and_old_ones_are_forgotten()
+    {
+        var piece = new CatalogueSong("Symphony FM", "Glow", "Band");
+        // Learned by an older version (any station), then the same piece listed under Symphony FM.
+        AppleHas("https://audio-ssl.itunes.apple.com/glow.m4a");
+        await new PreviewLibrary(new HttpClient(_server), _dir, [Song], (b, _) => Task.FromResult(Sound), NullLog.Instance,
+            TimeSpan.Zero, TimeSpan.Zero, (_, _) => Task.CompletedTask).FetchAsync([Song], null, default);
+        _server.Asked.Clear();
+        var lib = new PreviewLibrary(new HttpClient(_server), _dir, [piece], (b, _) => Task.FromResult(Sound), NullLog.Instance,
+            TimeSpan.Zero, TimeSpan.Zero, (_, _) => Task.CompletedTask);
+        Assert.Equal(0, await lib.FetchAsync([piece], null, default));
+        Assert.Empty(_server.Asked);
+        Assert.Null(lib.Match(Fingerprinter.Compute(TestAudio.Slice(Sound, 10, 20)), 10));
+    }
+
+    [Fact]
     public async Task Offline_marks_nothing_missing()
     {
         _server.Answer = _ => throw new HttpRequestException("offline");
