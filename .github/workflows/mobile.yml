@@ -4,8 +4,12 @@
 # releases attach them by hand, after checking them.
 #
 # Rules this file keeps (the same as ci.yml):
-#   - No secrets are used anywhere. Jobs that run build tools can only read; only the final upload job (which runs
-#     no repository code) may write, and only releases (plus deleting its own cache entries).
+#   - One exception to "no secrets": the iPhone job's "Get Discord's Social SDK" step (owner builds only). Discord's
+#     SDK isn't open source, so it isn't in this repository; that step fetches it with a read-only token kept as a
+#     secret, checks its SHA-256, and passes nothing secret on (the build steps never see the token). Without those
+#     secrets (forks) the app builds without "Sign in with Discord". See LICENSE-EXCEPTION-DISCORD.md.
+#   - Jobs that run build tools can only read; only the final upload job (which runs no repository code) may write,
+#     and only releases (plus deleting its own cache entries).
 #   - Every action is pinned to a full commit, with its version beside it.
 #   - Nothing is cached between runs: the build cache only carries this run's two files to the upload job, which deletes them.
 #   - No signing: the .ipa is signed later on the owner's own PC (sideloading, or RigControl's installer in Step 4).
@@ -123,13 +127,52 @@ jobs:
           echo '{ "microsoft.net.sdk.ios": "26.5.10318/10.0.100" }' > "$RUNNER_TEMP/ios-rollback.json"
           dotnet workload install maui-ios --from-rollback-file "$RUNNER_TEMP/ios-rollback.json"
           dotnet workload list
+      # "Sign in with Discord" on the iPhone needs Discord's Social SDK (not open source, not in this repository).
+      - name: Get Discord's Social SDK (owner builds only)
+        env:
+          GH_TOKEN: ${{ secrets.DISCORD_SDK_TOKEN }}
+          SDK_REPO: ${{ secrets.DISCORD_SDK_REPO }}
+          APP_ID: ${{ secrets.DISCORD_PHONE_APP_ID }}
+          SDK_TAG: discord-social-sdk-1.11.24259
+          SDK_FILE: discord_partner_sdk-ios-1.11.24259.zip
+          SDK_SHA256: 54d4c17cc78ff89eb40a84614aa5943375cc56879f6815ee32f34b77745a1808
+        run: |
+          if [ -z "$GH_TOKEN" ] || [ -z "$SDK_REPO" ] || [ -z "$APP_ID" ]; then
+            echo "No Discord SDK for this build: the app is built without Sign in with Discord."
+            exit 0
+          fi
+          case "$APP_ID" in *[!0-9]*) echo "::error::The Discord app id isn't a number"; exit 1;; esac
+          d="$RUNNER_TEMP/discord-sdk"
+          mkdir -p "$d"
+          gh release download "$SDK_TAG" -R "$SDK_REPO" -p "$SDK_FILE" -D "$d"
+          echo "$SDK_SHA256  $d/$SDK_FILE" | shasum -a 256 -c -
+          (cd "$d" && unzip -q "$SDK_FILE" && rm "$SDK_FILE")
+          [ -d "$d/discord_partner_sdk.xcframework" ] || { echo "::error::No xcframework in the SDK file"; exit 1; }
+          # The Discord sign-in comes back to the app as discord-<app id>:/authorize/callback.
+          plist=mobile/RigControl.Mobile/Platforms/iOS/Info.plist
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleURLTypes:1 dict" \
+            -c "Add :CFBundleURLTypes:1:CFBundleURLName string discord" \
+            -c "Add :CFBundleURLTypes:1:CFBundleURLSchemes array" \
+            -c "Add :CFBundleURLTypes:1:CFBundleURLSchemes:0 string discord-$APP_ID" \
+            -c "Add :LSApplicationQueriesSchemes array" \
+            -c "Add :LSApplicationQueriesSchemes:0 string discord" "$plist"
+          echo "DISCORD_SDK_DIR=$d" >> "$GITHUB_ENV"
+          echo "DISCORD_APP_ID=$APP_ID" >> "$GITHUB_ENV"
       - name: Build for iPhone, without signing
         working-directory: mobile
         run: |
+          discord=()
+          if [ -n "${DISCORD_SDK_DIR:-}" ]; then discord=(-p:DiscordSdkDir="$DISCORD_SDK_DIR" -p:DiscordAppId="$DISCORD_APP_ID"); fi
           # Only the iPhone target is restored, so the Mac needs only the iOS workload.
-          dotnet restore "../$PROJECT" -r ios-arm64 -p:MobileOnly=ios -p:Configuration=Release
+          dotnet restore "../$PROJECT" -r ios-arm64 -p:MobileOnly=ios -p:Configuration=Release "${discord[@]}"
           dotnet build "../$PROJECT" -f net10.0-ios -c Release -p:MobileOnly=ios --no-restore \
-            -p:RuntimeIdentifier=ios-arm64 -p:EnableCodeSigning=false -p:CodesignKey="" -p:ArchiveOnBuild=false
+            -p:RuntimeIdentifier=ios-arm64 -p:EnableCodeSigning=false -p:CodesignKey="" -p:ArchiveOnBuild=false "${discord[@]}"
+          if [ -n "${DISCORD_SDK_DIR:-}" ]; then
+            app=$(find RigControl.Mobile/bin/Release/net10.0-ios/ios-arm64 -maxdepth 1 -name '*.app' -type d | head -n 1)
+            [ -d "$app/Frameworks/discord_partner_sdk.framework" ] || { echo "::error::The Discord SDK isn't inside the app"; exit 1; }
+            echo "Discord SDK embedded."
+          fi
       - name: Package Payload/RigControl.app into an unsigned .ipa
         run: |
           app=$(find mobile/RigControl.Mobile/bin/Release/net10.0-ios/ios-arm64 -maxdepth 1 -name '*.app' -type d | head -n 1)

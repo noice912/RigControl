@@ -94,11 +94,19 @@ small relay (a Cloudflare Worker with Durable Objects, run by RigControl's autho
 
 ### The phone app (RigControl Mobile)
 
-- **Who it talks to:** the phone link relay (as above), and, only if you press "Connect Spotify", Spotify's own
-  sign-in page (`accounts.spotify.com`). No other server, no analytics, no crash upload.
+- **Who it talks to:** the phone link relay (as above); only if you press "Connect Spotify", Spotify's own
+  sign-in page (`accounts.spotify.com`); and only if you press "Sign in with Discord" (iPhone), **Discord**
+  (`discord.com` and its servers, through Discord's own Social SDK). No other server, no analytics, no crash upload.
+- **Sign in with Discord (iPhone):** you approve RigControl in the Discord app or on Discord's page (scopes `openid`
+  and `sdk.social_layer_presence`); RigControl never sees your Discord password. While RigControl Mobile is open and
+  "Share my iPhone's Music app song" is on, the phone sends Discord the song's title, artist and times for your
+  status, and clears it when the app goes to the background. Discord's sign-in (a refresh token) is kept in the
+  iPhone's Keychain, on this iPhone only; "Sign out of Discord" deletes it. Discord's handling of it is covered by
+  Discord's privacy policy.
 - **What it keeps on the phone:** its link keys in the phone's secure storage (the iPhone's Keychain, Android's
   Keystore); the list of linked PCs (ids, names, the PCs' public keys, the relay address, when each was last seen) in
-  the app's own settings. It keeps **no Spotify token**: the sign-in goes straight to your PCs.
+  the app's own settings. It keeps **no Spotify token**: the sign-in goes straight to your PCs. With "Sign in with
+  Discord", Discord's sign-in in the Keychain (see above).
 - **The camera** is used only to scan a PC's QR code while the "Link a PC" screen is open.
 - **The Music app song** is read only while the app is open and "Share my iPhone's Music app song" is on.
 - **Removing it:** delete the app. Remove the phone on each PC (Settings > Phone > Remove) as well.

@@ -136,6 +136,12 @@ names and its package restore resolves.
 | ZXing.Net (used by ZXing.Net.Maui) | 0.16.11 | Apache-2.0 ([text](LICENSES/Apache-2.0.txt)) | https://github.com/micjahn/ZXing.Net |
 | Open Sans font (`OpenSans-Regular.ttf`, `OpenSans-Semibold.ttf` in `mobile/RigControl.Mobile/Resources/Fonts`) | 1.10 | Apache-2.0, as the font files themselves state; "Digitized data copyright (c) 2010-2011, Google Corporation" ([text](LICENSES/OpenSans-LICENSE.txt)). Open Sans is a trademark of Google. | https://github.com/googlefonts/opensans |
 
+**Discord Social SDK** (`discord_partner_sdk.framework`, 1.11.24259), iPhone app only, for "Sign in with Discord":
+Discord's own software, not open source, used under Discord's developer terms and the SDK's licence. It is not in
+this repository and not under the GPL: the owner's builds fetch it from a private store; see
+[LICENSE-EXCEPTION-DISCORD.md](LICENSE-EXCEPTION-DISCORD.md) for the permission that lets the GPL app link it. Builds
+without it don't offer the Discord sign-in.
+
 The Android build (not released; only a test build signed with a throwaway key exists) also carries the AndroidX,
 Google Material, Kotlin and Glide libraries that .NET MAUI and ZXing.Net.Maui pull in on Android. They are listed
 here before an Android release.

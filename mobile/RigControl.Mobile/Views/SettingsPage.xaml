@@ -62,6 +62,21 @@
                                Text="Only while RigControl is open on this iPhone: the song is sent to your linked PCs every few seconds, and cleared when you leave the app." />
                         <Label Text="{Binding MusicMessage}" Style="{StaticResource Muted}" IsVisible="{Binding MusicMessage, Converter={StaticResource NotEmpty}}" />
                     </VerticalStackLayout>
+
+                    <!-- Discord on the phone itself (no PC) -->
+                    <VerticalStackLayout Spacing="10" IsVisible="{Binding ShowDiscord}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,6,0,0">
+                            <Label Text="Discord on this phone" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="{Binding DiscordStatus}" Style="{StaticResource Muted}"
+                                   HorizontalTextAlignment="End" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                        </Grid>
+                        <Label Style="{StaticResource Muted}"
+                               Text="Sign in with Discord and this iPhone puts your Music app song on Discord itself, with your PC off. You approve RigControl in Discord; RigControl never sees your Discord password. iPhones pause apps in the background, so the song shows while RigControl is open." />
+                        <Button Text="Sign in with Discord" Command="{Binding SignInDiscordCommand}" IsVisible="{Binding DiscordSignedOut}" />
+                        <Button Text="Sign out of Discord" Style="{StaticResource Secondary}" Command="{Binding SignOutDiscordCommand}"
+                                IsVisible="{Binding DiscordSignedIn}" />
+                        <Label Text="{Binding DiscordMessage}" Style="{StaticResource Muted}" IsVisible="{Binding DiscordMessage, Converter={StaticResource NotEmpty}}" />
+                    </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
 

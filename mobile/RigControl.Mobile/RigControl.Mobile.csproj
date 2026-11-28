@@ -58,4 +58,29 @@
     <ProjectReference Include="..\RigControl.Mobile.Core\RigControl.Mobile.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    "Sign in with Discord" (Services/DiscordDirect.cs): only in iPhone builds given Discord's Social SDK and an app id:
+      -p:DiscordSdkDir=<folder holding discord_partner_sdk.xcframework> -p:DiscordAppId=<application id>
+    The SDK is Discord's (not open source, not in this repository; see LICENSE-EXCEPTION-DISCORD.md). Without it the
+    app builds as before and the Discord sign-in is simply not offered.
+  -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' and '$(DiscordSdkDir)' != '' and Exists('$(DiscordSdkDir)/discord_partner_sdk.xcframework')">
+    <DefineConstants>$(DefineConstants);DISCORD_SDK</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' and '$(DiscordSdkDir)' != '' and Exists('$(DiscordSdkDir)/discord_partner_sdk.xcframework')">
+    <NativeReference Include="$(DiscordSdkDir)/discord_partner_sdk.xcframework">
+      <Kind>Framework</Kind>
+      <SmartLink>False</SmartLink>
+    </NativeReference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(DiscordAppId)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DiscordAppId</_Parameter1>
+      <_Parameter2>$(DiscordAppId)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Maui.LifecycleEvents;
 using RigControl.Mobile.Core.Link;
 using RigControl.Mobile.Services;
@@ -74,6 +74,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<AppSettings>();
         builder.Services.AddSingleton<DeepLinkRouter>();
         builder.Services.AddSingleton<SpotifyConnection>();
+        builder.Services.AddSingleton<DiscordDirect>();
         builder.Services.AddSingleton<PhoneMusicService>();
         builder.Services.AddSingleton<AppShell>();
 

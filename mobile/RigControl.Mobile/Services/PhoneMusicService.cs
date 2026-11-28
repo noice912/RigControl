@@ -18,15 +18,17 @@ public sealed class PhoneMusicService
 
     private readonly AppSettings _settings;
     private readonly PhoneMusicFeeder _feeder;
+    private readonly DiscordDirect _discord;
     private readonly object _gate = new();
     private CancellationTokenSource? _running;
     private Task _loop = Task.CompletedTask;
     private bool _foreground = true;
 
-    public PhoneMusicService(ILinkService link, AppSettings settings)
+    public PhoneMusicService(ILinkService link, AppSettings settings, DiscordDirect discord)
     {
         _settings = settings;
         _feeder = new PhoneMusicFeeder(link);
+        _discord = discord;
     }
 
     /// <summary>Whether this phone can share its Music app song at all.</summary>
@@ -112,6 +114,8 @@ public sealed class PhoneMusicService
                 try
                 {
                     var track = await MainThread.InvokeOnMainThreadAsync(ReadNowPlaying);
+                    // Signed in with Discord on the phone: straight to Discord (no PC needed); the PCs get it too.
+                    await _discord.ReportAsync(track).ConfigureAwait(false);
                     await _feeder.ReportAsync(track, ct).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -144,6 +148,7 @@ public sealed class PhoneMusicService
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _discord.ReportAsync(null).ConfigureAwait(false);
             await _feeder.StopAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (Exception ex)

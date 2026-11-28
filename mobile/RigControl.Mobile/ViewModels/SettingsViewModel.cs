@@ -11,7 +11,24 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly AppSettings _settings;
     private readonly SpotifyConnection _spotify;
     private readonly PhoneMusicService _music;
+    private readonly DiscordDirect _discord;
     private bool _settingSwitch;
+
+    /// <summary>"Sign in with Discord" is offered (iPhone builds with Discord's SDK).</summary>
+    public bool ShowDiscord { get; } = DiscordDirect.IsAvailable;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DiscordSignedOut))]
+    public partial bool DiscordSignedIn { get; set; }
+
+    public bool DiscordSignedOut => !DiscordSignedIn;
+
+    [ObservableProperty] public partial string DiscordStatus { get; set; } = "";
+    [ObservableProperty] public partial string? DiscordMessage { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SignInDiscordCommand), nameof(SignOutDiscordCommand))]
+    public partial bool DiscordBusy { get; set; }
 
     [ObservableProperty] public partial string PhoneName { get; set; }
     [ObservableProperty] public partial string Relay { get; set; }
@@ -40,11 +57,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Says plainly when the app shows sample PCs instead of real ones.</summary>
     public string LinkMode { get; }
 
-    public SettingsViewModel(AppSettings settings, ILinkService link, SpotifyConnection spotify, PhoneMusicService music)
+    public SettingsViewModel(AppSettings settings, ILinkService link, SpotifyConnection spotify, PhoneMusicService music, DiscordDirect discord)
     {
         _settings = settings;
         _spotify = spotify;
         _music = music;
+        _discord = discord;
+        discord.Changed += (_, _) => MainThread.BeginInvokeOnMainThread(ShowDiscordState);
+        ShowDiscordState();
         PhoneName = settings.PhoneName;
         Relay = settings.Relay.Length > 0 ? settings.Relay
             : MobileDefaults.HasRelay ? MobileDefaults.RelayHost : "Set by the first PC you link";
@@ -125,6 +145,58 @@ public sealed partial class SettingsViewModel : ObservableObject
             SpotifyBusy = false;
             ShowSpotify();
         }
+    }
+
+    private bool CanUseDiscord() => !DiscordBusy;
+
+    [RelayCommand(CanExecute = nameof(CanUseDiscord))]
+    private async Task SignInDiscord()
+    {
+        DiscordBusy = true;
+        try
+        {
+            DiscordMessage = await _discord.SignInAsync();
+            // The Music app switch has to be on for there to be a song to show.
+            if (_discord.SignedIn && !ShareAppleMusic)
+                ShareAppleMusic = true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[discord] sign-in failed: " + ex.GetType().Name);
+            DiscordMessage = "Discord sign-in didn't work. Try again.";
+        }
+        finally
+        {
+            DiscordBusy = false;
+            ShowDiscordState();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUseDiscord))]
+    private async Task SignOutDiscord()
+    {
+        DiscordBusy = true;
+        try { await _discord.SignOutAsync(); }
+        finally
+        {
+            DiscordBusy = false;
+            ShowDiscordState();
+        }
+    }
+
+    private void ShowDiscordState()
+    {
+        DiscordSignedIn = _discord.SignedIn;
+        DiscordStatus = _discord.State switch
+        {
+            "ready" => "Signed in",
+            "connecting" => "Connecting...",
+            "signing-in" => "Signing in...",
+            "problem" => "Not connected",
+            _ => "Not signed in",
+        };
+        if (_discord.Message is { } m)
+            DiscordMessage = m;
     }
 
     private void ShowSpotify()
