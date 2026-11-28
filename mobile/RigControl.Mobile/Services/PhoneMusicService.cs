@@ -19,6 +19,12 @@ public sealed class PhoneMusicService
     private readonly AppSettings _settings;
     private readonly PhoneMusicFeeder _feeder;
     private readonly DiscordDirect _discord;
+
+    /// <summary>
+    /// A linked PC took the song last time (its card is on Discord): the phone doesn't post its own as well, or
+    /// Discord would show two cards. With no PC answering, the phone's own Discord sign-in shows it.
+    /// </summary>
+    private volatile bool _pcShows;
     private readonly object _gate = new();
     private CancellationTokenSource? _running;
     private Task _loop = Task.CompletedTask;
@@ -28,6 +34,7 @@ public sealed class PhoneMusicService
     {
         _settings = settings;
         _feeder = new PhoneMusicFeeder(link);
+        _feeder.Sent += (_, results) => _pcShows = results.Any(x => x.Result.Ok);
         _discord = discord;
     }
 
@@ -114,9 +121,10 @@ public sealed class PhoneMusicService
                 try
                 {
                     var track = await MainThread.InvokeOnMainThreadAsync(ReadNowPlaying);
-                    // Signed in with Discord on the phone: straight to Discord (no PC needed); the PCs get it too.
-                    await _discord.ReportAsync(track).ConfigureAwait(false);
-                    await _feeder.ReportAsync(track, ct).ConfigureAwait(false);
+                    // The PCs first; the phone's own Discord card only when no PC showed it (never two cards).
+                    try { await _feeder.ReportAsync(track, ct).ConfigureAwait(false); }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { _pcShows = false; throw; }
+                    finally { await _discord.ReportAsync(_pcShows ? null : track).ConfigureAwait(false); }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
