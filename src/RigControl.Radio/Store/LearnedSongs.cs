@@ -137,6 +137,15 @@ public sealed class LearnedSongs
         }
     }
 
+    /// <summary>The song learned under this title and artist (any case), if any.</summary>
+    public LearnedSong? Find(string title, string artist)
+    {
+        lock (_gate)
+            return _songs.Values.FirstOrDefault(e =>
+                string.Equals(e.Song.Title, title, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(e.Song.Artist, artist, StringComparison.OrdinalIgnoreCase))?.Song;
+    }
+
     public LearnedSong? Get(int id)
     {
         lock (_gate) return _songs.TryGetValue(id, out var e) ? e.Song : null;

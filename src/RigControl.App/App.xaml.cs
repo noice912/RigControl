@@ -82,7 +82,7 @@ public partial class App : System.Windows.Application
                 var open = exePath.Length == 0 || RigControl.Bundled.FolderGuard.OthersCanChange(exePath);
                 var folders = NativeFolderGuard.CurrentExtractDirs().Concat(open ? [] : new[] { AppContext.BaseDirectory });
                 return RigControl.Radio.Speech.WhisperSpeech.Load(model.LoadVerified(), folders, log, forceCpu: useCpu);
-            }, log, CancellationToken.None))
+            }, log, CancellationToken.None, RigControl.Radio.Previews.PreviewDecoder.Decode))
             .ContinueWith(t => Dispatcher.BeginInvoke(() => Shutdown(t.IsCompletedSuccessfully ? t.Result : 4)), TaskScheduler.Default);
     }
 

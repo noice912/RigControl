@@ -84,6 +84,8 @@ internal sealed class FakeLyrics : RigControl.Radio.Lyrics.ILyricsEngine
         }
         finally { Interlocked.Decrement(ref InFlight); }
     }
+    public Func<IReadOnlyList<RigControl.Radio.Fingerprint.Landmark>, (RigControl.Radio.Catalogue.CatalogueSong, double)?> Sound { get; set; } = _ => null;
+    public (RigControl.Radio.Catalogue.CatalogueSong Song, double PositionSeconds)? MatchSound(IReadOnlyList<RigControl.Radio.Fingerprint.Landmark> query, double heardSeconds) => Sound(query);
     public void Dispose() => Prepared = false;
 }
 
@@ -192,6 +194,36 @@ public class ModuleTests : IDisposable
         _input.Feed(TestAudio.Slice(song, 12, 15));
         await _m.TickAsync(); // second, agreeing: shown
         Assert.Equal("Eight", Status.Now!.Title);
+    }
+
+    [Fact]
+    public async Task A_station_song_is_recognised_by_its_preview_sound_without_naming()
+    {
+        // The "preview": 30 s from the middle of the song, at the preview frame like PreviewLibrary keeps it.
+        var song = TestAudio.Song(31, 180);
+        var station = new RigControl.Radio.Catalogue.CatalogueSong("Station", "Thirty One", "Band");
+        var previews = RigControl.Radio.Store.LearnedSongs.Load(Path.Combine(_dir, "previews.rcfp"), NullLog.Instance);
+        previews.Learn(station.Title, station.Artist, "", null, RigControl.Radio.Fingerprint.Fingerprinter.Compute(TestAudio.Slice(song, 60, 90)),
+            RigControl.Radio.Previews.PreviewLibrary.Base);
+        _lyrics.Sound = q => previews.Match(q, 10) is { } m ? (station, m.PositionSeconds) : null;
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+
+        await Play(song, 0, 30);         // a part the preview doesn't have: nothing
+        Assert.Null(Status.Now);
+        await Play(song, 63, 15);        // the preview's part: recognised, no hand naming
+        Assert.Equal("Thirty One", Status.Now!.Title);
+        Assert.Null(Status.Now.PositionSeconds); // where in the song isn't known
+        Assert.Equal("Thirty One", _presence.Last().Args["title"]!.GetValue<string>());
+        Assert.Single((IEnumerable<LearnedSongDto>)Call("listSongs").Result!);
+
+        // It keeps learning as it plays, so later parts are recognised next time too.
+        await Play(song, 78, 60);
+        await Play(new float[16000 * 15], 0, 15);
+        Assert.Null(Status.Now);
+        _lyrics.Sound = _ => null;
+        await Play(song, 110, 15);
+        Assert.Equal("Thirty One", Status.Now!.Title);
     }
 
     [Fact]

@@ -32,14 +32,18 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
         public TimeSpan Wait { get; } = wait;
     }
 
-    public sealed record Entry(string Key, string Title, string Artist, string? Synced, string? Plain, double? Duration, bool Missing, DateTimeOffset FetchedAt);
+    /// <param name="Pass">How the song was looked up: 2 = also under its cleaned-up name (missing songs from before are asked again).</param>
+    public sealed record Entry(string Key, string Title, string Artist, string? Synced, string? Plain, double? Duration, bool Missing, DateTimeOffset FetchedAt,
+        int? Pass = null);
+
+    public const int CurrentPass = 2;
 
     /// <summary>Fetches every song not kept yet (or missing for over a day). Returns how many songs have lyrics now.</summary>
     public async Task<int> FetchAsync(IReadOnlyList<CatalogueSong> songs, IProgress<(int Done, int Total)>? progress, CancellationToken ct)
     {
         var kept = new Dictionary<string, Entry>(StringComparer.Ordinal);
         foreach (var e in Load()) kept[e.Key] = e; // a damaged file may repeat a song: the last one counts
-        var todo = songs.Where(s => !kept.TryGetValue(s.Key, out var e) || (e.Missing && _now() - e.FetchedAt > RetryMissingAfter)).ToList();
+        var todo = songs.Where(s => !kept.TryGetValue(s.Key, out var e) || (e.Missing && ((e.Pass ?? 1) < CurrentPass || _now() - e.FetchedAt > RetryMissingAfter))).ToList();
         var done = 0;
         var failedInARow = 0;
         var changed = false;
@@ -68,7 +72,7 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
             {
                 // An answer that can't be used: count the song as missing for now.
                 log.Info($"In-game radio: LRCLIB's answer for \"{song.Title}\" couldn't be used ({ex.GetType().Name}).");
-                entry = new Entry(song.Key, song.Title, song.Artist, null, null, null, true, _now());
+                entry = new Entry(song.Key, song.Title, song.Artist, null, null, null, true, _now(), CurrentPass);
             }
             kept[song.Key] = entry;
             changed = true;
@@ -148,10 +152,22 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
         }
     }
 
+    /// <summary>Under its listed name, then under its cleaned-up name ("Giza (Remix) ft. X" -> "Giza").</summary>
     private async Task<Entry?> FetchOneAsync(CatalogueSong song, CancellationToken ct)
     {
         var artist = FirstArtist(song.Artist);
-        var title = song.Title;
+        var entry = await FetchAsAsync(song, song.Title, artist, ct).ConfigureAwait(false);
+        var clean = CleanTitle(song.Title);
+        if (entry is { Missing: true } && clean.Length > 0 && !string.Equals(clean, song.Title, StringComparison.OrdinalIgnoreCase))
+        {
+            if (_pause > TimeSpan.Zero) await Task.Delay(_pause, ct).ConfigureAwait(false);
+            entry = await FetchAsAsync(song, clean, artist, ct).ConfigureAwait(false);
+        }
+        return entry;
+    }
+
+    private async Task<Entry?> FetchAsAsync(CatalogueSong song, string title, string artist, CancellationToken ct)
+    {
         var got = await GetAsync($"/api/get?track_name={Uri.EscapeDataString(title)}&artist_name={Uri.EscapeDataString(artist)}", ct).ConfigureAwait(false);
         if (got is { ValueKind: JsonValueKind.Object } o) return FromJson(song, o);
         // Not under that exact name: the first search result whose title starts the same way.
@@ -172,7 +188,7 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
                     return FromJson(song, item);
             }
         }
-        return new Entry(song.Key, song.Title, song.Artist, null, null, null, true, _now());
+        return new Entry(song.Key, song.Title, song.Artist, null, null, null, true, _now(), CurrentPass);
     }
 
     private Entry FromJson(CatalogueSong song, JsonElement o)
@@ -183,7 +199,7 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
         var synced = instrumental ? null : Str("syncedLyrics");
         var plain = instrumental ? null : Str("plainLyrics");
         var has = !string.IsNullOrWhiteSpace(synced) || !string.IsNullOrWhiteSpace(plain);
-        return new Entry(song.Key, song.Title, song.Artist, synced, plain, duration, !has, _now());
+        return new Entry(song.Key, song.Title, song.Artist, synced, plain, duration, !has, _now(), CurrentPass);
     }
 
     /// <summary>One request to lrclib.net; null for "not found". Throws on errors and oversized answers.</summary>
@@ -215,6 +231,22 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
         }
         using var doc = JsonDocument.Parse(ms.ToArray(), new JsonDocumentOptions { MaxDepth = 16 });
         return doc.RootElement.Clone();
+    }
+
+    /// <summary>
+    /// The plain song name: without the parts in brackets, a " - ..." ending or a "ft. ..." credit.
+    /// "Do I (Remix)" -> "Do I"; "Giza ft. Seyi Vibez" -> "Giza"; "Song - 2011 Remaster" -> "Song".
+    /// </summary>
+    internal static string CleanTitle(string title)
+    {
+        var t = System.Text.RegularExpressions.Regex.Replace(title, @"\([^)]*\)|\[[^\]]*\]", " ");
+        foreach (var sep in new[] { " - ", " ft. ", " feat. ", " featuring ", " ft ", " feat " })
+        {
+            var i = t.IndexOf(sep, StringComparison.OrdinalIgnoreCase);
+            if (i > 0) t = t[..i];
+        }
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"\s+", " ").Trim();
+        return t.Length > 0 ? t : title.Trim();
     }
 
     /// <summary>"Usher, Pitbull" -> "Usher"; "Prospa ft. Halsey" -> "Prospa"; "Rossi. & Demi" -> "Rossi.".</summary>

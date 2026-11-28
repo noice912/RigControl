@@ -22,10 +22,13 @@ public sealed class RadioModule : IAppModule
     /// <summary>The detector checks the newest sound every second (fingerprints take a few milliseconds).</summary>
     public const int TickMs = 1000;
     public const float SilenceRms = 0.003f;
-    private const int BufferSeconds = 15, MatchSeconds = 10, NameSeconds = 15, LearnEverySeconds = 15;
+    private const int BufferSeconds = 15, MatchSeconds = 10, NameSeconds = 15;
+    /// <summary>While a song plays, its newest 8 s are learned every 6 s: the newest learned part still overlaps what is
+    /// heard when the next part is learned, so recognition never loses the thread.</summary>
+    private const int LearnSeconds = 8, LearnEverySeconds = 6;
     /// <summary>A song is taken off after this long without sound (a pause menu, a loading screen, the radio off).</summary>
     private const double QuietSecondsToClear = 9;
-    private const double AgreeSeconds = 3, LostAfterSeconds = 60, SaveEverySeconds = 60, UnknownLengthCap = 600;
+    private const double AgreeSeconds = 3, LostAfterSeconds = 60, SaveEverySeconds = 60, UnknownLengthCap = 1800;
 
     private readonly IRadioInput _input;
     private readonly Func<string, JsonObject, Task> _presence;
@@ -52,7 +55,8 @@ public sealed class RadioModule : IAppModule
     private bool _sound;
     private long? _quietSince;             // _samples when the sound stopped (null while there is sound)
     private (int SongId, double Position, long At)? _pending;
-    private (int SongId, double Position, long At)? _current;
+    private (int SongId, double Position, long At)? _current;   // Position NaN: where in the song isn't known
+    private (string Key, double Position, long At)? _soundPending; // a song's preview heard once, waiting for a second match
     private long _lastMatchAt, _lastLearnAt, _lastSaveAt;
     private long _openedAt;                // _samples when the input was opened (sound before it doesn't count)
     private long _since;                   // _samples when the current song was first recognised
@@ -210,6 +214,7 @@ public sealed class RadioModule : IAppModule
         _opened = null;
         _resampler = null;
         _pending = null;
+        _soundPending = null;
         _sound = false;
         _generation++;
         if (_current is not null) clear = Clear(why);
@@ -277,6 +282,7 @@ public sealed class RadioModule : IAppModule
             if (!sound)
             {
                 _pending = null;
+                _soundPending = null;
                 // The level is measured over the last 3 s, so the quiet began at least that long ago.
                 _quietSince ??= now - RadioAudio.SampleRate * 3;
                 if ((now - _quietSince.Value) / (double)RadioAudio.SampleRate >= QuietSecondsToClear && _current is not null)
@@ -287,7 +293,13 @@ public sealed class RadioModule : IAppModule
             heard = _buffer.Last(RadioAudio.SampleRate * MatchSeconds);
         }
         BeforeMatch?.Invoke();
-        var match = _store!.Match(Fingerprinter.Compute(heard), heard.Length / (double)RadioAudio.SampleRate);
+        var query = Fingerprinter.Compute(heard);
+        var heardSeconds = heard.Length / (double)RadioAudio.SampleRate;
+        var match = _store!.Match(query, heardSeconds);
+        ILyricsEngine? engine;
+        lock (_gate) engine = _lyrics;
+        // Nothing learned matched: maybe one of the stations' songs, from what its preview sounds like.
+        var bySound = match is null ? engine?.MatchSound(query, heardSeconds) : null;
         (int SongId, double Start)? learn = null;
         lock (_gate)
         {
@@ -310,9 +322,20 @@ public sealed class RadioModule : IAppModule
                     learn = PlanLearning(match, now);
                 }
             }
+            else if (bySound is { } bs)
+            {
+                _pending = null;
+                var agrees = _soundPending is { } sp && sp.Key == bs.Song.Key && now > sp.At
+                             && Math.Abs(sp.Position + (now - sp.At) / (double)RadioAudio.SampleRate - bs.PositionSeconds) <= AgreeSeconds;
+                _soundPending = (bs.Song.Key, bs.PositionSeconds, now);
+                if (agrees) AdoptBySound(bs.Song, bs.PositionSeconds, heard, now);
+                else if (_current is not null && (now - _lastMatchAt) / (double)RadioAudio.SampleRate > LostAfterSeconds)
+                    return Clear("it hasn't been heard for a minute");
+            }
             else
             {
                 _pending = null;
+                _soundPending = null;
                 MaybeHear(heard, gen, now);
                 if (_current is not null && (now - _lastMatchAt) / (double)RadioAudio.SampleRate > LostAfterSeconds)
                     return Clear("it hasn't been heard for a minute");
@@ -446,16 +469,57 @@ public sealed class RadioModule : IAppModule
         }
     }
 
+    /// <summary>
+    /// A station song recognised twice in a row from its preview's sound. Its sound is learned (in the preview's frame:
+    /// where in the song isn't known, so Discord counts from now) and it is shown; from then on it is recognised and
+    /// learned like any learned song. A song already learned with its real place keeps it (nothing added). Under _gate.
+    /// </summary>
+    private void AdoptBySound(Catalogue.CatalogueSong cs, double position, float[] heard, long now)
+    {
+        var existing = _store!.Find(cs.Title, cs.Artist);
+        if (existing is { DurationSeconds: not null })
+        {
+            if (_current is not { } c || c.SongId != existing.Id)
+            {
+                _current = (existing.Id, double.NaN, now);
+                _since = now;
+                _log.Info("In-game radio: recognised " + Describe(existing.Id) + " by its sound.");
+            }
+            _lastMatchAt = now;
+            return;
+        }
+        var heardFrom = Math.Max(0, position - heard.Length / (double)RadioAudio.SampleRate);
+        LearnedSong song;
+        if (existing is not null && _store.Covers(existing.Id, heardFrom, heard.Length / (double)RadioAudio.SampleRate)) song = existing;
+        else
+        {
+            try { song = _store.Learn(cs.Title, cs.Artist, "", null, Fingerprinter.Compute(heard), heardFrom); }
+            catch (InvalidOperationException) { return; } // store full
+            _dirty = true;
+        }
+        if (_current is not { } cur || cur.SongId != song.Id)
+        {
+            _since = now;
+            _log.Info("In-game radio: recognised " + Describe(song.Id) + " by its sound.");
+        }
+        _current = (song.Id, position, now);
+        _pending = (song.Id, position, now);
+        _lastMatchAt = now;
+        _lastLearnAt = now;
+    }
+
     /// <summary>Second, agreeing lyrics hit: learn this sound under the song and show it. Under _gate.</summary>
     private JsonObject? Confirm(LyricsHit hit, float[] audio, long endAt, double seconds)
     {
         _lyricCandidate = null;
         var landmarks = Fingerprinter.Compute(audio);
         var position = hit.PositionSeconds ?? seconds;
+        // Already learned from its sound (place unknown): stays without a length, so no wrong place is ever shown.
+        var placeless = _store!.Find(hit.Song.Title, hit.Song.Artist) is { DurationSeconds: null };
         LearnedSong song;
         try
         {
-            song = _store!.Learn(hit.Song.Title, hit.Song.Artist, "", hit.PositionSeconds is null ? null : hit.DurationSeconds,
+            song = _store!.Learn(hit.Song.Title, hit.Song.Artist, "", hit.PositionSeconds is null || placeless ? null : hit.DurationSeconds,
                 landmarks, Math.Max(0, position - seconds));
         }
         catch (InvalidOperationException) { return null; } // store full
@@ -478,9 +542,9 @@ public sealed class RadioModule : IAppModule
         if ((now - _openedAt) / (double)RadioAudio.SampleRate < NameSeconds) return null;
         var song = _store!.Get(match.SongId);
         if (song is null) return null;
-        var start = match.PositionSeconds - NameSeconds;
+        var start = match.PositionSeconds - LearnSeconds;
         if (start < 0 || start > (song.DurationSeconds ?? UnknownLengthCap)) return null;
-        if (_store.Covers(song.Id, start, NameSeconds)) return null;
+        if (_store.Covers(song.Id, start, LearnSeconds)) return null;
         _lastLearnAt = now;
         return (song.Id, start);
     }
@@ -492,7 +556,7 @@ public sealed class RadioModule : IAppModule
         try
         {
             _store.Learn(song.Title, song.Artist, song.Album, song.DurationSeconds,
-                Fingerprinter.Compute(_buffer.Last(RadioAudio.SampleRate * NameSeconds)), start);
+                Fingerprinter.Compute(_buffer.Last(RadioAudio.SampleRate * LearnSeconds)), start);
             lock (_gate) _dirty = true;
         }
         catch (InvalidOperationException) { /* store full: keep recognising */ }
@@ -521,7 +585,7 @@ public sealed class RadioModule : IAppModule
     private RadioSongDto? CurrentDto()
     {
         if (_current is not { } c || _store?.Get(c.SongId) is not { } s) return null;
-        var known = s.DurationSeconds is not null;
+        var known = s.DurationSeconds is not null && !double.IsNaN(c.Position);
         var pos = c.Position + (Interlocked.Read(ref _samples) - c.At) / (double)RadioAudio.SampleRate;
         return new RadioSongDto(s.Id, s.Title, s.Artist, s.Album, known ? Math.Min(pos, s.DurationSeconds!.Value) : null, s.DurationSeconds);
     }

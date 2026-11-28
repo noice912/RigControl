@@ -95,16 +95,18 @@ export function RadioPanel() {
                 checked={status.lyrics.enabled}
                 disabled={busy !== null}
                 onChange={(v) => void setLyrics(v)}
-                label="Also recognise the GTA 6 station songs by their lyrics"
+                label="Recognise the GTA 6 station songs automatically (by their sound and lyrics)"
               />
               <div className="sub">
-                Works with no naming: RigControl listens for sung words and looks them up in the stations' lyrics. The
-                first time, it downloads the songs' lyrics from lrclib.net and a speech recognition model (190 MB) from
-                Hugging Face. The listening itself stays on this PC. Songs without words still need naming once.
+                Works with no naming, also for songs without words: RigControl learns what every station song sounds
+                like from its free 30-second preview (Apple's or Deezer's song search; only fingerprints are kept), and
+                listens for sung words to look them up in the stations' lyrics (lrclib.net, plus a 60 MB speech model
+                from Hugging Face). The first time this takes about an hour in the background. The listening itself
+                stays on this PC, and each song is learned further while it plays.
               </div>
               {status.lyrics.enabled && status.lyrics.detail && (
                 <Notice tone={status.lyrics.state === "problem" ? "error" : status.lyrics.state === "ready" ? "info" : "warn"}
-                        title={status.lyrics.state === "ready" ? "Lyrics recognition is on" : status.lyrics.state === "problem" ? "Lyrics recognition stopped" : "Getting ready"}>
+                        title={status.lyrics.state === "ready" ? "Station songs are recognised" : status.lyrics.state === "problem" ? "Song recognition stopped" : "Getting ready"}>
                   {status.lyrics.detail}
                 </Notice>
               )}

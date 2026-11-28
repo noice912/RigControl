@@ -97,6 +97,39 @@ public sealed class SpeechHelperClient : ISpeech
         }
     }
 
+    /// <summary>
+    /// Has the helper (no administrator rights) turn a downloaded song preview into 16 kHz mono sound. Empty: it
+    /// couldn't be read.
+    /// </summary>
+    public async Task<float[]> DecodeAsync(byte[] compressed, CancellationToken ct)
+    {
+        await _one.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var pipe = await EnsureAsync(ct).ConfigureAwait(false);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(ReplyTimeout);
+            try
+            {
+                await SpeechWire.WriteDecodeAsync(pipe, compressed, timeout.Token).ConfigureAwait(false);
+                var (type, payload) = await SpeechWire.ReadAsync(pipe, timeout.Token).ConfigureAwait(false);
+                if (type == SpeechWire.Audio) return SpeechWire.ToSamples(payload);
+                Lost("the speech helper answered nonsense");
+                throw new IOException("Reading a song preview failed.");
+            }
+            catch (Exception ex) when (ex is IOException or EndOfStreamException or InvalidDataException
+                                       || (ex is OperationCanceledException && !ct.IsCancellationRequested))
+            {
+                if (_pipe is not null) Lost(ex.Message);
+                throw new IOException("The speech helper stopped answering (" + ex.Message + ").", ex);
+            }
+        }
+        finally
+        {
+            _one.Release();
+        }
+    }
+
     private async Task<NamedPipeServerStream> EnsureAsync(CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

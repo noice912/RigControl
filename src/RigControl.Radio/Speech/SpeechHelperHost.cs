@@ -17,7 +17,9 @@ public static class SpeechHelperHost
     public static bool Wants(string[] args) => args.Any(a => string.Equals(a, Switch, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Exit codes: 0 RigControl closed the pipe, 1 bad arguments, 2 the engine couldn't start, 3 a transcription failed.</summary>
-    public static async Task<int> RunAsync(string pipe, bool cpu, Func<bool, ISpeech> load, ILog log, CancellationToken ct)
+    /// <param name="decode">Turns a compressed song preview into 16 kHz mono sound (null: previews aren't decoded here).</param>
+    public static async Task<int> RunAsync(string pipe, bool cpu, Func<bool, ISpeech> load, ILog log, CancellationToken ct,
+        Func<byte[], float[]>? decode = null)
     {
         if (!PipeName.IsMatch(pipe)) return 1;
         await using var stream = new NamedPipeClientStream(".", pipe, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -41,6 +43,21 @@ public static class SpeechHelperHost
             (byte Type, byte[] Payload) frame;
             try { frame = await SpeechWire.ReadAsync(stream, ct).ConfigureAwait(false); }
             catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException) { return 0; }
+            if (frame.Type == SpeechWire.Decode)
+            {
+                // A downloaded file is decoded here, never in the admin app. Unreadable: an empty answer.
+                float[] sound;
+                try { sound = decode?.Invoke(frame.Payload) ?? []; }
+                catch (Exception ex)
+                {
+                    log.Info("Speech helper: a song preview couldn't be read (" + ex.GetType().Name + ").");
+                    sound = [];
+                }
+                var max = SpeechWire.MaxAudioBytes / sizeof(float);
+                if (sound.Length > max) sound = sound[..max];
+                await SpeechWire.WriteAudioAsync(stream, sound, ct).ConfigureAwait(false);
+                continue;
+            }
             if (frame.Type != SpeechWire.Audio) return 0;
             string text;
             try { text = await speech.TranscribeAsync(SpeechWire.ToSamples(frame.Payload), ct).ConfigureAwait(false); }

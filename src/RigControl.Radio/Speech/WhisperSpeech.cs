@@ -99,10 +99,17 @@ public sealed class WhisperSpeech : ISpeech
 
     private static WhisperProcessor Build(WhisperFactory factory, int? threads = null)
     {
-        var b = factory.CreateBuilder().WithLanguageDetection().WithNoContext().WithSingleSegment();
+        // Over music Whisper likes to write labels ("[Music]", "(singing)") instead of the sung words: tokens with
+        // brackets are never picked, so it has to write the words it hears. The prompt says it's song lyrics.
+        var b = factory.CreateBuilder().WithLanguageDetection().WithNoContext().WithSingleSegment()
+            .WithSuppressRegex(@".*[\[\]\(\)].*").WithPrompt("Song lyrics:");
         if (threads is { } t) b = b.WithThreads(t);
         return b.Build();
     }
+
+    /// <summary>Any label that still slips through ("[Music]", "(singing)", "*humming*", music notes) is dropped.</summary>
+    private static readonly System.Text.RegularExpressions.Regex Labels = new(@"\[[^\]]*\]|\([^\)]*\)|\*[^*]*\*|[♪♫♬]",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     public async Task<string> TranscribeAsync(float[] audio16k, CancellationToken ct)
     {
@@ -112,7 +119,7 @@ public sealed class WhisperSpeech : ISpeech
             var text = new StringBuilder();
             await foreach (var segment in _processor.ProcessAsync(audio16k, ct).ConfigureAwait(false))
                 text.Append(segment.Text).Append(' ');
-            return text.ToString().Trim();
+            return Labels.Replace(text.ToString(), " ").Trim();
         }
         finally
         {

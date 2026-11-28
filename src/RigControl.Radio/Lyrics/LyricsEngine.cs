@@ -1,5 +1,7 @@
 using RigControl.Core.Logging;
 using RigControl.Radio.Catalogue;
+using RigControl.Radio.Fingerprint;
+using RigControl.Radio.Previews;
 using RigControl.Radio.Speech;
 
 namespace RigControl.Radio.Lyrics;
@@ -21,6 +23,9 @@ public interface ILyricsEngine : IDisposable
 
     /// <summary>Transcribes <paramref name="audio16k"/> and looks the words up. Null: no song recognised.</summary>
     Task<LyricsHit?> HearAsync(float[] audio16k, CancellationToken ct);
+
+    /// <summary>A catalogue song recognised from its sound (its preview), and where in the preview frame the sound ends.</summary>
+    (CatalogueSong Song, double PositionSeconds)? MatchSound(IReadOnlyList<Landmark> query, double heardSeconds);
 }
 
 /// <summary>The real engine: the station catalogue, lyrics from lrclib.net, and Whisper.</summary>
@@ -32,6 +37,9 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
     private readonly LyricsIndex _index = new();
     private readonly Dictionary<string, (CatalogueSong Song, double? Duration)> _byKey = new(StringComparer.Ordinal);
     private ISpeech? _speech;
+    private PreviewLibrary? _previews;
+    private int _lyricsSongs;
+    private string? _previewProgress;
     private string _state = "off";
     private string? _detail;
     private string? _lastHeard;
@@ -108,7 +116,17 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
                 _speech?.Dispose();
                 _speech = speech;
             }
-            Set("ready", $"Recognises {have} songs from the stations by their lyrics, on the {(speech.Device == "gpu" ? "graphics card" : "processor")}.");
+            // What every song sounds like (also songs without words): learned in the background from free previews.
+            // Its own client that never follows redirects by itself (PreviewLibrary checks each one first).
+            var previews = new PreviewLibrary(new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(2) },
+                radioFolder, _catalogue, speech.DecodeAsync, log);
+            lock (_gate)
+            {
+                _previews = previews;
+                _lyricsSongs = have;
+            }
+            Set("ready", ReadyText());
+            _ = Task.Run(() => LearnPreviewsAsync(previews, ct), CancellationToken.None);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -119,6 +137,43 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
             log.Warn("In-game radio: lyrics recognition couldn't start: " + ex.Message);
             Set("problem", "Lyrics recognition couldn't start: " + ex.Message);
         }
+    }
+
+    private string ReadyText()
+    {
+        lock (_gate)
+        {
+            var sound = _previews?.Count ?? 0;
+            var text = $"Recognises {sound} of {_catalogue.Count} songs by their sound and {_lyricsSongs} by their lyrics.";
+            return _previewProgress is { } p ? text + " " + p : text;
+        }
+    }
+
+    private async Task LearnPreviewsAsync(PreviewLibrary previews, CancellationToken ct)
+    {
+        try
+        {
+            var have = await previews.FetchAsync(_catalogue, new Progress<(int Done, int Total)>(p =>
+            {
+                lock (_gate) _previewProgress = $"Learning what the songs sound like ({p.Done} of {p.Total})...";
+                if (State == "ready") Set("ready", ReadyText());
+            }), ct).ConfigureAwait(false);
+            log.Info($"In-game radio: knows the sound of {have} of {_catalogue.Count} songs.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+        catch (Exception ex)
+        {
+            log.Info("In-game radio: learning the songs' sound stopped for now: " + ex.Message);
+        }
+        lock (_gate) _previewProgress = null;
+        if (State == "ready") Set("ready", ReadyText());
+    }
+
+    public (CatalogueSong Song, double PositionSeconds)? MatchSound(IReadOnlyList<Landmark> query, double heardSeconds)
+    {
+        PreviewLibrary? p;
+        lock (_gate) p = _previews;
+        return p?.Match(query, heardSeconds);
     }
 
     public async Task<LyricsHit?> HearAsync(float[] audio16k, CancellationToken ct)

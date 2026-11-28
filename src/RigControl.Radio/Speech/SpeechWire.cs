@@ -13,9 +13,11 @@ public static class SpeechWire
     public const byte Text = 2;  // helper -> app: the words heard (UTF-8)
     public const byte Ready = 3; // helper -> app: "gpu" or "cpu"
     public const byte Error = 4; // helper -> app: what went wrong
+    public const byte Decode = 5; // app -> helper: a compressed song preview (MP3/AAC); answered with Audio (empty: unreadable)
 
     public const int MaxAudioBytes = 30 * 16000 * sizeof(float);
     public const int MaxTextBytes = 8 * 1024;
+    public const int MaxCompressedBytes = 4 * 1024 * 1024;
 
     public static Task WriteAudioAsync(Stream s, float[] samples, CancellationToken ct)
     {
@@ -23,6 +25,8 @@ public static class SpeechWire
         Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
         return WriteAsync(s, Audio, bytes, ct);
     }
+
+    public static Task WriteDecodeAsync(Stream s, byte[] compressed, CancellationToken ct) => WriteAsync(s, Decode, compressed, ct);
 
     public static Task WriteTextAsync(Stream s, byte type, string text, CancellationToken ct)
     {
@@ -49,7 +53,7 @@ public static class SpeechWire
         await s.ReadExactlyAsync(head, ct).ConfigureAwait(false);
         var type = head[0];
         var length = BinaryPrimitives.ReadInt32LittleEndian(head.AsSpan(1));
-        if (type is < Audio or > Error || length < 0 || length > Cap(type)) throw new InvalidDataException("Not a speech helper frame.");
+        if (type is < Audio or > Decode || length < 0 || length > Cap(type)) throw new InvalidDataException("Not a speech helper frame.");
         var payload = new byte[length];
         await s.ReadExactlyAsync(payload, ct).ConfigureAwait(false);
         return (type, payload);
@@ -65,5 +69,5 @@ public static class SpeechWire
 
     public static string ToText(byte[] payload) => new UTF8Encoding(false, false).GetString(payload);
 
-    private static int Cap(byte type) => type == Audio ? MaxAudioBytes : MaxTextBytes;
+    private static int Cap(byte type) => type switch { Audio => MaxAudioBytes, Decode => MaxCompressedBytes, _ => MaxTextBytes };
 }
