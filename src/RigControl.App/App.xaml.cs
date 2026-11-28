@@ -52,6 +52,32 @@ public partial class App : System.Windows.Application
 
     public MainWindow? Window => _window;
 
+    /// <summary>
+    /// "RigControl.exe --speech-helper &lt;pipe&gt; gpu|cpu": runs the speech helper, then exits. It refuses to run with
+    /// administrator rights (the whole point is that the speech engine never does).
+    /// </summary>
+    private void RunSpeechHelper(string[] args)
+    {
+        var log = _log.For("speech");
+        var i = Array.FindIndex(args, a => string.Equals(a, RigControl.Radio.Speech.SpeechHelperHost.Switch, StringComparison.OrdinalIgnoreCase));
+        if (Environment.IsPrivilegedProcess || i < 0 || i + 2 >= args.Length)
+        {
+            log.Warn("Speech helper: not started (" + (Environment.IsPrivilegedProcess ? "it has administrator rights" : "missing arguments") + ").");
+            Shutdown(1);
+            return;
+        }
+        var pipe = args[i + 1];
+        var cpu = string.Equals(args[i + 2], "cpu", StringComparison.OrdinalIgnoreCase);
+        var radio = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RigControl", "radio");
+        Task.Run(() => RigControl.Radio.Speech.SpeechHelperHost.RunAsync(pipe, cpu, useCpu =>
+            {
+                var model = new RigControl.Radio.Speech.SpeechModel(new System.Net.Http.HttpClient(), radio, RigControl.Radio.Speech.SpeechModelSpec.SmallQ5);
+                var folders = NativeFolderGuard.CurrentExtractDirs().Concat(new[] { AppContext.BaseDirectory });
+                return RigControl.Radio.Speech.WhisperSpeech.Load(model.LoadVerified(), folders, log, forceCpu: useCpu);
+            }, log, CancellationToken.None))
+            .ContinueWith(t => Dispatcher.BeginInvoke(() => Shutdown(t.IsCompletedSuccessfully ? t.Result : 4)), TaskScheduler.Default);
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -77,10 +103,20 @@ public partial class App : System.Windows.Application
 
         // Setup, "--update", "--uninstall", or RigControl itself? (Install\InstallEntry.cs; the release is one exe.)
         // Never for the iPhone installer: whatever else its command line carries, it must not install or update RigControl.
-        if (!IPhone.IphoneHelper.Wants(e.Args) && Install.InstallEntry.Handle(e.Args, _log.For("install")) is { } installExit)
+        if (!IPhone.IphoneHelper.Wants(e.Args) && !RigControl.Radio.Speech.SpeechHelperHost.Wants(e.Args)
+            && Install.InstallEntry.Handle(e.Args, _log.For("install")) is { } installExit)
         {
             Interlocked.Exchange(ref _exitStarted, 1);
             Shutdown(installExit);
+            return;
+        }
+
+        // "--speech-helper": the in-game radio's speech recognition, a process without a window and without
+        // administrator rights. It only turns the sound RigControl sends it into words (Radio\Speech\SpeechHelperHost.cs).
+        if (RigControl.Radio.Speech.SpeechHelperHost.Wants(e.Args))
+        {
+            Interlocked.Exchange(ref _exitStarted, 1);
+            RunSpeechHelper(e.Args);
             return;
         }
 
@@ -225,6 +261,13 @@ public partial class App : System.Windows.Application
         // files into (NativeFolderGuard), and from RigControl's own folder only when other programs can't change it.
         RigControl.Radio.RadioModule.NativeFolders = () => NativeFolderGuard.CurrentExtractDirs()
             .Concat(programFolderOpen.Value ? [] : new[] { AppContext.BaseDirectory });
+        // Speech recognition runs in a helper started without administrator rights (through Explorer when elevated).
+        RigControl.Radio.RadioModule.StartSpeechHelper = (pipe, cpu) =>
+        {
+            if (Environment.ProcessPath is not { } exe) return false;
+            RigControl.Presence.Launcher.StartProgram(exe, $"{RigControl.Radio.Speech.SpeechHelperHost.Switch} {pipe} {(cpu ? "cpu" : "gpu")}");
+            return true;
+        };
         var modules = new List<IAppModule>
         {
             new SensorsModule(),

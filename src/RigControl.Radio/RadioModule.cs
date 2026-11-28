@@ -356,8 +356,14 @@ public sealed class RadioModule : IAppModule
     {
         var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
         var folder = Path.Combine(ctx.Environment.DataDirectory, "radio");
-        return new LyricsEngine(http, folder, NativeFolders, ctx.Log);
+        return new LyricsEngine(http, folder, StartSpeechHelper, ctx.Log);
     }
+
+    /// <summary>
+    /// Starts the speech helper process WITHOUT administrator rights (pipe name, use the processor). The app sets it;
+    /// unset, lyrics recognition says the speech engine couldn't start.
+    /// </summary>
+    public static Func<string, bool, bool> StartSpeechHelper { get; set; } = (_, _) => false;
 
     /// <summary>Where RigControl's own native files are: its folder and the folders .NET unpacked them to.</summary>
     public static Func<IEnumerable<string>> NativeFolders { get; set; } = () =>

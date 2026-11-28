@@ -24,7 +24,8 @@ public interface ILyricsEngine : IDisposable
 }
 
 /// <summary>The real engine: the station catalogue, lyrics from lrclib.net, and Whisper.</summary>
-public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<IEnumerable<string>> nativeFolders, ILog log) : ILyricsEngine
+/// <param name="startHelper">Starts the speech helper process (pipe name, use the processor); see SpeechHelperClient.</param>
+public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<string, bool, bool> startHelper, ILog log) : ILyricsEngine
 {
     private readonly object _gate = new();
     private readonly IReadOnlyList<CatalogueSong> _catalogue = RadioCatalogue.Load();
@@ -75,24 +76,22 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<IEnum
                 Set("preparing", "Downloading the speech model (190 MB)...");
                 await model.DownloadAsync(new Progress<double>(p => Set("preparing", $"Downloading the speech model ({p:P0} of 190 MB)...")), ct).ConfigureAwait(false);
             }
-            if (WhisperSpeech.Running is { } running)
-            {
-                // Already started in this run (switched off and on again): reuse it, no second start.
-                lock (_gate) _speech = _disposed || ct.IsCancellationRequested ? null : running;
-                Set("ready", $"Recognises {have} songs from the stations by their lyrics, on the {(running.Device == "gpu" ? "graphics card" : "processor")}.");
-                return;
-            }
-            byte[] bytes;
-            try { bytes = model.LoadVerified(); }
+            try { model.LoadVerified(); }
             catch (InvalidDataException)
             {
                 Set("preparing", "Downloading the speech model again (190 MB)...");
                 await model.DownloadAsync(new Progress<double>(p => Set("preparing", $"Downloading the speech model ({p:P0} of 190 MB)...")), ct, force: true).ConfigureAwait(false);
-                bytes = model.LoadVerified();
             }
+            // The speech engine runs in its own helper process without administrator rights (it loads and checks the
+            // model itself): a crash there can't take RigControl down, and its native code never runs as admin.
             Set("preparing", "Starting speech recognition...");
-            var speech = await Task.Run(() => WhisperSpeech.Load(bytes, nativeFolders(), log), ct).ConfigureAwait(false);
-            bytes = [];
+            var speech = new SpeechHelperClient(startHelper, log);
+            try { await speech.StartAsync(ct).ConfigureAwait(false); }
+            catch
+            {
+                speech.Dispose();
+                throw;
+            }
             lock (_gate)
             {
                 if (_disposed || ct.IsCancellationRequested)

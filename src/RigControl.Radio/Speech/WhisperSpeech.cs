@@ -50,14 +50,14 @@ public sealed class WhisperSpeech : ISpeech
     /// folders RigControl's own native files are in (admin-only when installed). The graphics card (Vulkan) is used only
     /// when Windows has a Vulkan driver; otherwise the processor build. Throws when no engine could be loaded.
     /// </summary>
-    public static WhisperSpeech Load(byte[] model, IEnumerable<string> nativeFolders, ILog log)
+    public static WhisperSpeech Load(byte[] model, IEnumerable<string> nativeFolders, ILog log, bool forceCpu = false)
     {
         lock (LoadGate)
         {
             if (_shared is not null) return _shared;
             if (_chosenLibrary is null)
             {
-                var choice = ChooseLibrary(nativeFolders, HasVulkan()) ?? ChooseLibrary(nativeFolders, vulkan: false)
+                var choice = ChooseLibrary(nativeFolders, !forceCpu && HasVulkan()) ?? ChooseLibrary(nativeFolders, vulkan: false)
                     ?? throw new InvalidOperationException("This copy of RigControl doesn't include the speech engine.");
                 // Whisper.net looks under (folder of LibraryPath)/runtimes/... first; only the chosen build is allowed.
                 RuntimeOptions.LibraryPath = choice.LibraryPath;
