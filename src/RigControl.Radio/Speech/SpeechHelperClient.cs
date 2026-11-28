@@ -23,11 +23,31 @@ public sealed class SpeechHelperClient : ISpeech
     private bool _useCpu;
     private bool _disposed;
 
+    private readonly string? _cpuMarker;
+
     /// <param name="start">Starts the helper with (pipe name, use the processor); false when it couldn't be started.</param>
-    public SpeechHelperClient(Func<string, bool, bool> start, ILog log)
+    /// <param name="cpuMarker">A file noting that the graphics card crashed the speech engine on this PC: while it
+    /// exists, the helper always runs on the processor (also after a restart). Null: not remembered.</param>
+    public SpeechHelperClient(Func<string, bool, bool> start, ILog log, string? cpuMarker = null)
     {
         _start = start;
         _log = log;
+        _cpuMarker = cpuMarker;
+        _useCpu = cpuMarker is not null && File.Exists(cpuMarker);
+    }
+
+    /// <summary>The graphics card failed: use the processor from now on, and remember it for next time.</summary>
+    private void UseProcessorFromNowOn()
+    {
+        if (_useCpu) return;
+        _useCpu = true;
+        if (_cpuMarker is null) return;
+        try
+        {
+            Store.SafeFolder.WriteFile(_cpuMarker, "The graphics card crashed speech recognition on this PC; it runs on the processor. Delete this file to try the graphics card again."u8.ToArray());
+            _log.Info("In-game radio: speech recognition will use the processor from now on (the graphics card crashed it).");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* not remembered, only this run */ }
     }
 
     /// <summary>How long a new helper may take to connect and load its engine.</summary>
@@ -102,7 +122,7 @@ public sealed class SpeechHelperClient : ISpeech
         catch (Exception ex) when (ex is not ObjectDisposedException)
         {
             await pipe.DisposeAsync().ConfigureAwait(false);
-            _useCpu = true;
+            UseProcessorFromNowOn();
             if (ex is OperationCanceledException && !ct.IsCancellationRequested)
                 throw new IOException("The speech helper didn't start in time.", ex);
             throw;
@@ -115,7 +135,7 @@ public sealed class SpeechHelperClient : ISpeech
         _log.Info("In-game radio: the speech helper stopped (" + why + ").");
         try { _pipe?.Dispose(); } catch (Exception) { /* gone */ }
         _pipe = null;
-        _useCpu = true;
+        UseProcessorFromNowOn();
     }
 
     /// <summary>Only this Windows user may open the pipe, and never over the network.</summary>

@@ -89,4 +89,30 @@ public class SpeechHelperClientTests
         using var client = new SpeechHelperClient((_, _) => true, NullLog.Instance) { ConnectTimeout = TimeSpan.FromSeconds(1) };
         await Assert.ThrowsAnyAsync<Exception>(() => client.TranscribeAsync(new float[1600], default));
     }
+
+    [Fact]
+    public async Task After_a_graphics_card_crash_later_starts_use_the_processor()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "rigcontrol-gpu-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var marker = Path.Combine(dir, "radio", "speech-on-processor");
+        try
+        {
+            using (var client = new SpeechHelperClient(Starter(cpu => new FakeSpeech(cpu ? "cpu" : "gpu", _ =>
+                       cpu ? "fine" : throw new System.Runtime.InteropServices.SEHException("boom"))), NullLog.Instance, marker))
+            {
+                await Assert.ThrowsAnyAsync<Exception>(() => client.TranscribeAsync(new float[1600], default));
+                Assert.Equal("fine", await client.TranscribeAsync(new float[1600], default));
+            }
+            Assert.True(File.Exists(marker));
+            _starts.Clear();
+            using (var again = new SpeechHelperClient(Starter(cpu => new FakeSpeech(cpu ? "cpu" : "gpu", _ => "fine")), NullLog.Instance, marker))
+            {
+                Assert.Equal("fine", await again.TranscribeAsync(new float[1600], default));
+                Assert.Equal("cpu", again.Device);
+            }
+            Assert.Equal(new[] { true }, _starts.Select(s => s.Cpu)); // never tried the graphics card again
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
+    }
 }

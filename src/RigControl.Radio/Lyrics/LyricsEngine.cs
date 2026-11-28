@@ -86,7 +86,7 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
             // The speech engine runs in its own helper process without administrator rights (it loads and checks the
             // model itself): a crash there can't take RigControl down, and its native code never runs as admin.
             Set("preparing", "Starting speech recognition...");
-            var speech = new SpeechHelperClient(startHelper, log);
+            var speech = new SpeechHelperClient(startHelper, log, Path.Combine(radioFolder, "speech-on-processor"));
             try { await speech.StartAsync(ct).ConfigureAwait(false); }
             catch
             {
