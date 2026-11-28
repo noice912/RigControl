@@ -425,6 +425,22 @@ public class MusicCardSourceTests
     }
 
     [Fact]
+    public async Task The_same_song_from_the_PC_and_from_Spotify_online_is_one_song_not_a_new_one_each_time()
+    {
+        var log = new ListLog();
+        var web = new SpotifyNow(new MusicNow("Spotify", "Same song", "Band", "Album", true, 10, 200), "https://i.scdn.co/image/abc");
+        var e = new PresenceEngine(_discord, _inputs, log, new HttpClient(new NoNetwork()), () => _now, spotify: () => web);
+        for (var i = 0; i < 6; i++)
+        {
+            // The PC's Spotify app comes and goes in Windows' media list; Spotify online keeps reporting the song.
+            _inputs.Music = i % 2 == 0 ? new MusicNow("Spotify", "Same song", "Band", "", true, 10 + i, 200) : null;
+            await e.TickAsync(_s, Array.Empty<Game>(), default);
+            _now = _now.AddSeconds(3);
+        }
+        Assert.Single(log.Lines, l => l.Contains("Discord status: music"));
+    }
+
+    [Fact]
     public async Task Spotifys_song_uses_its_own_album_art()
     {
         var web = new SpotifyNow(new MusicNow("Spotify", "Web song", "Band", "Album", true, 10, 200), "https://i.scdn.co/image/abc");

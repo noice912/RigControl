@@ -28,12 +28,13 @@ public sealed class SpeechHelperClient : ISpeech
     /// <param name="start">Starts the helper with (pipe name, use the processor); false when it couldn't be started.</param>
     /// <param name="cpuMarker">A file noting that the graphics card crashed the speech engine on this PC: while it
     /// exists, the helper always runs on the processor (also after a restart). Null: not remembered.</param>
-    public SpeechHelperClient(Func<string, bool, bool> start, ILog log, string? cpuMarker = null)
+    /// <param name="preferGpu">Try the graphics card first (false: always the processor).</param>
+    public SpeechHelperClient(Func<string, bool, bool> start, ILog log, string? cpuMarker = null, bool preferGpu = true)
     {
         _start = start;
         _log = log;
         _cpuMarker = cpuMarker;
-        _useCpu = cpuMarker is not null && File.Exists(cpuMarker);
+        _useCpu = !preferGpu || (cpuMarker is not null && File.Exists(cpuMarker));
     }
 
     /// <summary>The graphics card failed: use the processor from now on, and remember it for next time.</summary>

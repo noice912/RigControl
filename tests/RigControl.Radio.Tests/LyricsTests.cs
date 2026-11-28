@@ -48,7 +48,8 @@ public class LyricsIndexTests
 {
     private static LyricsIndex Index()
     {
-        var i = new LyricsIndex();
+        // A realistic library: 200 other songs around the four these tests are about.
+        var i = FakeCorpus.Build(200, 11);
         i.Add("a", [new(10, "the copper kettle hums along the quiet harbour"), new(14, "seven paper lanterns drifting past the mill"),
                     new(18, "we painted every fencepost blue before the summer rain came")], 230);
         i.Add("b", [new(5, "this is the way that we roll down by the river"), new(9, "and the night keeps calling my name")], 200);

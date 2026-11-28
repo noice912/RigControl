@@ -80,12 +80,12 @@ public sealed class RadioModule : IAppModule
     private int _hearFailures;
     private string? _lyricsProblem;            // listening keeps failing: shown, and not tried again until restarted
     private long _lastHearAt = long.MinValue / 2;
-    /// <summary>Listen for lyrics every 2 s (the graphics card needs about 0.2 s for 8 s of sound).</summary>
-    private const double HearEverySeconds = 2, HearSeconds = 8;
+    /// <summary>Listen for lyrics every 4 s, 8 s at a time (on the processor that is light work with the small model).</summary>
+    private const double HearEverySeconds = 4, HearSeconds = 8;
     /// <summary>The confirming lyrics hit must come from sound at least this much newer than the first one's.</summary>
     private const double ConfirmGapSeconds = 6;
     /// <summary>An answer for sound older than this is dropped (the station may have changed meanwhile).</summary>
-    private const double MaxHitAgeSeconds = 2;
+    private const double MaxHitAgeSeconds = 12;
     /// <summary>The confirming hit: at least one listen later (no shared sound), and within this long.</summary>
     private const double ConfirmWithinSeconds = 40, PlaceSlackSeconds = 5;
     /// <summary>A song heard once by its lyrics, waiting for a second, independent hit. Never saved until then.</summary>

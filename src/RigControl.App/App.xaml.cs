@@ -68,10 +68,15 @@ public partial class App : System.Windows.Application
         }
         var pipe = args[i + 1];
         var cpu = string.Equals(args[i + 2], "cpu", StringComparison.OrdinalIgnoreCase);
+        // Background work: never compete with games or anything else for the processor.
+        try { System.Diagnostics.Process.GetCurrentProcess().PriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal; }
+        catch (Exception) { /* keep the normal priority */ }
         var radio = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RigControl", "radio");
         Task.Run(() => RigControl.Radio.Speech.SpeechHelperHost.RunAsync(pipe, cpu, useCpu =>
             {
-                var model = new RigControl.Radio.Speech.SpeechModel(new System.Net.Http.HttpClient(), radio, RigControl.Radio.Speech.SpeechModelSpec.SmallQ5);
+                // The processor gets the light model (60 MB); the graphics card the larger one (190 MB).
+                var spec = useCpu ? RigControl.Radio.Speech.SpeechModelSpec.BaseQ5 : RigControl.Radio.Speech.SpeechModelSpec.SmallQ5;
+                var model = new RigControl.Radio.Speech.SpeechModel(new System.Net.Http.HttpClient(), radio, spec);
                 // Same rule as the main app: RigControl's own folder only when other programs can't change it.
                 var exePath = Environment.ProcessPath ?? "";
                 var open = exePath.Length == 0 || RigControl.Bundled.FolderGuard.OthersCanChange(exePath);

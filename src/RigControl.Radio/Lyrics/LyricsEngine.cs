@@ -71,22 +71,26 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
                 return;
             }
 
-            var model = new SpeechModel(http, radioFolder, SpeechModelSpec.SmallQ5);
+            // The processor model (60 MB): the helper runs on the processor (see below).
+            var model = new SpeechModel(http, radioFolder, SpeechModelSpec.BaseQ5);
+            var mb = model.Spec.Size / (1024 * 1024);
             if (!model.IsDownloaded)
             {
-                Set("preparing", "Downloading the speech model (190 MB)...");
-                await model.DownloadAsync(new Progress<double>(p => Set("preparing", $"Downloading the speech model ({p:P0} of 190 MB)...")), ct).ConfigureAwait(false);
+                Set("preparing", $"Downloading the speech model ({mb} MB)...");
+                await model.DownloadAsync(new Progress<double>(p => Set("preparing", $"Downloading the speech model ({p:P0} of {mb} MB)...")), ct).ConfigureAwait(false);
             }
             try { model.LoadVerified(); }
             catch (InvalidDataException)
             {
-                Set("preparing", "Downloading the speech model again (190 MB)...");
-                await model.DownloadAsync(new Progress<double>(p => Set("preparing", $"Downloading the speech model ({p:P0} of 190 MB)...")), ct, force: true).ConfigureAwait(false);
+                Set("preparing", $"Downloading the speech model again ({mb} MB)...");
+                await model.DownloadAsync(new Progress<double>(p => Set("preparing", $"Downloading the speech model ({p:P0} of {mb} MB)...")), ct, force: true).ConfigureAwait(false);
             }
             // The speech engine runs in its own helper process without administrator rights (it loads and checks the
             // model itself): a crash there can't take RigControl down, and its native code never runs as admin.
             Set("preparing", "Starting speech recognition...");
-            var speech = new SpeechHelperClient(startHelper, log, Path.Combine(radioFolder, "speech-on-processor"));
+            // The processor: the graphics-card (Vulkan) engine crashed within seconds on the owner's PC; the processor
+            // handles 8 s of sound in about a second, which is plenty for listening every 2 s.
+            var speech = new SpeechHelperClient(startHelper, log, Path.Combine(radioFolder, "speech-on-processor"), preferGpu: false);
             try { await speech.StartAsync(ct).ConfigureAwait(false); }
             catch
             {
@@ -132,7 +136,7 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<strin
             {
                 _lastClosestLog = DateTime.UtcNow;
                 var title = _byKey.TryGetValue(c.SongKey, out var cs) ? cs.Song.Title : "?";
-                log.Info($"In-game radio: closest song \"{title}\": {c.Hits} of {c.HeardRuns} word runs, score {c.Score:F1}, lead {c.Lead:F1} (not enough).");
+                log.Info($"In-game radio: closest song \"{title}\": {c.Hits} of {c.HeardRuns} words lined up, score {c.Score:F1}, lead {c.Lead:F1} (not enough).");
             }
             return null;
         }

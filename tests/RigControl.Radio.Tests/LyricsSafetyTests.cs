@@ -71,6 +71,35 @@ public class LyricsSafetyTests
     }
 
     [Fact]
+    public void Singing_with_half_the_words_misheard_still_finds_the_song()
+    {
+        var index = FakeCorpus.Build(800, 5);
+        index.Add("target", [new(20, "lanterns drift above the harbour while the copper kettle hums"),
+                             new(24, "seven paper boats are sailing past the old stone mill tonight"),
+                             new(28, "and every painted fence along the river turns to gold")], 210);
+        // Half the words wrong, one dropped, one extra: what sung lyrics under game sound turn into.
+        var heard = "lantern drift of the harbor while a cop or kettle hums seven paper bolts in sailing passed the old stone meal tonight";
+        var m = index.Match(heard);
+        Assert.NotNull(m);
+        Assert.Equal("target", m!.SongKey);
+        Assert.InRange(m.PositionSeconds!.Value, 24, 30);
+    }
+
+    [Fact]
+    public void Talk_with_a_few_rare_words_in_it_still_finds_nothing()
+    {
+        var index = FakeCorpus.Build(800, 6);
+        index.Add("target", [new(20, "lanterns drift above the harbour while the copper kettle hums")], 210);
+        var rng = new Random(7);
+        for (var i = 0; i < 200; i++)
+        {
+            var words = Enumerable.Range(0, 25).Select(_ => FakeCorpus.Common[rng.Next(FakeCorpus.Common.Length)]).ToList();
+            words.Insert(rng.Next(words.Count), "harbour"); // one rare word from the song, by chance
+            Assert.Null(index.Match(string.Join(' ', words)));
+        }
+    }
+
+    [Fact]
     public void The_closest_song_is_reported_even_when_it_isnt_enough()
     {
         var index = FakeCorpus.Build(100, 4);

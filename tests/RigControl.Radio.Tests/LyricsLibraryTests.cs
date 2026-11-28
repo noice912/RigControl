@@ -54,7 +54,7 @@ public class LyricsLibraryTests : IDisposable
         var got = await lib.FetchAsync(Songs, null, default);
         Assert.Equal(2, got);
         Assert.True(File.Exists(Path.Combine(_dir, "radio", "lyrics.json")));
-        var index = new LyricsIndex();
+        var index = FakeCorpus.Build(200, 12); // a realistic library around the two songs
         Assert.Equal(2, Make().FillIndex(index, Songs));
         Assert.Equal(Songs[0].Key, index.Match("the copper kettle hums along the quiet harbour seven paper lanterns drifting past the mill")!.SongKey);
 

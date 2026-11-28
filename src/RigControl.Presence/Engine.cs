@@ -517,7 +517,9 @@ public sealed class PresenceEngine
 
         var lyrics = s.ShowLyrics ? await _extras.LyricsAsync(m!.Artist, m.Title, m.Album, m.DurationSec, ct).ConfigureAwait(false) : null;
         line = s.ShowLyrics ? MusicExtras.LineAt(lyrics, m!.PositionSec) : null;
-        var id = $"music|{source}|{m!.Player}|{m.Artist}|{m.Title}|{m.Album}";
+        // The song itself, not where it was read from: the PC's player and Spotify online often report the same song in
+        // turn, and that must not count as a new song (a new card, a log line) every few seconds.
+        var id = $"music|{m!.Artist.ToLowerInvariant()}|{m.Title.ToLowerInvariant()}";
         var trackChanged = _music.Id != id;
         var lyricChanged = line is not null && line != _lastLyric;
         if (trackChanged || lyricChanged || (_now() - _music.SentUtc).TotalSeconds >= 15)

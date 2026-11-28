@@ -11,7 +11,7 @@ public sealed record SpeechModelSpec(string FileName, Uri Url, long Size, string
         new Uri("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"), 190085487,
         "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb");
 
-    /// <summary>Whisper "base", all languages, 5-bit (60 MB): for PCs without a usable graphics card.</summary>
+    /// <summary>Whisper "base", all languages, 5-bit (60 MB): what runs on the processor (light enough for the background).</summary>
     public static readonly SpeechModelSpec BaseQ5 = new("ggml-base-q5_1.bin",
         new Uri("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin"), 59707625,
         "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898");
