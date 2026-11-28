@@ -58,6 +58,18 @@ public class PreviewPickTests
     }
 
     [Fact]
+    public void A_radio_edit_counts_as_the_song_but_a_named_edit_does_not()
+    {
+        var song = new CatalogueSong("S", "Glow", "Band");
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Band", "Glow (Radio Edit)", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Band", "Glow - Edit", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Glow (Radio Edit)", "Band"), [("Band", "Glow", Apple)]));
+        // An edit by another producer is a different mix.
+        Assert.Null(PreviewLibrary.Pick(new CatalogueSong("S", "Glow (Night Owl Edit)", "Band"), [("Band", "Glow", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(song, [("Band", "Glow (Extended Edit)", Apple)]));
+    }
+
+    [Fact]
     public void A_remix_hidden_in_a_credit_never_takes_the_original()
     {
         var song = new CatalogueSong("S", "Glow (feat. Guest Remix)", "Band");
@@ -246,6 +258,15 @@ public class PreviewLibraryTests : IDisposable
         };
         Assert.Equal(1, await Library().FetchAsync([Song], null, default));
         Assert.Equal(2, _server.Asked.Count(u => u.Host == "api.deezer.com"));
+    }
+
+    [Fact]
+    public async Task Songs_not_found_under_older_rules_are_looked_up_again_at_once()
+    {
+        File.WriteAllText(Path.Combine(_dir, "previews.json"),
+            "[{\"key\":\"" + Song.Key + "\",\"found\":false,\"checkedAt\":\"" + DateTimeOffset.UtcNow.ToString("o") + "\"}]");
+        AppleHas("https://audio-ssl.itunes.apple.com/glow.m4a");
+        Assert.Equal(1, await Library().FetchAsync([Song], null, default));
     }
 
     [Fact]

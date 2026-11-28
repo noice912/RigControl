@@ -52,7 +52,11 @@ public sealed class PreviewLibrary
     private readonly LearnedSongs _store;
     private readonly Dictionary<string, CatalogueSong> _byName = new(StringComparer.OrdinalIgnoreCase);
 
-    public sealed record State(string Key, bool Found, DateTimeOffset CheckedAt);
+    /// <param name="Rules">Which song-matching rules looked: a song not found under older rules is looked up again at once.</param>
+    public sealed record State(string Key, bool Found, DateTimeOffset CheckedAt, int? Rules = null);
+
+    /// <summary>Raised whenever the matching rules change, so songs not found before are looked up again.</summary>
+    public const int RulesVersion = 2;
 
     /// <param name="decode">Turns a downloaded preview into 16 kHz mono sound (the speech helper); empty: unreadable.</param>
     public PreviewLibrary(HttpClient http, string radioFolder, IReadOnlyList<CatalogueSong> catalogue,
@@ -88,7 +92,7 @@ public sealed class PreviewLibrary
         foreach (var st in LoadStates()) states[st.Key] = st;
         var known = _store.Songs.Select(s => s.Title + "\n" + s.Artist).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var todo = songs.Where(s => !known.Contains(s.Title + "\n" + s.Artist)
-                                    && !(states.TryGetValue(s.Key, out var st) && !st.Found && _now() - st.CheckedAt < RetryMissingAfter))
+                                    && !(states.TryGetValue(s.Key, out var st) && !st.Found && (st.Rules ?? 1) >= RulesVersion && _now() - st.CheckedAt < RetryMissingAfter))
             .DistinctBy(s => (s.Title.ToLowerInvariant(), s.Artist.ToLowerInvariant())).ToList();
         var done = 0;
         var failedInARow = 0;
@@ -115,7 +119,7 @@ public sealed class PreviewLibrary
                 }
                 continue;
             }
-            states[song.Key] = new State(song.Key, found, _now());
+            states[song.Key] = new State(song.Key, found, _now(), RulesVersion);
             dirty = true;
             progress?.Report((++done, todo.Count));
             if (done % 10 == 0) Save(states.Values, dirty);
@@ -242,7 +246,7 @@ public sealed class PreviewLibrary
         return theirNote.All(w => ReleaseNote.Contains(w) || w.All(char.IsAsciiDigit));
     }
 
-    private static readonly string[] ReleaseNote = ["remaster", "remastered", "mono", "stereo", "original", "single", "explicit", "deluxe", "bonus", "track", "album", "from", "the", "film", "movie", "motion", "picture", "soundtrack", "ost", "series", "official", "audio"];
+    private static readonly string[] ReleaseNote = ["edit", "radio", "remaster", "remastered", "mono", "stereo", "original", "single", "explicit", "deluxe", "bonus", "track", "album", "from", "the", "film", "movie", "motion", "picture", "soundtrack", "ost", "series", "official", "audio"];
 
     private static bool IsOtherTake(string word) => OtherTake.Contains(word);
 
@@ -251,19 +255,16 @@ public sealed class PreviewLibrary
     {
         var w = LyricsText.Words(Credit.Replace(title, " ")).Where(x => x != "and").ToList();
         if (w.Count == 0) w = LyricsText.Words(title).ToList(); // a title that is all brackets: "(With You)"
-        // "(Single Version)", "(Album Version)": the release itself, not another take of it.
-        for (var i = w.Count - 2; i >= 0; i--)
-        {
-            if (i + 1 < w.Count && w[i + 1] == "version" && SameTake.Contains(w[i])) w.RemoveRange(i, 2);
-        }
-        return w;
+        // "(Single Version)", "(Album Version)", "(Radio Edit)": the release itself, not another take of it.
+        return DropSameTake(w);
     }
 
     /// <summary>Removes "single version", "album version" and the like (the release itself, not another take).</summary>
     private static List<string> DropSameTake(List<string> w)
     {
         for (var i = w.Count - 2; i >= 0; i--)
-            if (i + 1 < w.Count && w[i + 1] == "version" && SameTake.Contains(w[i])) w.RemoveRange(i, 2);
+            if (i + 1 < w.Count && (w[i + 1] == "version" && SameTake.Contains(w[i]) || w[i] == "radio" && w[i + 1] is "edit" or "version"))
+                w.RemoveRange(i, 2);
         return w;
     }
 
