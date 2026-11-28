@@ -84,6 +84,20 @@ public class SpeechHelperClientTests
     }
 
     [Fact]
+    public async Task Failures_with_good_answers_between_never_give_up()
+    {
+        var n = 0;
+        using var client = new SpeechHelperClient(Starter(_ => new FakeSpeech("cpu", _ =>
+            Interlocked.Increment(ref n) % 2 == 0 ? throw new System.Runtime.InteropServices.SEHException("boom") : "fine")), NullLog.Instance);
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.Equal("fine", await client.TranscribeAsync(new float[1600], default));
+            await Assert.ThrowsAnyAsync<Exception>(() => client.TranscribeAsync(new float[1600], default));
+        }
+        Assert.Equal("fine", await client.TranscribeAsync(new float[1600], default));
+    }
+
+    [Fact]
     public async Task A_helper_that_never_answers_times_out()
     {
         using var client = new SpeechHelperClient((_, _) => true, NullLog.Instance) { ConnectTimeout = TimeSpan.FromSeconds(1) };

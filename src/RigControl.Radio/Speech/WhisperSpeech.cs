@@ -99,10 +99,10 @@ public sealed class WhisperSpeech : ISpeech
 
     private static WhisperProcessor Build(WhisperFactory factory, int? threads = null)
     {
-        // Over music Whisper likes to write labels ("[Music]", "(singing)") instead of the sung words: tokens with
-        // brackets are never picked, so it has to write the words it hears. The prompt says it's song lyrics.
-        var b = factory.CreateBuilder().WithLanguageDetection().WithNoContext().WithSingleSegment()
-            .WithSuppressRegex(@".*[\[\]\(\)].*").WithPrompt("Song lyrics:");
+        // The prompt says it's song lyrics, so it writes sung words more often than labels like "[Music]" (those are
+        // dropped from the text below). Not WithSuppressRegex: it checks every word Whisper knows at every step, which
+        // made one 8 s listen take over a minute instead of ~1.5 s.
+        var b = factory.CreateBuilder().WithLanguageDetection().WithNoContext().WithSingleSegment().WithPrompt("Song lyrics:");
         if (threads is { } t) b = b.WithThreads(t);
         return b.Build();
     }

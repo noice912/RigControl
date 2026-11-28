@@ -14,6 +14,7 @@ namespace RigControl.Radio.Speech;
 /// </summary>
 public sealed class SpeechHelperClient : ISpeech
 {
+    /// <summary>Helper starts in a row without a good answer before giving up for this run.</summary>
     public const int MaxStarts = 3;
     private readonly Func<string, bool, bool> _start;
     private readonly ILog _log;
@@ -79,7 +80,11 @@ public sealed class SpeechHelperClient : ISpeech
             {
                 await SpeechWire.WriteAudioAsync(pipe, audio16k, timeout.Token).ConfigureAwait(false);
                 var (type, payload) = await SpeechWire.ReadAsync(pipe, timeout.Token).ConfigureAwait(false);
-                if (type == SpeechWire.Text) return SpeechWire.ToText(payload);
+                if (type == SpeechWire.Text)
+                {
+                    _starts = Math.Min(_starts, 1); // working again: only failures in a row count towards giving up
+                    return SpeechWire.ToText(payload);
+                }
                 var message = type == SpeechWire.Error ? SpeechWire.ToText(payload) : "the speech helper answered nonsense";
                 Lost(message);
                 throw new IOException("Listening failed: " + message);
@@ -113,7 +118,11 @@ public sealed class SpeechHelperClient : ISpeech
             {
                 await SpeechWire.WriteDecodeAsync(pipe, compressed, timeout.Token).ConfigureAwait(false);
                 var (type, payload) = await SpeechWire.ReadAsync(pipe, timeout.Token).ConfigureAwait(false);
-                if (type == SpeechWire.Audio) return SpeechWire.ToSamples(payload);
+                if (type == SpeechWire.Audio)
+                {
+                    _starts = Math.Min(_starts, 1);
+                    return SpeechWire.ToSamples(payload);
+                }
                 Lost("the speech helper answered nonsense");
                 throw new IOException("Reading a song preview failed.");
             }
