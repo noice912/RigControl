@@ -36,6 +36,13 @@ public sealed class WhisperSpeech : ISpeech
     }
 
     private static readonly object LoadGate = new();
+    private static WhisperSpeech? _shared;   // whisper.cpp's graphics-card engine can only be started once per process
+
+    /// <summary>The speech engine for this run of RigControl: made once and kept (a second one crashes in whisper.cpp).</summary>
+    public static WhisperSpeech? Running
+    {
+        get { lock (LoadGate) return _shared; }
+    }
     private static string? _chosenLibrary; // Whisper.net loads its native library once per process: choose once
 
     /// <summary>
@@ -47,6 +54,7 @@ public sealed class WhisperSpeech : ISpeech
     {
         lock (LoadGate)
         {
+            if (_shared is not null) return _shared;
             if (_chosenLibrary is null)
             {
                 var choice = ChooseLibrary(nativeFolders, HasVulkan()) ?? ChooseLibrary(nativeFolders, vulkan: false)
@@ -59,7 +67,7 @@ public sealed class WhisperSpeech : ISpeech
             }
             var factory = WhisperFactory.FromBuffer(model, new WhisperFactoryOptions { UseGpu = _onGpu });
             log.Info("In-game radio: speech recognition runs on the " + (_onGpu ? "graphics card." : "processor."));
-            return new WhisperSpeech(factory, _onGpu ? Build(factory) : Build(factory, threads: Math.Clamp(Environment.ProcessorCount / 4, 2, 4)),
+            return _shared = new WhisperSpeech(factory, _onGpu ? Build(factory) : Build(factory, threads: Math.Clamp(Environment.ProcessorCount / 4, 2, 4)),
                 _onGpu ? "gpu" : "cpu");
         }
     }
@@ -112,7 +120,12 @@ public sealed class WhisperSpeech : ISpeech
         }
     }
 
+    /// <summary>Does nothing: the engine lives as long as RigControl (it can't be started a second time).</summary>
     public void Dispose()
+    {
+    }
+
+    private void Close()
     {
         // Whisper.net refuses a plain Dispose while a transcription is still being wound down.
         try { _processor.DisposeAsync().AsTask().GetAwaiter().GetResult(); }

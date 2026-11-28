@@ -19,10 +19,12 @@ namespace RigControl.Radio;
 /// </summary>
 public sealed class RadioModule : IAppModule
 {
-    public const int TickMs = 3000;
+    /// <summary>The detector checks the newest sound every second (fingerprints take a few milliseconds).</summary>
+    public const int TickMs = 1000;
     public const float SilenceRms = 0.003f;
     private const int BufferSeconds = 15, MatchSeconds = 10, NameSeconds = 15, LearnEverySeconds = 15;
-    private const int SilentTicksToClear = 3;
+    /// <summary>A song is taken off after this long without sound (a pause menu, a loading screen, the radio off).</summary>
+    private const double QuietSecondsToClear = 9;
     private const double AgreeSeconds = 3, LostAfterSeconds = 60, SaveEverySeconds = 60, UnknownLengthCap = 600;
 
     private readonly IRadioInput _input;
@@ -48,7 +50,7 @@ public sealed class RadioModule : IAppModule
     private string? _problem;
     private long _samples;                 // 16 kHz samples heard since start (the detector's clock)
     private bool _sound;
-    private int _silentTicks;
+    private long? _quietSince;             // _samples when the sound stopped (null while there is sound)
     private (int SongId, double Position, long At)? _pending;
     private (int SongId, double Position, long At)? _current;
     private long _lastMatchAt, _lastLearnAt, _lastSaveAt;
@@ -75,12 +77,17 @@ public sealed class RadioModule : IAppModule
     private ILyricsEngine? _lyrics;
     private CancellationTokenSource? _lyricsCts;
     private Task _hearing = Task.CompletedTask;
+    private int _hearFailures;
+    private string? _lyricsProblem;            // listening keeps failing: shown, and not tried again until restarted
     private long _lastHearAt = long.MinValue / 2;
-    private const double HearEverySeconds = 4, HearSeconds = 8;
+    /// <summary>Listen for lyrics every 2 s (the graphics card needs about 0.2 s for 8 s of sound).</summary>
+    private const double HearEverySeconds = 2, HearSeconds = 8;
+    /// <summary>The confirming lyrics hit must come from sound at least this much newer than the first one's.</summary>
+    private const double ConfirmGapSeconds = 6;
     /// <summary>An answer for sound older than this is dropped (the station may have changed meanwhile).</summary>
     private const double MaxHitAgeSeconds = 2;
     /// <summary>The confirming hit: at least one listen later (no shared sound), and within this long.</summary>
-    private const double ConfirmWithinSeconds = 40, PlaceSlackSeconds = 6;
+    private const double ConfirmWithinSeconds = 40, PlaceSlackSeconds = 5;
     /// <summary>A song heard once by its lyrics, waiting for a second, independent hit. Never saved until then.</summary>
     private (Catalogue.CatalogueSong Song, double? Position, double? Duration, long EndAt)? _lyricCandidate;
 
@@ -270,10 +277,13 @@ public sealed class RadioModule : IAppModule
             if (!sound)
             {
                 _pending = null;
-                if (++_silentTicks >= SilentTicksToClear && _current is not null) return Clear("the capture card went quiet");
+                // The level is measured over the last 3 s, so the quiet began at least that long ago.
+                _quietSince ??= now - RadioAudio.SampleRate * 3;
+                if ((now - _quietSince.Value) / (double)RadioAudio.SampleRate >= QuietSecondsToClear && _current is not null)
+                    return Clear("the capture card went quiet");
                 return null;
             }
-            _silentTicks = 0;
+            _quietSince = null;
             heard = _buffer.Last(RadioAudio.SampleRate * MatchSeconds);
         }
         BeforeMatch?.Invoke();
@@ -363,7 +373,7 @@ public sealed class RadioModule : IAppModule
     /// </summary>
     private void MaybeHear(float[] heard, int gen, long now)
     {
-        if (!_settings.Lyrics || _lyrics is not { Ready: true } engine || !_hearing.IsCompleted) return;
+        if (!_settings.Lyrics || _lyricsProblem is not null || _lyrics is not { Ready: true } engine || !_hearing.IsCompleted) return;
         if ((now - _lastHearAt) / (double)RadioAudio.SampleRate < HearEverySeconds) return;
         _lastHearAt = now;
         var take = Math.Min(heard.Length, (int)(HearSeconds * RadioAudio.SampleRate));
@@ -374,12 +384,21 @@ public sealed class RadioModule : IAppModule
             try
             {
                 var hit = await engine.HearAsync(audio, ct).ConfigureAwait(false);
+                lock (_gate) _hearFailures = 0;
                 if (hit is not null && OnHeard(gen, hit, audio, now) is { } send) await Notify(send).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { /* switched off */ }
             catch (Exception ex)
             {
                 _log.Info("In-game radio: listening for lyrics failed: " + ex.Message);
+                lock (_gate)
+                {
+                    if (++_hearFailures >= 3 && _lyricsProblem is null)
+                    {
+                        _lyricsProblem = "Speech recognition stopped working (" + ex.Message + "). Please restart RigControl.";
+                        _log.Warn("In-game radio: " + _lyricsProblem);
+                    }
+                }
             }
             Publish();
         });
@@ -406,7 +425,7 @@ public sealed class RadioModule : IAppModule
             if (_lyricCandidate is { } c && c.Song.Key == hit.Song.Key)
             {
                 var gap = (endAt - c.EndAt) / (double)RadioAudio.SampleRate;
-                if (gap < HearSeconds) return null; // overlaps the first hit's sound: proves nothing new, keep waiting
+                if (gap < ConfirmGapSeconds) return null; // mostly the first hit's sound: proves nothing new, keep waiting
                 var placeAgrees = (c.Position, hit.PositionSeconds) switch
                 {
                     (null, null) => true,
@@ -551,7 +570,9 @@ public sealed class RadioModule : IAppModule
     private RadioStatusDto BuildStatus()
     {
         var state = !_settings.Enabled ? "off" : _session is not null ? "listening" : "waiting";
-        var lyrics = new RadioLyricsDto(_settings.Lyrics, _lyrics?.State ?? "off", _lyrics?.Detail, _lyrics?.LastHeard);
+        var lyrics = _lyricsProblem is not null && _settings.Lyrics
+            ? new RadioLyricsDto(true, "problem", _lyricsProblem, _lyrics?.LastHeard)
+            : new RadioLyricsDto(_settings.Lyrics, _lyrics?.State ?? "off", _lyrics?.Detail, _lyrics?.LastHeard);
         return new RadioStatusDto(_settings.Enabled, state, _problem, CurrentDto(), _sound, _store?.Songs.Count ?? 0, lyrics);
     }
 

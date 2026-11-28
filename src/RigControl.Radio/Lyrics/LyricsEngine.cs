@@ -75,6 +75,13 @@ public sealed class LyricsEngine(HttpClient http, string radioFolder, Func<IEnum
                 Set("preparing", "Downloading the speech model (190 MB)...");
                 await model.DownloadAsync(new Progress<double>(p => Set("preparing", $"Downloading the speech model ({p:P0} of 190 MB)...")), ct).ConfigureAwait(false);
             }
+            if (WhisperSpeech.Running is { } running)
+            {
+                // Already started in this run (switched off and on again): reuse it, no second start.
+                lock (_gate) _speech = _disposed || ct.IsCancellationRequested ? null : running;
+                Set("ready", $"Recognises {have} songs from the stations by their lyrics, on the {(running.Device == "gpu" ? "graphics card" : "processor")}.");
+                return;
+            }
             byte[] bytes;
             try { bytes = model.LoadVerified(); }
             catch (InvalidDataException)

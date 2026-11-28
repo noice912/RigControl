@@ -63,6 +63,7 @@ internal sealed class FakeLyrics : RigControl.Radio.Lyrics.ILyricsEngine
     public int InFlight, MaxInFlight;
     public Func<float[], RigControl.Radio.Lyrics.LyricsHit?> Answer { get; set; } = _ => null;
     public ManualResetEventSlim? Hold { get; set; }
+    public bool Fail { get; set; }
     public string State => Prepared ? "ready" : "off";
     public string? Detail => null;
     public string? LastHeard { get; private set; }
@@ -76,6 +77,7 @@ internal sealed class FakeLyrics : RigControl.Radio.Lyrics.ILyricsEngine
         try
         {
             if (Hold is { } h) await Task.Run(() => h.Wait(5000), ct);
+            if (Fail) throw new System.Runtime.InteropServices.SEHException("External component has thrown an exception.");
             var hit = Answer(audio16k);
             LastHeard = hit?.Heard ?? "nothing";
             return hit;
@@ -346,8 +348,8 @@ public class ModuleTests : IDisposable
     {
         await On();
         await Call("setSettings", """{"lyrics":true}""");
-        // Every call is one listen, 6 s after the last (ticks every 3 s, listening at most every 4 s): the place moves on.
-        _lyrics.Answer = audio => audio.Length >= 16000 * 6 ? new(Feel, 100 + 6 * _lyrics.Calls, 230, "made-up words for the test") : null;
+        // The test feeds 3 s per tick and listens every tick: each call's place in the song is 3 s further on.
+        _lyrics.Answer = audio => audio.Length >= 16000 * 6 ? new(Feel, 100 + 3 * _lyrics.Calls, 230, "made-up words for the test") : null;
         var song = TestAudio.Song(21, 120);
         await Play(song, 0, 24);
         Assert.Equal("Electric Feel", Status.Now?.Title);
@@ -427,7 +429,7 @@ public class ModuleTests : IDisposable
         await Call("setSettings", """{"lyrics":true}""");
         using var hold = new ManualResetEventSlim();
         _lyrics.Hold = hold;
-        _lyrics.Answer = _ => new(Feel, 100 + 6 * _lyrics.Calls, 230, "made-up words for the test");
+        _lyrics.Answer = _ => new(Feel, 100 + 3 * _lyrics.Calls, 230, "made-up words for the test");
         var song = TestAudio.Song(26, 60);
         for (var t = 0; t < 12; t += 3)
         {
@@ -440,5 +442,19 @@ public class ModuleTests : IDisposable
         await Play(new float[16000 * 12], 0, 12);
         Assert.Null(Status.Now);
         Assert.Empty((IReadOnlyList<LearnedSongDto>)(await Call("listSongs"))!);
+    }
+
+    [Fact]
+    public async Task Listening_that_keeps_failing_is_shown_as_a_problem()
+    {
+        await On();
+        await Call("setSettings", """{"lyrics":true}""");
+        _lyrics.Fail = true;
+        await Play(TestAudio.Song(27, 30), 0, 15);
+        Assert.Equal("problem", Status.Lyrics.State);
+        Assert.Contains("restart RigControl", Status.Lyrics.Detail);
+        var calls = _lyrics.Calls;
+        await Play(TestAudio.Song(27, 30), 15, 9);
+        Assert.Equal(calls, _lyrics.Calls); // it stops trying until restarted
     }
 }
