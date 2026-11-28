@@ -240,7 +240,7 @@ public sealed class LyricsLibrary(HttpClient http, string cachePath, ILog log, F
     internal static string CleanTitle(string title)
     {
         var t = System.Text.RegularExpressions.Regex.Replace(title, @"\([^)]*\)|\[[^\]]*\]", " ");
-        foreach (var sep in new[] { " - ", " ft. ", " feat. ", " featuring ", " ft ", " feat " })
+        foreach (var sep in new[] { " - ", " – ", " — ", " ft. ", " feat. ", " featuring ", " ft ", " feat " })
         {
             var i = t.IndexOf(sep, StringComparison.OrdinalIgnoreCase);
             if (i > 0) t = t[..i];

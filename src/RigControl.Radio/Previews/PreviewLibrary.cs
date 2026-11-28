@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using RigControl.Core.Logging;
 using RigControl.Radio.Catalogue;
 using RigControl.Radio.Fingerprint;
@@ -32,6 +33,14 @@ public sealed class PreviewLibrary
     private static readonly TimeSpan RetryMissingAfter = TimeSpan.FromDays(7);
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly string[] OtherTake = ["live", "remix", "mix", "acoustic", "instrumental", "karaoke", "version", "edit", "demo", "cover", "sped", "slowed", "reprise", "dub", "vip", "rework"];
+
+    /// <summary>A guest credit in a title: "(feat. X)", "[with X]", or a trailing "ft. X".</summary>
+    private static readonly Regex Credit = new(@"\s*[\(\[]\s*(?:feat\.?|ft\.?|featuring|with)\s[^\)\]]*[\)\]]|\s+(?:feat\.?|ft\.?|featuring)\s.*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+
+    /// <summary>Where one artist ends and the next starts in a credit ("A, B &amp; C feat. D").</summary>
+    private static readonly Regex ArtistSplit = new(@",|&|\s(?:and|x|ft\.?|feat\.?|featuring|w/)\s",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
 
     private readonly HttpClient _http;
     private readonly string _statePath;
@@ -96,7 +105,8 @@ public sealed class PreviewLibrary
                 failedInARow = 0;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException or JsonException or InvalidDataException)
+            catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException or JsonException or InvalidDataException
+                                       or System.Text.RegularExpressions.RegexMatchTimeoutException or UriFormatException)
             {
                 _log.Info($"In-game radio: the preview of \"{song.Title}\" couldn't be fetched ({ex.Message}).");
                 if (++failedInARow >= MaxFailuresInARow)
@@ -144,7 +154,16 @@ public sealed class PreviewLibrary
 
     private async Task<Uri?> FindDeezerAsync(CatalogueSong song, CancellationToken ct)
     {
-        var q = $"artist:\"{LyricsLibrary.FirstArtist(song.Artist)}\" track:\"{LyricsLibrary.CleanTitle(song.Title)}\"";
+        var artist = LyricsLibrary.FirstArtist(song.Artist);
+        var title = LyricsLibrary.CleanTitle(song.Title);
+        // The exact search first; it misses names written a little differently ("The", "&", accents, "!!!"), so
+        // then a plain one. Pick decides either way.
+        return await AskDeezerAsync(song, $"artist:\"{artist}\" track:\"{title}\"", ct).ConfigureAwait(false)
+               ?? await AskDeezerAsync(song, artist + " " + title, ct).ConfigureAwait(false);
+    }
+
+    private async Task<Uri?> AskDeezerAsync(CatalogueSong song, string q, CancellationToken ct)
+    {
         var answer = await GetJsonAsync(new Uri($"{DeezerSearch}?limit=15&q={Uri.EscapeDataString(q)}"), ct).ConfigureAwait(false);
         if (_deezerPace > TimeSpan.Zero) await _wait(_deezerPace, ct).ConfigureAwait(false);
         if (answer is not { ValueKind: JsonValueKind.Object } o || !o.TryGetProperty("data", out var d) || d.ValueKind != JsonValueKind.Array) return null;
@@ -159,30 +178,107 @@ public sealed class PreviewLibrary
     /// The result that is this song: the same (first) artist, and the same title. A plain title also takes the
     /// original under a longer name ("Song (2011 Remaster)"), never another take of it (live, remix, acoustic...);
     /// a remix or version in the catalogue must be that one. Only https previews from Apple's or Deezer's servers.
+    /// Names are compared loosely only where that can't change the song: guest credits ("feat. X"), "&amp;" vs
+    /// "and", a leading "The" in the artist. A song filed under another of its credited artists counts only with
+    /// exactly the same title, and only when nothing under the first artist does.
     /// </summary>
     internal static Uri? Pick(CatalogueSong song, IEnumerable<(string? Artist, string? Title, string? Preview)> results)
     {
-        var wantArtist = string.Join(' ', LyricsText.Words(LyricsLibrary.FirstArtist(song.Artist)));
-        var full = LyricsText.Words(song.Title).ToList();
-        var clean = LyricsText.Words(LyricsLibrary.CleanTitle(song.Title)).ToList();
-        var ourExtra = full.Skip(clean.Count).ToList();
-        var oursIsOtherTake = ourExtra.Any(w => OtherTake.Contains(w));
-        Uri? second = null;
+        var first = LyricsLibrary.FirstArtist(song.Artist);
+        var wantArtist = ArtistKey(first);
+        var others = Artists(song.Artist).Skip(1).Select(ArtistKey)
+            .Where(a => a.Length >= 3 && a is not ("jr" or "sr") && a != wantArtist).Distinct().ToList();
+        var full = TitleWords(song.Title);
+        var clean = TitleWords(LyricsLibrary.CleanTitle(song.Title));
+        // Another take in ours, also when it sits in a credit-like part ("(with X Remix)").
+        var ourWords = DropSameTake(LyricsText.Words(song.Title).ToList());
+        var oursIsOtherTake = ourWords.Except(LyricsText.Words(LyricsLibrary.CleanTitle(song.Title))).Any(IsOtherTake);
+        Uri? near = null, other = null;
         foreach (var (artist, title, preview) in results)
         {
-            if (artist is null || title is null || preview is null || wantArtist.Length == 0) continue;
-            if (!(" " + string.Join(' ', LyricsText.Words(artist)) + " ").Contains(" " + wantArtist + " ", StringComparison.Ordinal)) continue;
+            if (artist is null || title is null || preview is null || full.Count == 0 || first.Length == 0) continue;
             if (!Uri.TryCreate(preview, UriKind.Absolute, out var url) || !AllowedPreviewHost(url)) continue;
-            var theirs = LyricsText.Words(title).ToList();
-            if (theirs.SequenceEqual(full)) return url;
-            if (second is not null) continue;
-            // "Isaka (6am)" listed as "Isaka", or "1901" listed as "1901 (2009 Remaster)".
-            if (!oursIsOtherTake && theirs.SequenceEqual(clean)) second = url;
-            else if (theirs.Count > full.Count && theirs.Take(full.Count).SequenceEqual(full)
-                     && !theirs.Skip(full.Count).Any(w => OtherTake.Contains(w))) second = url;
+            var theirArtist = " " + ArtistKey(artist) + " ";
+            var byFirst = wantArtist.Length > 0
+                ? theirArtist.Contains(" " + wantArtist + " ", StringComparison.Ordinal)
+                : Artists(artist).Any(a => string.Equals(a, first, StringComparison.OrdinalIgnoreCase)); // "!!!" has no words
+            var byOther = !byFirst && others.Any(a => theirArtist.Contains(" " + a + " ", StringComparison.Ordinal));
+            if (!byFirst && !byOther) continue;
+            var theirs = TitleWords(title);
+            // The same words, also split differently ("Ou Paka" = "Ou Pa Ka").
+            if (theirs.SequenceEqual(full) || string.Concat(theirs) == string.Concat(full))
+            {
+                // Ours is a remix (also inside a credit: "(feat. X Remix)"): theirs must be another take too.
+                if (oursIsOtherTake && !DropSameTake(LyricsText.Words(title).ToList()).Any(IsOtherTake)) continue;
+                if (byFirst) return url;
+                other ??= url;
+                continue;
+            }
+            if (byFirst && near is null && SameSongOtherName(theirs, full, clean, oursIsOtherTake, ourWords)) near = url;
         }
-        return second;
+        return near ?? other;
     }
+
+    /// <summary>
+    /// "Isaka (6am)" listed as "Isaka", "1901" as "1901 (2009 Remaster)", "Song (A) (Prod by B)" as "Song (A)",
+    /// "Song (Girls Trip)" as "Song (From The Film)". Never a live, remix or other take, and never the plain song
+    /// when ours is a remix or version.
+    /// </summary>
+    private static bool SameSongOtherName(List<string> theirs, List<string> full, List<string> clean, bool oursIsOtherTake, List<string> ourWords)
+    {
+        // Longer than ours: only a note about the release ("(2011 Remaster)", "(From The Film)"), never "Part 2",
+        // "Interlude" or another song that starts the same way.
+        if (theirs.Count > full.Count && theirs.Take(full.Count).SequenceEqual(full))
+            return oursIsOtherTake
+                // Ours is a remix credited to someone: theirs may name it without the "feat." ("Song (X Remix)").
+                ? theirs.Skip(full.Count).All(ourWords.Contains) && theirs.Skip(full.Count).Any(IsOtherTake)
+                : theirs.Skip(full.Count).All(w => ReleaseNote.Contains(w) || w.All(char.IsAsciiDigit));
+        if (oursIsOtherTake || clean.Count == 0 || theirs.Count < clean.Count || !theirs.Take(clean.Count).SequenceEqual(clean)) return false;
+        var theirNote = theirs.Skip(clean.Count).ToList();
+        if (theirNote.Count == 0) return true; // the plain name
+        // Ours cut short ("Song (A) (Prod by B)" -> "Song (A)").
+        if (theirs.Count < full.Count && full.Take(theirs.Count).SequenceEqual(theirs)) return true;
+        // The plain name with a note that only says where or how it was released ("(From The Film)", "(2011 Remaster)").
+        return theirNote.All(w => ReleaseNote.Contains(w) || w.All(char.IsAsciiDigit));
+    }
+
+    private static readonly string[] ReleaseNote = ["remaster", "remastered", "mono", "stereo", "original", "single", "explicit", "deluxe", "bonus", "track", "album", "from", "the", "film", "movie", "motion", "picture", "soundtrack", "ost", "series", "official", "audio"];
+
+    private static bool IsOtherTake(string word) => OtherTake.Contains(word);
+
+    /// <summary>A title's words without guest credits and without "and" (so "&amp;" and "and" compare the same).</summary>
+    internal static List<string> TitleWords(string title)
+    {
+        var w = LyricsText.Words(Credit.Replace(title, " ")).Where(x => x != "and").ToList();
+        if (w.Count == 0) w = LyricsText.Words(title).ToList(); // a title that is all brackets: "(With You)"
+        // "(Single Version)", "(Album Version)": the release itself, not another take of it.
+        for (var i = w.Count - 2; i >= 0; i--)
+        {
+            if (i + 1 < w.Count && w[i + 1] == "version" && SameTake.Contains(w[i])) w.RemoveRange(i, 2);
+        }
+        return w;
+    }
+
+    /// <summary>Removes "single version", "album version" and the like (the release itself, not another take).</summary>
+    private static List<string> DropSameTake(List<string> w)
+    {
+        for (var i = w.Count - 2; i >= 0; i--)
+            if (i + 1 < w.Count && w[i + 1] == "version" && SameTake.Contains(w[i])) w.RemoveRange(i, 2);
+        return w;
+    }
+
+    private static readonly string[] SameTake = ["single", "album", "original", "mono", "stereo", "lp", "remastered", "remaster"];
+
+    /// <summary>An artist's words for comparing: no "and", no leading "the" ("The Ghostbusters" = "Ghostbusters").</summary>
+    internal static string ArtistKey(string artist)
+    {
+        var w = LyricsText.Words(artist).Where(x => x != "and").ToList();
+        if (w.Count > 1 && w[0] == "the") w.RemoveAt(0);
+        return string.Join(' ', w);
+    }
+
+    private static IEnumerable<string> Artists(string credit) =>
+        ArtistSplit.Split(credit).Select(a => a.Trim()).Where(a => a.Length > 0);
 
     internal static bool AllowedPreviewHost(Uri url)
     {

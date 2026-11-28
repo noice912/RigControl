@@ -57,6 +57,27 @@ public class PreviewPickTests
         Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Band", "Glow (2011 Remaster)", Apple)]));
     }
 
+    [Fact]
+    public void A_remix_hidden_in_a_credit_never_takes_the_original()
+    {
+        var song = new CatalogueSong("S", "Glow (feat. Guest Remix)", "Band");
+        Assert.Null(PreviewLibrary.Pick(song, [("Band", "Glow", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Band", "Glow (Guest Remix)", Apple)]));
+    }
+
+    [Theory]
+    [InlineData("Glow (Part 2)")]
+    [InlineData("Glow Interlude")]
+    [InlineData("Glow Pt. 2")]
+    [InlineData("Glow Than Me")]
+    [InlineData("Glow (Piano)")]
+    public void A_longer_title_is_only_taken_for_a_release_note(string theirs)
+    {
+        var song = new CatalogueSong("S", "Glow", "Band");
+        Assert.Null(PreviewLibrary.Pick(song, [("Band", theirs, Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Band", "Glow (2011 Remaster)", Apple)]));
+    }
+
     [Theory]
     [InlineData("http://audio-ssl.itunes.apple.com/a.m4a")]
     [InlineData("https://evil.example/a.m4a")]
@@ -73,7 +94,67 @@ public class PreviewPickTests
     [InlineData("Song - 2011 Remaster", "Song")]
     [InlineData("Blow My Mind (A & B Version)", "Blow My Mind")]
     [InlineData("(Intro)", "(Intro)")]
+    [InlineData("Harbour Lights – Reprise", "Harbour Lights")]
     public void Titles_are_cleaned(string title, string clean) => Assert.Equal(clean, LyricsLibrary.CleanTitle(title));
+
+    [Fact]
+    public void Guest_credits_and_ampersands_dont_count()
+    {
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Night Drive ft. Guest", "Band"), [("Band", "Night Drive (feat. Guest)", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Night Drive", "Band"), [("Band", "Night Drive [with Guest]", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Salt & Sea", "Band"), [("Band", "Salt and Sea", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Glow", "Rita And The Tides"), [("Rita & The Tides", "Glow", Apple)]));
+        // Still another take.
+        Assert.Null(PreviewLibrary.Pick(new CatalogueSong("S", "Night Drive", "Band"), [("Band", "Night Drive (feat. Guest) [Live]", Apple)]));
+    }
+
+    [Fact]
+    public void A_leading_the_and_a_name_without_letters_still_match()
+    {
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Glow", "The Glimmers"), [("Glimmers", "Glow", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Glow", "Glimmers"), [("The Glimmers", "Glow", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(new CatalogueSong("S", "Glow", "The Glimmers"), [("Shimmers", "Glow", Apple), ("The Others", "Glow", Apple)]));
+        var noLetters = new CatalogueSong("S", "Glow", "???");
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(noLetters, [("Other Band", "Glow", "https://audio-ssl.itunes.apple.com/o.m4a"), ("???", "Glow", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Glow", "??? ft. Guest"), [("??? & Guest", "Glow", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(noLetters, [("Other Band", "Glow", Apple), ("?", "Glow", Apple)]));
+    }
+
+    [Fact]
+    public void Another_credited_artist_counts_only_with_the_same_title_and_after_the_first()
+    {
+        var song = new CatalogueSong("S", "Glow", "Band, Guest Singer");
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Guest Singer", "Glow", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(song, [("Guest Singer", "Glow (Live)", Apple), ("Guest Singer", "Glow (2011 Remaster)", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(song, [("Someone Else", "Glow", Apple)]));
+        // The first artist's (renamed) original wins over another artist's.
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Guest Singer", "Glow", "https://audio-ssl.itunes.apple.com/g.m4a"), ("Band", "Glow (2011 Remaster)", Apple)]));
+        // "Jr." is not an artist of its own.
+        Assert.Null(PreviewLibrary.Pick(new CatalogueSong("S", "Glow", "Hank Band, Jr."), [("Jr.", "Glow", Apple)]));
+    }
+
+    [Fact]
+    public void A_single_or_album_version_is_the_song_itself_and_spacing_may_differ()
+    {
+        var song = new CatalogueSong("S", "Glow", "Band");
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Band", "Glow (Live Version)", "https://audio-ssl.itunes.apple.com/l.m4a"), ("Band", "Glow (Single Version)", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Glow (Album Version)", "Band"), [("Band", "Glow", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(song, [("Band", "Glow (Extended Version)", Apple), ("Band", "Glow (Club Version)", Apple)]));
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Mi Pa Ka Dans", "Band"), [("Band", "Mi Paka Dans", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(new CatalogueSong("S", "Mi Pa Ka Dans", "Band"), [("Band", "Mi Paka Dans Ankò", Apple)]));
+    }
+
+    [Fact]
+    public void A_note_may_differ_only_when_it_is_about_the_release()
+    {
+        var song = new CatalogueSong("S", "Glow (Summer Trip)", "Band");
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(song, [("Band", "Glow (From The Film)", Apple)]));
+        Assert.Null(PreviewLibrary.Pick(song, [("Band", "Glow (Part 2)", Apple), ("Band", "Glow (Live)", Apple), ("Band", "Glow Interlude", Apple)]));
+        // Ours with an extra producer note: theirs without it.
+        Assert.Equal(new Uri(Apple), PreviewLibrary.Pick(new CatalogueSong("S", "Run Fast (Night) (Prod by Someone)", "Band"), [("Band", "Run Fast (Night)", Apple)]));
+        // A listed remix never takes a release note of the plain song.
+        Assert.Null(PreviewLibrary.Pick(new CatalogueSong("S", "Glow (Night Remix)", "Band"), [("Band", "Glow (2011 Remaster)", Apple)]));
+    }
 }
 
 public class PreviewLibraryTests : IDisposable
@@ -150,6 +231,21 @@ public class PreviewLibraryTests : IDisposable
         _server.Asked.Clear();
         await Library().FetchAsync([Song], null, default);
         Assert.Empty(_server.Asked);
+    }
+
+    [Fact]
+    public async Task Deezer_is_asked_plainly_when_the_exact_search_finds_nothing()
+    {
+        _server.Answer = u => u.Host switch
+        {
+            "itunes.apple.com" => FakeSearch.Json("""{"results":[]}"""),
+            "api.deezer.com" when Uri.UnescapeDataString(u.Query).Contains("artist:") => FakeSearch.Json("""{"data":[]}"""),
+            "api.deezer.com" => FakeSearch.Json("""{"data":[{"title":"Glow","artist":{"name":"The Band"},"preview":"https://cdnt-preview.dzcdn.net/glow.mp3"}]}"""),
+            "cdnt-preview.dzcdn.net" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[1000]) },
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        };
+        Assert.Equal(1, await Library().FetchAsync([Song], null, default));
+        Assert.Equal(2, _server.Asked.Count(u => u.Host == "api.deezer.com"));
     }
 
     [Fact]
